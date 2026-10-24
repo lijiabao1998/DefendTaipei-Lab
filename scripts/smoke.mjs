@@ -1,19 +1,25 @@
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
-const srv = spawn('npx', ['vite', 'preview', '--port', '4179', '--strictPort'], { stdio: 'ignore' });
-await new Promise(r => setTimeout(r, 2500));
+const local = !process.env.URL;
+const srv = local ? spawn('npx', ['vite', 'preview', '--port', '4179', '--strictPort'], { stdio: 'ignore' }) : null;
+if (local) await new Promise(r => setTimeout(r, 2500));
 const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
 const p = await b.newPage({ viewport: { width: 1280, height: 800 } });
 const errs = [];
 p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
 p.on('pageerror', e => errs.push(String(e)));
 await p.goto(process.env.URL || 'http://localhost:4179/DefendTaipei-Lab/');
-await p.waitForFunction(() => window.__game, null, { timeout: 30000 });
-await p.click('#btns button:last-child');
-await p.keyboard.down('KeyW'); await p.waitForTimeout(1500); await p.keyboard.up('KeyW');
-await p.screenshot({ path: 'smoke0.png' }); await p.keyboard.press('KeyE'); await p.waitForTimeout(300); await p.keyboard.press('Tab'); await p.waitForTimeout(500);
-await p.screenshot({ path: 'smoke.png' });
-await p.keyboard.press('Escape'); await p.mouse.click(700, 300); await p.waitForTimeout(2000);
-const info = await p.evaluate(() => ({ started: window.__game.started(), sols: window.__game.sols.length, blds: window.__game.blds.length, hp: window.__game.player.hp }));
-console.log(JSON.stringify(info)); console.log('errors:', errs.length, errs.slice(0, 5));
-await b.close(); srv.kill(); process.exit(errs.length ? 1 : 0);
+try { await p.waitForFunction(() => window.__game, null, { timeout: 60000 }); } catch (e) { console.log('ERRS', errs); await p.screenshot({path:'shot-fail.png'}); process.exit(1); }
+await p.screenshot({ path: 'shot-title.png' });
+await p.click('.ch[data-g="f"]');
+await p.waitForTimeout(1500); await p.screenshot({ path: 'shot-spawn.png' });
+await p.keyboard.down('KeyW'); await p.waitForTimeout(1200); await p.keyboard.up('KeyW');
+await p.keyboard.press('Tab'); await p.waitForTimeout(400); await p.screenshot({ path: 'shot-inv.png' }); await p.keyboard.press('Escape');
+// visit a detailed store
+const st = await p.evaluate(() => { const g = window.__game; const b = g.blds.find(b => b.detailed === 'store'); if (!b) return null; const d = b.door.p; g.tp(d[0] + (b.c[0] - d[0]) * 0.3, d[1] + (b.c[1] - d[1]) * 0.3); return b.detailed; });
+await p.waitForTimeout(800); await p.screenshot({ path: 'shot-store.png' });
+await p.keyboard.press('KeyE'); await p.waitForTimeout(400); await p.screenshot({ path: 'shot-loot.png' }); await p.keyboard.press('Escape');
+await p.evaluate(() => window.__game.setTime(22 * 60)); await p.waitForTimeout(1500); await p.screenshot({ path: 'shot-night.png' });
+const info = await p.evaluate(() => { const g = window.__game; const det = {}; g.blds.forEach(b => { if (b.detailed) det[b.detailed] = (det[b.detailed] || 0) + 1; }); const s = g.sols.find(s => s.state !== 'dead'); const path = g.nav.find([s.pos.x, s.pos.z], [g.player.pos.x, g.player.pos.z]); return { started: g.started(), sols: g.sols.length, conts: g.conts.length, det, vehicles: g.vehicles.list.length, pathLen: path ? path.length : null, store: !!0 }; });
+console.log(JSON.stringify(info), st); console.log('errors:', errs.length, errs.slice(0, 5));
+await b.close(); srv?.kill(); process.exit(errs.length ? 1 : 0);

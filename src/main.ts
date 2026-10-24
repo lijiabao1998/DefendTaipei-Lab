@@ -1,6 +1,11 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { ITEMS, LOOT } from './items';
+import { iconURL } from './icons';
+import { makeRig, animate, setWeapon, Rig, AnimState } from './human';
+import { Nav, smooth } from './nav';
+import { VehicleSystem, VehicleKind } from './vehicles';
+import { furnish, nightMarket } from './interiors';
 
 // ---------- utils ----------
 let seed = 20261024;
@@ -11,8 +16,8 @@ const $ = (id: string) => document.getElementById(id)!;
 type V2 = [number, number];
 type Seg = { a: V2; b: V2; door?: Door };
 type Door = { b: Bld; p: V2; a: V2; c: V2; barricaded: boolean; seg?: Seg; mesh?: THREE.Mesh };
-type Bld = { id: number; pts: V2[]; h: number; type: string; group: THREE.Group; walls: THREE.Mesh; roof: THREE.Group; door?: Door; c: V2; minx: number; maxx: number; minz: number; maxz: number };
-type Cont = { id: string; p: V2; items: Record<string, number>; label: string; mesh: THREE.Object3D; b?: Bld };
+type Bld = { sign?: THREE.Mesh; floor?: THREE.Mesh; inner?: THREE.Group; innerWalls?: THREE.Mesh; detailed?: string; id: number; pts: V2[]; h: number; type: string; group: THREE.Group; walls: THREE.Mesh; roof: THREE.Group; door?: Door; c: V2; minx: number; maxx: number; minz: number; maxz: number };
+type Cont = { id: string; p: V2; items: Record<string, number>; label: string; mesh: THREE.Object3D; b?: Bld; half?: number; axis?: V2; vis?: { im: THREE.InstancedMesh; max: number; item: string }[]; init?: Record<string, number> };
 
 function pip(p: V2, pts: V2[]) { let ins = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, zi] = pts[i], [xj, zj] = pts[j]; if ((zi > p[1]) !== (zj > p[1]) && p[0] < (xj - xi) * (p[1] - zi) / (zj - zi) + xi) ins = !ins; } return ins; }
 function area(pts: V2[]) { let s = 0; for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; s += a[0] * b[1] - b[0] * a[1]; } return Math.abs(s / 2); }
@@ -66,8 +71,9 @@ const blds: Bld[] = []; const segs: Seg[] = []; const conts: Cont[] = []; const 
 const roads: { p: V2[]; t: string; n: string }[] = [];
 const CELL = 8; const grid = new Map<string, Seg[]>();
 const gk = (x: number, z: number) => `${Math.floor(x / CELL)},${Math.floor(z / CELL)}`;
-function addSeg(s: Seg) { segs.push(s); const x0 = Math.min(s.a[0], s.b[0]), x1 = Math.max(s.a[0], s.b[0]), z0 = Math.min(s.a[1], s.b[1]), z1 = Math.max(s.a[1], s.b[1]); for (let x = Math.floor(x0 / CELL); x <= Math.floor(x1 / CELL); x++) for (let z = Math.floor(z0 / CELL); z <= Math.floor(z1 / CELL); z++) { const k = x + ',' + z; (grid.get(k) || grid.set(k, []).get(k)!).push(s); } }
-function removeSeg(s: Seg) { grid.forEach(a => { const i = a.indexOf(s); if (i >= 0) a.splice(i, 1); }); }
+let nav: Nav | null = null;
+function addSeg(s: Seg) { segs.push(s); nav?.markSeg(s.a, s.b, 1); const x0 = Math.min(s.a[0], s.b[0]), x1 = Math.max(s.a[0], s.b[0]), z0 = Math.min(s.a[1], s.b[1]), z1 = Math.max(s.a[1], s.b[1]); for (let x = Math.floor(x0 / CELL); x <= Math.floor(x1 / CELL); x++) for (let z = Math.floor(z0 / CELL); z <= Math.floor(z1 / CELL); z++) { const k = x + ',' + z; (grid.get(k) || grid.set(k, []).get(k)!).push(s); } }
+function removeSeg(s: Seg) { nav?.markSeg(s.a, s.b, -1); grid.forEach(a => { const i = a.indexOf(s); if (i >= 0) a.splice(i, 1); }); }
 function nearSegs(x: number, z: number) { const out = new Set<Seg>(); const cx = Math.floor(x / CELL), cz = Math.floor(z / CELL); for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) { const a = grid.get((cx + i) + ',' + (cz + j)); if (a) a.forEach(s => out.add(s)); } return out; }
 function los(p: V2, q: V2) { const d = Math.hypot(q[0] - p[0], q[1] - p[1]); const n = Math.ceil(d / (CELL * 0.5)) + 1; const seen = new Set<Seg>(); for (let i = 0; i <= n; i++) { const t = i / n; const a = grid.get(gk(p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t)); if (!a) continue; for (const s of a) { if (seen.has(s)) continue; seen.add(s); if (segInter(p, q, s.a, s.b)) return false; } } return true; }
 function collide(pos: THREE.Vector3, r: number) {
@@ -98,6 +104,13 @@ function shopType(s: string, n: string) {
 const SIGN: Record<string, [string, string, string]> = { store: ['7-12', '#e8eef0', '#d23a1e'], pharmacy: ['康是福藥局', '#1d8a5a', '#ffffff'], police: ['派出所', '#1d3f8a', '#ffffff'] };
 const signTex: Record<string, THREE.Texture> = {};
 for (const k in SIGN) { const [t, bg, fg] = SIGN[k]; signTex[k] = canvasTex(256, 64, c => { c.fillStyle = bg; c.fillRect(0, 0, 256, 64); if (k === 'store') { c.fillStyle = '#f08a1c'; c.fillRect(0, 0, 256, 10); c.fillStyle = '#1c9a4a'; c.fillRect(0, 54, 256, 10); } c.fillStyle = fg; c.font = 'bold 40px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(t, 128, 34); }); }
+const b2sign: Record<string, [string, string, string]> = { store: ['7-12', '', ''], pharmacy: ['', '', ''], grocery: ['金來雜貨店', '#b8241c', '#fff2a0'], breakfast: ['晨光早餐', '#f2a81c', '#7a1a10'], betel: ['檳榔・香菸', '#111111', '#33ff66'] };
+const extraSign: Record<string, THREE.Texture> = {};
+function setSign(b: Bld, k: string) {
+  let tex = signTex[k]; if (!tex) { const [t, bg, fg] = b2sign[k]; tex = extraSign[k] || (extraSign[k] = canvasTex(256, 64, c => { c.fillStyle = bg; c.fillRect(0, 0, 256, 64); c.fillStyle = fg; c.font = 'bold 38px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(t, 128, 34); })); }
+  const mat = new THREE.MeshStandardMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: k === 'betel' ? 1.2 : 0.4, side: THREE.DoubleSide });
+  if (b.sign) b.sign.material = mat; else if (b.door) { const d = b.door; const m = new THREE.Mesh(new THREE.PlaneGeometry(3, 0.9), mat); const ux = d.c[0] - d.a[0], uz = d.c[1] - d.a[1]; const L = Math.hypot(ux, uz); let nx = -uz / L, nz = ux / L; if (pip([d.p[0] + nx * 0.6, d.p[1] + nz * 0.6], b.pts)) { nx = -nx; nz = -nz; } m.position.set(d.p[0] + nx * 0.2, 3.0, d.p[1] + nz * 0.2); m.lookAt(d.p[0] + nx * 5, 3.0, d.p[1] + nz * 5); b.group.add(m); b.sign = m; }
+}
 const PARODY = ['阿嬤小吃', '金萬華當舖', '老牌麵線', '西門電玩', '幸福理容', '大眾五金', '青草茶', '鐘錶行', '刺青', '金紙香舖'];
 const shopSignTex = PARODY.map((t, i) => canvasTex(256, 64, c => { c.fillStyle = ['#a8221e', '#20344f', '#c9971c', '#6a2a8a', '#2a6a3a'][i % 5]; c.fillRect(0, 0, 256, 64); c.fillStyle = '#fff6d0'; c.font = 'bold 38px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(t, 128, 34); }));
 
@@ -165,7 +178,7 @@ function buildMap(data: any) {
         if (h > 6 && rnd() < 0.6 || type !== 'home') {
           const tex = type !== 'home' ? signTex[type] : pick(shopSignTex);
           const sg = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(dl * 0.8, 5), 1.1), new THREE.MeshStandardMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.25, side: THREE.DoubleSide }));
-          sg.position.set(mid[0] + nx * 0.2, 3.0, mid[1] + nz * 0.2); sg.lookAt(mid[0] + nx * 5, 3.0, mid[1] + nz * 5); group.add(sg);
+          sg.position.set(mid[0] + nx * 0.2, 3.0, mid[1] + nz * 0.2); sg.lookAt(mid[0] + nx * 5, 3.0, mid[1] + nz * 5); group.add(sg); b.sign = sg;
         }
       } else { wallBox(a, c, 0, h); addSeg({ a, b: c }); }
     }
@@ -174,7 +187,7 @@ function buildMap(data: any) {
     const shape = new THREE.Shape(pts.map(p => new THREE.Vector2(p[0], p[1])));
     const rgeo = new THREE.ShapeGeometry(shape); rgeo.rotateX(Math.PI / 2);
     const roof = new THREE.Mesh(rgeo, roofMat); roof.position.y = h; roof.castShadow = true; b.roof.add(roof);
-    const fl = new THREE.Mesh(rgeo, floorMat); fl.position.y = 0.03; fl.receiveShadow = true; group.add(fl);
+    const fl = new THREE.Mesh(rgeo, floorMat); fl.position.y = 0.03; fl.receiveShadow = true; group.add(fl); b.floor = fl;
     // rooftop additions 頂樓加蓋 + water tanks
     if (A > 40 && rnd() < 0.55) {
       const sx = (b.maxx - b.minx) * 0.4, sz = (b.maxz - b.minz) * 0.4;
@@ -187,31 +200,47 @@ function buildMap(data: any) {
     if (b.door) { const n = clamp(Math.floor(A / 60), 1, type === 'store' ? 5 : 3); let tries = 0, k = 0; while (k < n && tries++ < 40) { const p: V2 = [b.minx + rnd() * (b.maxx - b.minx), b.minz + rnd() * (b.maxz - b.minz)]; if (pip(p, pts) && Math.hypot(p[0] - b.door.p[0], p[1] - b.door.p[1]) > 1.8) { makeCont(`b${id}_${k}`, p, type, b); k++; } } }
   });
   if (pillarG.length) { const pm = new THREE.Mesh(mergeGeometries(pillarG), new THREE.MeshStandardMaterial({ color: 0xb7ad9c })); pm.castShadow = true; scene.add(pm); }
-  // street lamps / scooters for flavor
-  const scooterG: THREE.BufferGeometry[] = [];
-  for (const r of roads) if ((RW[r.t] ?? 3) >= 6) for (let i = 0; i < r.p.length - 1; i++) if (rnd() < 0.35) {
-    const [ax, az] = r.p[i], [bx, bz] = r.p[i + 1]; const t = rnd(); const x = ax + (bx - ax) * t, z = az + (bz - az) * t; const w = (RW[r.t] ?? 6) / 2 - 0.6; const ang = Math.atan2(bz - az, bx - ax); const nx = -Math.sin(ang), nz = Math.cos(ang);
-    for (let k = 0; k < 3; k++) { const g = new THREE.BoxGeometry(0.5, 0.8, 1.6); g.rotateY(-ang + Math.PI / 2); g.translate(x + nx * w + Math.cos(ang) * k * 0.7, 0.4, z + nz * w + Math.sin(ang) * k * 0.7); scooterG.push(g); }
-  }
-  if (scooterG.length) { const sm = new THREE.Mesh(mergeGeometries(scooterG), new THREE.MeshStandardMaterial({ color: 0x9a3030, roughness: 0.5 })); sm.castShadow = true; scene.add(sm); }
+  // parked vehicles (scooters on sidewalks, cars/taxis on bigger roads, occupation trucks) + street lamps
+  const spots: { x: number; z: number; ang: number; kind: VehicleKind }[] = [];
+  for (const r of roads) { const w = RW[r.t] ?? 3; if (w < 6) continue; for (let i = 0; i < r.p.length - 1; i++) {
+    const [ax, az] = r.p[i], [bx, bz] = r.p[i + 1]; const L = Math.hypot(bx - ax, bz - az); if (L < 4) continue; const ang = Math.atan2(bz - az, bx - ax); const ux = Math.cos(ang), uz = Math.sin(ang), nx = -uz, nz = ux;
+    for (let s = 2; s < L - 2; s += 26) { const side = rnd() < 0.5 ? 1 : -1; const lx = ax + ux * s + nx * (w / 2 + 0.4) * side, lz = az + uz * s + nz * (w / 2 + 0.4) * side; if (!bldAt(lx, lz)) lamps.push([lx, lz, Math.atan2(-nx * side, -nz * side)]); }
+    if (rnd() < 0.45) { const t = rnd() * 0.6 + 0.2; const side = rnd() < 0.5 ? 1 : -1; const n = 3 + Math.floor(rnd() * 6); for (let k = 0; k < n; k++) { const x = ax + (bx - ax) * t + ux * k * 0.75 + nx * (w / 2 - 0.7) * side, z = az + (bz - az) * t + uz * k * 0.75 + nz * (w / 2 - 0.7) * side; if (!bldAt(x, z)) spots.push({ x, z, ang: Math.atan2(-nx * side, -nz * side), kind: 'scooter' }); } }
+    if (w >= 9 && rnd() < 0.3) { const t = rnd() * 0.6 + 0.2; const side = rnd() < 0.5 ? 1 : -1; const x = ax + (bx - ax) * t + nx * (w / 2 - 1.6) * side, z = az + (bz - az) * t + nz * (w / 2 - 1.6) * side; const kind: VehicleKind = rnd() < 0.15 ? 'truck' : rnd() < 0.35 ? 'taxi' : 'car'; if (!bldAt(x, z)) { spots.push({ x, z, ang: Math.atan2(ux, uz), kind }); const hl = kind === 'truck' ? 3.25 : 2.2, hw = kind === 'truck' ? 1.15 : 0.9; const cs: V2[] = [[-hw, -hl], [hw, -hl], [hw, hl], [-hw, hl]].map(([a, b]) => [x + a * nx + b * ux, z + a * nz + b * uz] as V2); for (let q = 0; q < 4; q++) addSeg({ a: cs[q], b: cs[(q + 1) % 4] }); } }
+  } }
+  vehicles.build(spots, mergeGeometries, rnd);
+  buildLamps();
+}
+
+// ---------- street lamps ----------
+const lamps: [number, number, number][] = []; const lampPool: THREE.PointLight[] = []; let lampHeadMat: THREE.MeshStandardMaterial;
+const vehicles = new VehicleSystem(scene);
+function buildLamps() {
+  const pole = new THREE.CylinderGeometry(0.07, 0.09, 5, 6); pole.translate(0, 2.5, 0); const arm = new THREE.BoxGeometry(0.08, 0.08, 1.2); arm.translate(0, 4.95, 0.55); const poleG = mergeGeometries([pole, arm]);
+  const head = new THREE.BoxGeometry(0.35, 0.12, 0.5); head.translate(0, 4.88, 1.1);
+  const pm = new THREE.InstancedMesh(poleG, new THREE.MeshStandardMaterial({ color: 0x5a6066, metalness: 0.5, roughness: 0.5 }), lamps.length);
+  lampHeadMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, emissive: 0xffc070, emissiveIntensity: 0 });
+  const hm = new THREE.InstancedMesh(head, lampHeadMat, lamps.length); const m4 = new THREE.Matrix4(), q = new THREE.Quaternion();
+  lamps.forEach(([x, z, a], i) => { q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), a); m4.compose(new THREE.Vector3(x, 0, z), q, new THREE.Vector3(1, 1, 1)); pm.setMatrixAt(i, m4); hm.setMatrixAt(i, m4); });
+  pm.castShadow = true; scene.add(pm, hm);
+  for (let i = 0; i < 8; i++) { const l = new THREE.PointLight(0xffc070, 0, 22, 1.6); scene.add(l); lampPool.push(l); }
+}
+let lampT = 0;
+function updateLamps(night: number, dt: number) {
+  lampHeadMat.emissiveIntensity = night * 2.5; lampT -= dt; if (lampT > 0) return; lampT = 0.5;
+  const near = lamps.map(l => [l, (l[0] - player.pos.x) ** 2 + (l[1] - player.pos.z) ** 2] as const).sort((a, b) => a[1] - b[1]).slice(0, lampPool.length);
+  lampPool.forEach((L, i) => { const e = near[i]; if (!e) { L.intensity = 0; return; } const [x, z, a] = e[0]; L.position.set(x + Math.sin(a) * 1.1, 4.7, z + Math.cos(a) * 1.1); L.intensity = night * 40; });
 }
 
 // ---------- characters ----------
-function makeHuman(body: number, head = 0xe0b08a, helmet?: number) {
-  const g = new THREE.Group(); const m = (c: number) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8 });
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, 0.6, 4, 8), m(body)); torso.position.y = 1.05; g.add(torso);
-  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.75, 0.26), m(0x2a2a30)); legs.position.y = 0.38; g.add(legs);
-  const hd = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 10), m(head)); hd.position.y = 1.62; g.add(hd);
-  if (helmet) { const h = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), m(helmet)); h.position.y = 1.66; g.add(h); }
-  const gun = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 0.8), m(0x1a1a1a)); gun.position.set(0.25, 1.05, 0.35); gun.visible = !!helmet; g.add(gun); (g as any).gun = gun;
-  g.traverse(o => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; }); scene.add(g); return g;
-}
-
+const SOLDIER_OPTS = { gender: 'm' as const, skin: 0xd9a87e, hair: 0x111111, top: 0x4d5a35, bottom: 0x46512f, shoes: 0x1a1a1a, soldier: true };
+const HERO: Record<string, any> = { m: { gender: 'm', skin: 0xe0b08a, hair: 0x1a1410, top: 0x2f5f8a, bottom: 0x3a3a44, shoes: 0xf0f0f0 }, f: { gender: 'f', skin: 0xf0c4a0, hair: 0x2a1a12, top: 0xc8505a, bottom: 0x2a3a5a, shoes: 0xe8e8e8 } };
+function spawnRig(o: any) { const r = makeRig(o); scene.add(r.root); return r; }
 const player = {
-  mesh: null as any as THREE.Group, pos: new THREE.Vector3(), hp: 100, hunger: 85, thirst: 85, fatigue: 10, bleed: false,
+  mesh: null as any as THREE.Group, rig: null as any as Rig, gender: 'm', anim: 'idle' as AnimState, moving: 0, pos: new THREE.Vector3(), hp: 100, hunger: 85, thirst: 85, fatigue: 10, bleed: false,
   inv: { water: 1, noodle: 1 } as Record<string, number>, equip: '' as string, sneak: false, cd: 0, kills: 0, sleeping: false, light: false,
 };
-type Sol = { id: number; mesh: THREE.Group; pos: THREE.Vector3; hp: number; route: V2[]; wi: number; dir: number; state: 'patrol' | 'investigate' | 'combat' | 'dead'; target?: V2; alert: number; timer: number; cd: number; sector: number; cone: THREE.Mesh; night: boolean; lastSeen?: V2 };
+type Sol = { rig: Rig; path?: V2[]; pi?: number; repath?: number; pgoal?: V2; speed?: number; aiming?: boolean; id: number; mesh: THREE.Group; pos: THREE.Vector3; hp: number; route: V2[]; wi: number; dir: number; state: 'patrol' | 'investigate' | 'combat' | 'dead'; target?: V2; alert: number; timer: number; cd: number; sector: number; cone: THREE.Mesh; night: boolean; lastSeen?: V2 };
 const sols: Sol[] = [];
 const coneGeo = new THREE.CircleGeometry(1, 20, -Math.PI / 5, Math.PI * 2 / 5); coneGeo.rotateX(-Math.PI / 2); coneGeo.rotateY(Math.PI / 2);
 function spawnSoldiers(dead: Set<number>) {
@@ -219,10 +248,10 @@ function spawnSoldiers(dead: Set<number>) {
   for (let i = 0; i < 64; i++) {
     const r = pick(big); const s0 = Math.floor(rnd() * (r.p.length - 1)); const route = r.p.slice(Math.max(0, s0 - 3), s0 + 4) as V2[];
     const night = i >= 48;
-    const mesh = makeHuman(0x4d5a35, 0xd9a87e, 0x3f4a2c);
+    const rig = spawnRig(SOLDIER_OPTS); setWeapon(rig, 'rifle'); const mesh = rig.root;
     const cone = new THREE.Mesh(coneGeo, new THREE.MeshBasicMaterial({ color: 0xffee88, transparent: true, opacity: 0.12, depthWrite: false })); cone.position.y = 0.06; scene.add(cone);
-    const p = route[0]; const s: Sol = { id: i, mesh, pos: new THREE.Vector3(p[0], 0, p[1]), hp: 100, route, wi: 1, dir: 0, state: 'patrol', alert: 0, timer: 0, cd: 0, sector: sectorOf(p[0], p[1]), cone, night };
-    if (dead.has(i)) { s.state = 'dead'; s.hp = 0; mesh.visible = false; cone.visible = false; }
+    const p = route[0]; const s: Sol = { rig, id: i, mesh, pos: new THREE.Vector3(p[0], 0, p[1]), hp: 100, route, wi: 1, dir: 0, state: 'patrol', alert: 0, timer: 0, cd: 0, sector: sectorOf(p[0], p[1]), cone, night };
+    if (dead.has(i)) { s.state = 'dead'; s.hp = 0; rig.deadT = 1; mesh.visible = false; cone.visible = false; }
     sols.push(s);
   }
 }
@@ -266,23 +295,25 @@ function renderPanel() {
   if (!panelOpen) return; const p = $('panel'); p.innerHTML = '';
   const col = (title: string) => { const c = document.createElement('div'); c.className = 'col'; c.innerHTML = `<h3>${title}</h3>`; p.appendChild(c); return c; };
   const inv = col(`背包（${weight().toFixed(1)} / 15 kg）`);
-  for (const [k, n] of Object.entries(player.inv)) { const d = ITEMS[k]; const e = document.createElement('div'); e.className = 'it'; e.innerHTML = `<span>${d.name}${player.equip === k ? ' ★' : ''} ×${n}</span><small>${{ food: '食用', drink: '飲用', med: '治療', melee: '裝備', gun: '裝備', ammo: '彈藥', tool: '工具' }[d.kind]}</small>`; e.onclick = () => useItem(k); inv.appendChild(e); }
+  for (const [k, n] of Object.entries(player.inv)) { const d = ITEMS[k]; const e = document.createElement('div'); e.className = 'it'; e.innerHTML = `<span><img src="${iconURL(k)}">${d.name}${player.equip === k ? ' ★' : ''} ×${n}</span><small>${{ food: '食用', drink: '飲用', med: '治療', melee: '裝備', gun: '裝備', ammo: '彈藥', tool: '工具' }[d.kind]}</small>`; e.title = d.desc || ''; e.onclick = () => useItem(k); inv.appendChild(e); }
   if (!Object.keys(player.inv).length) inv.innerHTML += '<small>空的</small>';
   if (curCont) {
     const c = col(curCont.label); const cc = curCont;
-    for (const [k, n] of Object.entries(cc.items)) { const e = document.createElement('div'); e.className = 'it'; e.innerHTML = `<span>${ITEMS[k].name} ×${n}</span><small>拿取</small>`; e.onclick = () => take(cc, k); c.appendChild(e); }
+    for (const [k, n] of Object.entries(cc.items)) { const e = document.createElement('div'); e.className = 'it'; e.innerHTML = `<span><img src="${iconURL(k)}">${ITEMS[k].name} ×${n}</span><small>拿取</small>`; e.title = ITEMS[k].desc || ''; e.onclick = () => take(cc, k); c.appendChild(e); }
     if (!Object.keys(cc.items).length) c.innerHTML += '<small>已經搜刮一空</small>';
     const b = document.createElement('button'); b.textContent = '全部拿取'; b.onclick = () => { for (const k of Object.keys(cc.items)) take(cc, k, true); renderPanel(); }; c.appendChild(b);
   }
   const close = document.createElement('button'); close.textContent = '關閉 (Esc)'; close.onclick = closePanel; p.lastElementChild!.appendChild(close);
 }
-function take(c: Cont, k: string, all = false) { const n = all ? c.items[k] : (ITEMS[k].kind === 'ammo' ? c.items[k] : 1); if (weight() + ITEMS[k].w * n > 15) { log('背包太重了', '#f99'); return; } addItem(k, n); c.items[k] -= n; if (c.items[k] <= 0) delete c.items[k]; if (!all) renderPanel(); }
+function take(c: Cont, k: string, all = false) { const n = all ? c.items[k] : (ITEMS[k].kind === 'ammo' ? c.items[k] : 1); if (weight() + ITEMS[k].w * n > 15) { log('背包太重了', '#f99'); return; } addItem(k, n); c.items[k] -= n; if (c.items[k] <= 0) delete c.items[k]; updateVis(c); if (!all) renderPanel(); }
 function toggleInv() { if (!started) return; if (panelOpen) closePanel(); else { curCont = null; panelOpen = true; $('panel').classList.remove('hidden'); renderPanel(); } }
 function closePanel() { panelOpen = false; curCont = null; $('panel').classList.add('hidden'); }
 
-function nearestCont() { let best: Cont | null = null, bd = 1.8; for (const c of conts) { const d = Math.hypot(c.p[0] - player.pos.x, c.p[1] - player.pos.z); if (d < bd) { bd = d; best = c; } } return best; }
+function contDist(c: Cont) { let x = c.p[0], z = c.p[1]; if (c.half && c.axis) { const t = clamp((player.pos.x - x) * c.axis[0] + (player.pos.z - z) * c.axis[1], -c.half, c.half); x += c.axis[0] * t; z += c.axis[1] * t; } return Math.hypot(x - player.pos.x, z - player.pos.z); }
+function nearestCont() { let best: Cont | null = null, bd = 1.5; for (const c of conts) { if (Math.abs(c.p[0] - player.pos.x) > 6 || Math.abs(c.p[1] - player.pos.z) > 6) continue; const d = contDist(c); if (d < bd) { bd = d; best = c; } } return best; }
+function updateVis(c: Cont) { if (!c.vis || !c.init) return; for (const v of c.vis) { const init = c.init[v.item] || 1; v.im.count = Math.ceil(v.max * clamp((c.items[v.item] || 0) / init, 0, 1)); } }
 function nearestDoor() { let best: Door | null = null, bd = 2.2; for (const d of doors) { const x = Math.hypot(d.p[0] - player.pos.x, d.p[1] - player.pos.z); if (x < bd) { bd = x; best = d; } } return best; }
-function interact() { const c = nearestCont(); if (c) { curCont = c; panelOpen = true; $('panel').classList.remove('hidden'); renderPanel(); } }
+function interact() { const c = nearestCont(); const v = !c && vehicles.nearest(player.pos, 2.2); if (v) { log(v.kind === 'scooter' ? '這台機車沒鑰匙，載具系統下一版開放' : v.kind === 'truck' ? '佔領軍卡車，油箱上鎖（下一版可駕駛）' : '車門鎖住了（載具系統下一版開放）', '#ccc'); return; } if (c) { curCont = c; panelOpen = true; $('panel').classList.remove('hidden'); renderPanel(); } }
 const plankMat = new THREE.MeshStandardMaterial({ color: 0x9a7040 });
 function setBarricade(d: Door) {
   d.barricaded = true; d.seg = { a: d.a, b: d.c }; addSeg(d.seg);
@@ -306,7 +337,7 @@ function sleep() {
 // ---------- combat ----------
 function playerAttack() {
   const k = player.equip; const d = k ? ITEMS[k] : { dmg: 8, range: 1.1, noise: 2, cd: 0.5, kind: 'melee' } as any;
-  if (player.cd > 0) return; player.cd = d.cd;
+  if (player.cd > 0) return; player.cd = d.cd; if (d.kind === 'gun') player.rig.shootT = 0.14; else player.rig.meleeT = 0.45;
   const dir = new THREE.Vector3(aimPt.x - player.pos.x, 0, aimPt.z - player.pos.z).normalize();
   if (d.kind === 'gun') {
     if (!player.inv[d.ammo]) { log('沒有子彈了', '#f99'); player.cd = 0.5; return; }
@@ -324,10 +355,10 @@ function playerAttack() {
 }
 function damageSol(s: Sol, dmg: number, stealth: boolean) {
   s.hp -= dmg; if (stealth) log('偷襲！', '#ff9');
-  if (s.hp <= 0) { s.state = 'dead'; s.mesh.rotation.z = Math.PI / 2; s.mesh.position.y = 0.3; s.cone.visible = false; player.kills++; log('擊倒一名佔領軍士兵', '#ffd76a');
+  if (s.hp <= 0) { s.state = 'dead'; s.cone.visible = false; player.kills++; log('擊倒一名佔領軍士兵', '#ffd76a');
     const it: Record<string, number> = { a556: 5 + Math.floor(rnd() * 20) }; if (rnd() < 0.3) it.rifle = 1; if (rnd() < 0.5) it.ration = 1; if (rnd() < 0.3) it.bandage = 1;
     makeCont('d' + s.id, [s.pos.x, s.pos.z], 'crate', undefined, it); checkSectors();
-  } else { s.state = 'combat'; s.alert = 1; s.lastSeen = [player.pos.x, player.pos.z]; }
+  } else { s.rig.hurtT = 0.3; s.state = 'combat'; s.alert = 1; s.lastSeen = [player.pos.x, player.pos.z]; }
 }
 const liberated = new Set<number>();
 function checkSectors(silent = false) {
@@ -336,12 +367,14 @@ function checkSectors(silent = false) {
 
 // ---------- save ----------
 const SAVE = 'defendtaipei-save-v1';
-function save() { if (!started || dead) return; localStorage.setItem(SAVE, JSON.stringify({ p: [player.pos.x, player.pos.z], hp: player.hp, hu: player.hunger, th: player.thirst, fa: player.fatigue, bl: player.bleed, inv: player.inv, eq: player.equip, k: player.kills, t: gameMin, conts: conts.map(c => [c.id, c.items, c.p]), dead: sols.filter(s => s.state === 'dead').map(s => s.id), bar: doors.map((d, i) => d.barricaded ? i : -1).filter(i => i >= 0) })); }
+function save() { if (!started || dead) return; localStorage.setItem(SAVE, JSON.stringify({ g: player.gender, p: [player.pos.x, player.pos.z], hp: player.hp, hu: player.hunger, th: player.thirst, fa: player.fatigue, bl: player.bleed, inv: player.inv, eq: player.equip, k: player.kills, t: gameMin, conts: conts.map(c => [c.id, c.items, c.p]), dead: sols.filter(s => s.state === 'dead').map(s => s.id), bar: doors.map((d, i) => d.barricaded ? i : -1).filter(i => i >= 0) })); }
 
 // ---------- main loop ----------
 let started = false, dead = false; const clock = new THREE.Clock(); let acc = 0, saveT = 0, streetT = 0;
 function update(dt: number) {
   for (let i = fx.length - 1; i >= 0; i--) { fx[i].t -= dt; if (fx[i].t <= 0) { scene.remove(fx[i].o); fx.splice(i, 1); } }
+  if (dead && player.rig) animate(player.rig, 'death', 0, dt);
+  for (const s of sols) if (s.state === 'dead' && s.rig.deadT < 1) animate(s.rig, 'death', 0, dt);
   if (!started || dead) return;
   const tscale = player.sleeping ? 40 : 1;
   gameMin += dt * tscale; // 1 real sec = 1 game minute
@@ -354,6 +387,7 @@ function update(dt: number) {
   if (player.bleed) player.hp -= dt * 0.6;
   if (player.hunger > 50 && player.thirst > 50 && !player.bleed) player.hp = Math.min(100, player.hp + gm * 6);
   if (player.hp <= 0) return die();
+  vehicles.update(dt);
   player.cd -= dt;
   // movement
   if (!player.sleeping) {
@@ -363,19 +397,23 @@ function update(dt: number) {
     let sp = player.sneak ? 1.6 : running ? 6 : 3.4; if (player.fatigue > 80) sp *= 0.7; if (weight() > 12) sp *= 0.8;
     if (mv.lengthSq() > 0) { mv.normalize().multiplyScalar(sp * dt); player.pos.add(mv); collide(player.pos, 0.35); if (running) { player.fatigue += dt * 0.25; acc += dt; if (acc > 0.5) { acc = 0; noise(player.pos.x, player.pos.z, 11); } } else if (!player.sneak) { acc += dt; if (acc > 1) { acc = 0; noise(player.pos.x, player.pos.z, 3.5); } } }
     ray.setFromCamera(mouse, camera); ray.ray.intersectPlane(plane, aimPt);
-    player.mesh.rotation.y = Math.atan2(aimPt.x - player.pos.x, aimPt.z - player.pos.z);
+    const want = Math.atan2(aimPt.x - player.pos.x, aimPt.z - player.pos.z); let dr = Math.atan2(Math.sin(want - player.mesh.rotation.y), Math.cos(want - player.mesh.rotation.y)); player.mesh.rotation.y += dr * Math.min(1, dt * 14);
     if (clicking && !panelOpen) playerAttack();
-  }
-  player.mesh.position.copy(player.pos); player.mesh.scale.y = player.sneak ? 0.8 : 1; (player.mesh as any).gun.visible = !!player.equip;
+    player.moving = mv.lengthSq() > 0 ? sp : 0;
+    const eqk = player.equip ? ITEMS[player.equip].kind : '';
+    player.anim = panelOpen && curCont ? 'loot' : eqk === 'gun' && !running ? 'aim' : player.sneak ? 'sneak' : running && player.moving ? 'run' : player.moving ? 'walk' : 'idle';
+  } else player.anim = 'sleep';
+  setWeapon(player.rig, player.equip); animate(player.rig, player.anim, player.moving, dt);
+  player.mesh.position.copy(player.pos);
   // buildings cutaway
   const inside = bldAt(player.pos.x, player.pos.z);
   for (const b of blds) {
     const dx = b.c[0] - player.pos.x, dz = b.c[1] - player.pos.z; const near = Math.abs(dx) < 40 && Math.abs(dz) < 40;
     const front = near && (dx + dz) > -4 && (dx + dz) < 30 && Math.abs(dx - dz) < 22 && b.h > 4;
-    const mi = (b as any).mi; b.walls.material = (front || b === inside) ? wallMatsT[mi] : wallMats[mi]; b.roof.visible = b !== inside && !front; b.walls.scale.y = b === inside ? 0.12 : 1;
+    const mi = (b as any).mi; b.walls.material = (front || b === inside) ? wallMatsT[mi] : wallMats[mi]; b.roof.visible = b !== inside && !front; b.walls.scale.y = b === inside ? 0.12 : 1; if (b.innerWalls) b.innerWalls.visible = b === inside;
   }
   // soldiers
-  const night = isNight(); const pp: V2 = [player.pos.x, player.pos.z];
+  const night = isNight(); const pp: V2 = [player.pos.x, player.pos.z]; let pathBudget = 4;
   for (const s of sols) {
     if (s.state === 'dead') continue;
     const active = !s.night || night; s.mesh.visible = active; s.cone.visible = active; if (!active) continue;
@@ -394,13 +432,25 @@ function update(dt: number) {
     else if (s.state === 'combat') {
       s.cd -= dt;
       if (sees && dist < 24) { goal = dist > 8 ? pp : null; s.dir = Math.atan2(dz, dx);
-        if (s.cd <= 0) { s.cd = 1.1 + rnd() * 0.6; noise(s.pos.x, s.pos.z, 40); const hitP = (0.55 - dist / 60) * (player.sneak ? 0.7 : 1) * (night ? 0.7 : 1);
+        if (s.cd <= 0) { s.rig.shootT = 0.14; s.cd = 1.1 + rnd() * 0.6; noise(s.pos.x, s.pos.z, 40); const hitP = (0.55 - dist / 60) * (player.sneak ? 0.7 : 1) * (night ? 0.7 : 1);
           const miss = new THREE.Vector3(player.pos.x + (rnd() - 0.5) * 3, 0, player.pos.z + (rnd() - 0.5) * 3); tracer(s.pos, rnd() < hitP ? player.pos : miss);
-          if (rnd() < hitP) { player.hp -= 10 + rnd() * 12; if (rnd() < 0.45 && !player.bleed) { player.bleed = true; log('你中彈流血了！用繃帶止血', '#f66'); } else log('你被擊中了！', '#f66'); flashRed(); } }
+          if (rnd() < hitP) { player.rig.hurtT = 0.3; player.hp -= 10 + rnd() * 12; if (rnd() < 0.45 && !player.bleed) { player.bleed = true; log('你中彈流血了！用繃帶止血', '#f66'); } else log('你被擊中了！', '#f66'); flashRed(); } }
       } else if (s.lastSeen) { goal = s.lastSeen; sp = 3.2; if (Math.hypot(goal[0] - s.pos.x, goal[1] - s.pos.z) < 1.2) { s.lastSeen = undefined; s.state = 'investigate'; s.target = [s.pos.x + (rnd() - .5) * 10, s.pos.z + (rnd() - .5) * 10]; s.timer = 12; s.alert = 0.5; } }
       else { s.state = 'investigate'; s.target = [s.pos.x, s.pos.z]; s.timer = 8; }
     }
-    if (goal) { const gx = goal[0] - s.pos.x, gz = goal[1] - s.pos.z; const gl = Math.hypot(gx, gz); if (gl > 0.3) { const td = Math.atan2(gz, gx); let dd = Math.atan2(Math.sin(td - s.dir), Math.cos(td - s.dir)); s.dir += clamp(dd, -dt * 5, dt * 5); s.pos.x += gx / gl * sp * dt; s.pos.z += gz / gl * sp * dt; collide(s.pos, 0.35); } }
+    let moved = 0; s.aiming = s.state === 'combat' && sees && dist < 24;
+    if (goal) {
+      let tgt = goal;
+      if (s.state !== 'patrol' && nav) {
+        s.repath = (s.repath || 0) - dt;
+        const need = !s.path || !s.pgoal || Math.hypot(goal[0] - s.pgoal[0], goal[1] - s.pgoal[1]) > 2 || s.repath <= 0;
+        if (need && pathBudget > 0) { pathBudget--; s.repath = 1.5; s.pgoal = goal.slice() as V2; const me: V2 = [s.pos.x, s.pos.z]; if (los(me, goal)) s.path = [goal]; else { const pth = nav.find(me, goal); s.path = pth ? smooth(pth, los) : [goal]; } s.pi = 0; }
+        if (s.path) { while (s.pi! < s.path.length - 1 && Math.hypot(s.path[s.pi!][0] - s.pos.x, s.path[s.pi!][1] - s.pos.z) < 0.8) s.pi!++; tgt = s.path[s.pi!]; }
+      } else s.path = undefined;
+      const gx = tgt[0] - s.pos.x, gz = tgt[1] - s.pos.z; const gl = Math.hypot(gx, gz);
+      if (gl > 0.3) { const td = Math.atan2(gz, gx); let dd = Math.atan2(Math.sin(td - s.dir), Math.cos(td - s.dir)); if (!s.aiming) s.dir += clamp(dd, -dt * 6, dt * 6); const ox = s.pos.x, oz = s.pos.z; s.pos.x += gx / gl * sp * dt; s.pos.z += gz / gl * sp * dt; collide(s.pos, 0.35); moved = Math.hypot(s.pos.x - ox, s.pos.z - oz) / dt; }
+    }
+    animate(s.rig, s.aiming ? 'aim' : moved > 2.9 ? 'run' : moved > 0.2 ? 'carry' : 'idle', moved, dt);
     s.mesh.position.copy(s.pos); s.mesh.rotation.y = Math.PI / 2 - s.dir;
     s.cone.position.set(s.pos.x, 0.06, s.pos.z); s.cone.rotation.y = -s.dir; s.cone.scale.setScalar(night ? 11 : 20);
     const cm = s.cone.material as THREE.MeshBasicMaterial; cm.color.set(s.state === 'combat' ? 0xff3030 : s.state === 'investigate' ? 0xffa030 : night ? 0xfff6c0 : 0xffee88); cm.opacity = night ? 0.22 : 0.12;
@@ -412,6 +462,7 @@ function update(dt: number) {
   if (!dayF) sun.position.set(player.pos.x - 30, 70, player.pos.z + 20);
   const fogC = new THREE.Color(0x0c1220).lerp(new THREE.Color(0xa7b0b5), dayF); (scene.fog as THREE.Fog).color.copy(fogC); renderer.setClearColor(fogC);
   hemi.color.setHSL(0.6, 0.5, 0.35 + dayF * 0.45);
+  updateLamps(1 - dayF, dt);
   flash.intensity = player.light ? 60 : 0; flash.position.set(player.pos.x, 1.6, player.pos.z); flash.target.position.copy(aimPt);
   // camera
   camera.position.copy(player.pos).add(CAM_OFF); camera.lookAt(player.pos);
@@ -433,6 +484,7 @@ function drawHud(inside: Bld | null) {
   const eq = player.equip ? ITEMS[player.equip] : null; $('equip').innerHTML = `武器：<b>${eq ? eq.name : '徒手'}</b>${eq && eq.kind === 'gun' ? `　彈藥 ${player.inv[eq.ammo!] || 0}` : ''}　負重 ${weight().toFixed(1)}kg${player.light ? '　🔦' : ''}`;
   const c = nearestCont(), d = nearestDoor(); const pr = $('prompt');
   if (c && !panelOpen) { pr.style.display = 'block'; pr.textContent = `[E] 搜刮 ${c.label}${Object.keys(c.items).length ? '' : '（空）'}`; }
+  else if (!panelOpen && vehicles.nearest(player.pos, 2.2)) { pr.style.display = 'block'; pr.textContent = '[E] 查看載具'; }
   else if (d && !panelOpen) { pr.style.display = 'block'; pr.textContent = d.barricaded ? '[B] 拆除封門' : '[B] 封門（鐵鎚+木板）'; }
   else pr.style.display = 'none';
 }
@@ -448,29 +500,50 @@ async function boot() {
   const data = await (await fetch(import.meta.env.BASE_URL + 'data/wanhua.json')).json();
   buildMap(data);
   const sv = (() => { try { return JSON.parse(localStorage.getItem(SAVE) || 'null'); } catch { return null; } })();
-  spawnSoldiers(new Set(sv?.dead || []));
-  player.mesh = makeHuman(0x2f5f8a, 0xe0b08a);
-  // start inside a home near Ximending (north-east-ish)
+  // ---- detailed blocks around spawn (剝皮寮 / 康定路 / 西門町 edge) ----
   const homes = blds.filter(b => b.door && b.type === 'home' && sectorOf(b.c[0], b.c[1]) === 4);
-  const start = homes.length ? homes[Math.floor(homes.length / 2)] : blds.find(b => b.door)!;
-  const sp = start.door!.p; const ip: V2 = [sp[0] + (start.c[0] - sp[0]) * 0.3, sp[1] + (start.c[1] - sp[1]) * 0.3];
+  const fx = { rnd, pip, addSeg: (q: { a: V2; b: V2 }) => addSeg(q), bldAt, scene, utils: { mergeGeometries },
+    addCont: (c: any) => { const cc: Cont = c; conts.push(cc); } } as any;
+  const area = (b: Bld) => (b.maxx - b.minx) * (b.maxz - b.minz);
+  const startCands = homes.filter(b => area(b) > 70 && area(b) < 400).sort((a, b) => Math.hypot(a.c[0] - homes[Math.floor(homes.length / 2)].c[0], a.c[1] - homes[Math.floor(homes.length / 2)].c[1]) - Math.hypot(b.c[0] - homes[Math.floor(homes.length / 2)].c[0], b.c[1] - homes[Math.floor(homes.length / 2)].c[1]));
+  let start: Bld | null = null;
+  for (const c of startCands) { if (furnish(c, 'home', fx)) { start = c; c.detailed = 'home'; break; } }
+  if (!start) start = homes[0] || blds.find(b => b.door)!;
+  const near = blds.filter(b => b !== start && b.door && !b.detailed && Math.hypot(b.c[0] - start!.c[0], b.c[1] - start!.c[1]) < 130).sort((a, b) => Math.hypot(a.c[0] - start!.c[0], a.c[1] - start!.c[1]) - Math.hypot(b.c[0] - start!.c[0], b.c[1] - start!.c[1]));
+  const want = ['store', 'pharmacy', 'grocery', 'breakfast', 'betel', 'store', 'grocery', 'breakfast', 'betel', 'pharmacy', 'store'];
+  const KIND_SIGN: Record<string, string> = { store: 'store', pharmacy: 'pharmacy' };
+  for (const k of want) { const cand = near.find(b => !b.detailed && (k === 'betel' ? area(b) < 120 : area(b) > 50) && furnish(b, k, fx)); if (cand) { cand.detailed = k; cand.type = KIND_SIGN[k] || k; if (b2sign[k]) setSign(cand, k); } }
+  for (const b of near.slice(0, 60)) if (!b.detailed && area(b) > 40 && furnish(b, 'home', fx)) b.detailed = 'home';
+  // remove generic containers inside detailed buildings
+  for (let i = conts.length - 1; i >= 0; i--) { const c = conts[i]; if (c.b && c.b.detailed && !c.id.startsWith('x')) { c.mesh.parent?.remove(c.mesh); conts.splice(i, 1); } }
+  // night market on the nearest named mid-size road
+  let bestR: any = null, bd = 1e9; for (const r of roads) { if (!['tertiary', 'residential', 'pedestrian', 'unclassified'].includes(r.t) || r.p.length < 2) continue; const d = Math.min(...r.p.map(p => Math.hypot(p[0] - start!.c[0], p[1] - start!.c[1]))); if (d < bd && d > 15) { bd = d; bestR = r; } }
+  if (bestR) nightMarket(bestR.p, bestR.t === 'tertiary' ? 9 : 6, fx, 'nm');
+  // navigation grid (built after all collision geometry exists)
+  nav = new Nav(bounds.minx - 5, bounds.minz - 5, bounds.maxx + 5, bounds.maxz + 5, 1); for (const q of segs) nav.markSeg(q.a, q.b, 1);
+  spawnSoldiers(new Set(sv?.dead || []));
+  const sp = start.door!.p; const ip: V2 = [sp[0] + (start.c[0] - sp[0]) * 0.25, sp[1] + (start.c[1] - sp[1]) * 0.25];
   player.pos.set(ip[0], 0, ip[1]);
-  if (!sv) { makeCont('start', [ip[0] + 0.5, ip[1] + 0.5], 'home', start, { knife: 1, water: 1, plank: 2, hammer: 1, bandage: 1 }); }
-  // move soldiers away from start
+  if (!sv) { makeCont('start', [ip[0] + 0.4, ip[1] + 0.4], 'home', start, { knife: 1, water: 1, plank: 2, hammer: 1, bandage: 1, rice: 1 }); }
   for (const s of sols) if (s.state !== 'dead' && s.pos.distanceTo(player.pos) < 25) { s.pos.x += 40; }
   checkSectors(true);
   const btns = $('btns'); $('loadmsg').textContent = `地圖：萬華・西門町（${blds.length} 棟建築，${roads.length} 條街道）`;
-  const go = (load: boolean) => {
-    if (load && sv) { player.pos.set(sv.p[0], 0, sv.p[1]); Object.assign(player, { hp: sv.hp, hunger: sv.hu, thirst: sv.th, fatigue: sv.fa, bleed: sv.bl, inv: sv.inv, equip: sv.eq, kills: sv.k }); gameMin = sv.t;
-      const map = new Map<string, any>(sv.conts.map((c: any) => [c[0], c])); for (const c of conts) { const s = map.get(c.id); if (s) c.items = s[1]; map.delete(c.id); } map.forEach(c => makeCont(c[0], c[2], 'crate', undefined, c[1])); (sv.bar || []).forEach((i: number) => doors[i] && setBarricade(doors[i])); checkSectors(true); }
+  const go = (load: boolean, gender = 'm') => {
+    if (load && sv) gender = sv.g || 'm';
+    player.gender = gender; player.rig = spawnRig(HERO[gender]); player.mesh = player.rig.root;
+    if (load && sv) { player.pos.set(sv.p[0], 0, sv.p[1]);  Object.assign(player, { hp: sv.hp, hunger: sv.hu, thirst: sv.th, fatigue: sv.fa, bleed: sv.bl, inv: sv.inv, equip: sv.eq, kills: sv.k }); gameMin = sv.t;
+      const map = new Map<string, any>(sv.conts.map((c: any) => [c[0], c])); for (const c of conts) { const s = map.get(c.id); if (s) c.items = s[1]; map.delete(c.id); } map.forEach(c => makeCont(c[0], c[2], 'crate', undefined, c[1])); (sv.bar || []).forEach((i: number) => doors[i] && setBarricade(doors[i])); checkSectors(true); conts.forEach(updateVis); }
     else { localStorage.removeItem(SAVE); }
     $('title').style.display = 'none'; started = true; log('解放軍已佔領台北。活下去，把他們趕出萬華。', '#ffd76a'); log('提示：先搜刮身邊的櫥櫃（E），按 Tab 開背包裝備菜刀。', '#ccc');
   };
   if (sv) { const b = document.createElement('button'); b.textContent = '繼續遊戲'; b.onclick = () => go(true); btns.appendChild(b); }
-  const n = document.createElement('button'); n.textContent = sv ? '新的倖存者' : '開始'; n.onclick = () => go(false); btns.appendChild(n);
+  const sel = document.createElement('div'); sel.id = 'charsel';
+  sel.innerHTML = `<div class="ch" data-g="m"><div class="pv m"></div><b>阿明</b><small>男・32 歲・前外送員<br>熟悉萬華每條巷子</small></div><div class="ch" data-g="f"><div class="pv f"></div><b>小雯</b><small>女・27 歲・護理師<br>懂得包紮與急救</small></div>`;
+  sel.querySelectorAll('.ch').forEach(el => (el as HTMLElement).onclick = () => { const g = (el as HTMLElement).dataset.g!; go(false, g); if (g === 'f') { player.inv.bandage = (player.inv.bandage || 0) + 2; } else { player.inv.coffee = 1; } });
+  const h = document.createElement('div'); h.className = 'selh'; h.textContent = sv ? '或建立新的倖存者：' : '選擇你的倖存者：'; btns.appendChild(h); btns.appendChild(sel);
   camera.position.copy(player.pos).add(CAM_OFF); camera.lookAt(player.pos);
   addEventListener('beforeunload', save);
-  (window as any).__game = { player, sols, blds, started: () => started, go };
+  (window as any).__game = { player, sols, blds, conts, nav, started: () => started, go, vehicles, setTime: (m: number) => { gameMin = m; }, tp: (x: number, z: number) => player.pos.set(x, 0, z) };
 }
 boot().catch(e => { console.error(e); $('loadmsg').textContent = '載入失敗：' + e; });
 loop();
