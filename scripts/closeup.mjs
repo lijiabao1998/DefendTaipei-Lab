@@ -1,0 +1,13 @@
+import { chromium } from 'playwright';
+import { spawn } from 'node:child_process';
+const srv = spawn('npx', ['vite', 'preview', '--port', '4180', '--strictPort'], { stdio: 'ignore' }); await new Promise(r => setTimeout(r, 2500));
+const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+const p = await b.newPage({ viewport: { width: 1280, height: 800 } }); const errs = []; p.on('pageerror', e => errs.push(String(e)));
+await p.goto('http://localhost:4180/DefendTaipei-Lab/'); await p.waitForFunction(() => window.__game, null, { timeout: 90000 });
+await p.click('.ch[data-g="' + (process.env.G || 'f') + '"]'); await p.waitForTimeout(800);
+for (let i = 0; i < 6; i++) await p.mouse.wheel(0, -100);
+await p.waitForTimeout(600); await p.screenshot({ path: 'c-idle.png' });
+await p.mouse.move(900, 300); await p.keyboard.down('KeyD'); await p.waitForTimeout(500); await p.screenshot({ path: 'c-walk.png' }); await p.keyboard.down('ShiftLeft'); await p.waitForTimeout(600); await p.screenshot({ path: 'c-run.png' }); await p.keyboard.up('ShiftLeft'); await p.keyboard.up('KeyD');
+await p.evaluate(() => { const g = window.__game; const s = g.sols.find(s => s.post && s.state !== 'dead'); if (s) g.tp(s.pos.x + 3, s.pos.z + 3); });
+await p.waitForTimeout(1200); await p.screenshot({ path: 'c-checkpoint.png' });
+console.log(errs); await b.close(); srv.kill(); process.exit(0);

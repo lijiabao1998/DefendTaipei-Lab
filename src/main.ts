@@ -6,6 +6,7 @@ import { makeRig, animate, setWeapon, Rig, AnimState } from './human';
 import { Nav, smooth } from './nav';
 import { VehicleSystem, VehicleKind } from './vehicles';
 import { furnish, nightMarket } from './interiors';
+import { buildDecay } from './decay';
 
 // ---------- utils ----------
 let seed = 20261024;
@@ -14,7 +15,7 @@ const pick = <T>(a: T[]) => a[Math.floor(rnd() * a.length)];
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const $ = (id: string) => document.getElementById(id)!;
 type V2 = [number, number];
-type Seg = { a: V2; b: V2; door?: Door };
+type Seg = { a: V2; b: V2; door?: Door; low?: boolean };
 type Door = { b: Bld; p: V2; a: V2; c: V2; barricaded: boolean; seg?: Seg; mesh?: THREE.Mesh };
 type Bld = { sign?: THREE.Mesh; floor?: THREE.Mesh; inner?: THREE.Group; innerWalls?: THREE.Mesh; detailed?: string; id: number; pts: V2[]; h: number; type: string; group: THREE.Group; walls: THREE.Mesh; roof: THREE.Group; door?: Door; c: V2; minx: number; maxx: number; minz: number; maxz: number };
 type Cont = { id: string; p: V2; items: Record<string, number>; label: string; mesh: THREE.Object3D; b?: Bld; half?: number; axis?: V2; vis?: { im: THREE.InstancedMesh; max: number; item: string }[]; init?: Record<string, number> };
@@ -46,24 +47,32 @@ const flash = new THREE.SpotLight(0xfff2cc, 0, 26, 0.5, 0.5, 1.2); scene.add(fla
 // ---------- textures ----------
 function canvasTex(w: number, h: number, draw: (c: CanvasRenderingContext2D) => void) { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; draw(cv.getContext('2d')!); const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; }
 const WALLC = ['#c9c1b0', '#b8b4a8', '#d8cfbd', '#a9a397', '#c4b49c', '#9fa7a8', '#d1c6b8'];
-const wallTexs = WALLC.map(col => canvasTex(128, 128, c => {
-  c.fillStyle = col; c.fillRect(0, 0, 128, 128);
-  for (let i = 0; i < 300; i++) { c.fillStyle = `rgba(0,0,0,${Math.random() * 0.06})`; c.fillRect(Math.random() * 128, Math.random() * 128, 3, 3); }
-  c.fillStyle = 'rgba(60,50,40,.25)'; c.fillRect(0, 120, 128, 8); // stain
-  // window with iron bars (鐵窗)
-  c.fillStyle = '#2b3540'; c.fillRect(30, 26, 68, 56); c.fillStyle = '#56708a'; c.fillRect(34, 30, 60, 48);
-  c.strokeStyle = '#3d3d3d'; c.lineWidth = 3; c.strokeRect(26, 22, 76, 64);
-  c.lineWidth = 2; for (let x = 32; x < 100; x += 8) { c.beginPath(); c.moveTo(x, 22); c.lineTo(x, 86); c.stroke(); }
-  c.beginPath(); c.moveTo(26, 54); c.lineTo(102, 54); c.stroke();
-  c.fillStyle = '#777'; c.fillRect(70, 90, 24, 12); // AC unit
+const wallTexs = WALLC.map((col, wi) => canvasTex(256, 256, c => {
+  const tile = wi % 2 === 0; // 二丁掛 tile facades vs. painted render
+  c.fillStyle = col; c.fillRect(0, 0, 256, 256);
+  if (tile) { c.strokeStyle = 'rgba(70,60,50,.35)'; c.lineWidth = 1; for (let y = 0; y < 256; y += 8) { c.beginPath(); c.moveTo(0, y); c.lineTo(256, y); c.stroke(); for (let x = (y / 8) % 2 ? 0 : 12; x < 256; x += 24) { c.beginPath(); c.moveTo(x, y); c.lineTo(x, y + 8); c.stroke(); } } for (let k = 0; k < 40; k++) { c.fillStyle = 'rgba(120,120,115,.9)'; c.fillRect(Math.floor(Math.random() * 10) * 24, Math.floor(Math.random() * 32) * 8, 24, 8); } } // missing tiles
+  for (let i = 0; i < 1400; i++) { c.fillStyle = `rgba(${Math.random() < 0.7 ? '0,0,0' : '255,255,255'},${Math.random() * 0.08})`; c.fillRect(Math.random() * 256, Math.random() * 256, 1 + Math.random() * 4, 1 + Math.random() * 4); }
+  for (let i = 0; i < 18; i++) { const x = Math.random() * 256, y0 = Math.random() * 120, w = 2 + Math.random() * 10, h = 40 + Math.random() * 180; const g = c.createLinearGradient(0, y0, 0, y0 + h); g.addColorStop(0, 'rgba(40,36,28,.38)'); g.addColorStop(1, 'rgba(40,36,28,0)'); c.fillStyle = g; c.fillRect(x, y0, w, h); } // rain streaks
+  for (let i = 0; i < 6; i++) { const x = Math.random() * 220, y = Math.random() * 220, r = 8 + Math.random() * 26; c.fillStyle = '#8f8a82'; c.beginPath(); for (let k = 0; k < 10; k++) { const a = k / 10 * Math.PI * 2, rr = r * (0.5 + Math.random() * 0.6); c.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr * 0.7); } c.fill(); c.strokeStyle = 'rgba(255,255,255,.25)'; c.stroke(); } // peeling plaster
+  const g2 = c.createLinearGradient(0, 190, 0, 256); g2.addColorStop(0, 'rgba(30,40,25,0)'); g2.addColorStop(1, 'rgba(30,40,25,.55)'); c.fillStyle = g2; c.fillRect(0, 190, 256, 66); // damp / mould at base
+  // window with rusty iron bars (鐵窗); some broken
+  const broken = wi % 3 === 1;
+  c.fillStyle = '#1e252c'; c.fillRect(60, 46, 136, 108); c.fillStyle = broken ? '#20262c' : '#4e6478'; c.fillRect(66, 52, 124, 96);
+  if (broken) { c.fillStyle = '#0c0e10'; c.beginPath(); c.moveTo(80, 60); c.lineTo(150, 70); c.lineTo(120, 130); c.lineTo(90, 110); c.fill(); c.strokeStyle = 'rgba(200,220,235,.7)'; c.lineWidth = 1; for (let k = 0; k < 10; k++) { c.beginPath(); c.moveTo(120, 95); c.lineTo(120 + (Math.random() - 0.5) * 120, 95 + (Math.random() - 0.5) * 90); c.stroke(); } c.fillStyle = '#5a6a7a'; c.fillRect(150, 52, 40, 96); }
+  else { c.fillStyle = 'rgba(255,255,255,.12)'; c.fillRect(70, 56, 30, 88); }
+  c.strokeStyle = '#5a3018'; c.lineWidth = 5; c.strokeRect(54, 40, 148, 120); c.lineWidth = 3; for (let x = 66; x < 200; x += 14) { c.beginPath(); c.moveTo(x, 40); c.lineTo(x, 160); c.stroke(); } c.beginPath(); c.moveTo(54, 100); c.lineTo(202, 100); c.stroke();
+  for (let i = 0; i < 9; i++) { const x = 56 + Math.random() * 146; const g = c.createLinearGradient(0, 160, 0, 230); g.addColorStop(0, 'rgba(120,60,20,.6)'); g.addColorStop(1, 'rgba(120,60,20,0)'); c.fillStyle = g; c.fillRect(x, 160, 2 + Math.random() * 3, 30 + Math.random() * 60); } // rust drips
 }));
-const wallMats = wallTexs.map(t => new THREE.MeshStandardMaterial({ map: t, roughness: 0.9 }));
+const wallMats = wallTexs.map(t => new THREE.MeshStandardMaterial({ map: t, roughness: 0.95 }));
 const wallMatsT = wallTexs.map(t => new THREE.MeshStandardMaterial({ map: t, roughness: 0.9, transparent: true, opacity: 0.22, depthWrite: false }));
 const roofMat = new THREE.MeshStandardMaterial({ color: 0x8c8a82, roughness: 1, side: THREE.DoubleSide });
 const tinMat = new THREE.MeshStandardMaterial({ color: 0x7f9fb0, roughness: 0.6, metalness: 0.3 });
 const tankMat = new THREE.MeshStandardMaterial({ color: 0xd8d8d0, roughness: 0.5, metalness: 0.4 });
 const floorMat = new THREE.MeshStandardMaterial({ map: canvasTex(64, 64, c => { c.fillStyle = '#b9ad98'; c.fillRect(0, 0, 64, 64); c.strokeStyle = '#8f8572'; c.strokeRect(0, 0, 32, 32); c.strokeRect(32, 32, 32, 32); c.strokeRect(0, 32, 32, 32); c.strokeRect(32, 0, 32, 32); }), side: THREE.DoubleSide });
-const roadTex = canvasTex(64, 64, c => { c.fillStyle = '#3c3e41'; c.fillRect(0, 0, 64, 64); for (let i = 0; i < 200; i++) { c.fillStyle = `rgba(255,255,255,${Math.random() * 0.05})`; c.fillRect(Math.random() * 64, Math.random() * 64, 2, 2); } });
+const roadTex = canvasTex(256, 256, c => { c.fillStyle = '#3c3e41'; c.fillRect(0, 0, 256, 256); for (let i = 0; i < 2500; i++) { c.fillStyle = `rgba(${Math.random() < 0.5 ? '255,255,255' : '0,0,0'},${Math.random() * 0.07})`; c.fillRect(Math.random() * 256, Math.random() * 256, 2, 2); }
+  for (let i = 0; i < 5; i++) { c.fillStyle = `rgba(${20 + Math.random() * 30},${20 + Math.random() * 30},${25 + Math.random() * 30},.6)`; c.fillRect(Math.random() * 220, Math.random() * 220, 20 + Math.random() * 60, 15 + Math.random() * 40); } // asphalt patches
+  c.strokeStyle = 'rgba(15,15,15,.75)'; c.lineWidth = 1.2; for (let i = 0; i < 14; i++) { let x = Math.random() * 256, y = Math.random() * 256; c.beginPath(); c.moveTo(x, y); for (let k = 0; k < 8; k++) { x += (Math.random() - 0.5) * 30; y += (Math.random() - 0.5) * 30; c.lineTo(x, y); } c.stroke(); } // cracks
+  for (let i = 0; i < 6; i++) { const g = c.createRadialGradient(0, 0, 0, 0, 0, 20); g.addColorStop(0, 'rgba(10,10,12,.45)'); g.addColorStop(1, 'rgba(10,10,12,0)'); c.save(); c.translate(Math.random() * 256, Math.random() * 256); c.scale(1, 0.6); c.fillStyle = g; c.fillRect(-20, -20, 40, 40); c.restore(); } }); // oil stains
 const groundTex = canvasTex(128, 128, c => { c.fillStyle = '#7d7a70'; c.fillRect(0, 0, 128, 128); c.strokeStyle = '#6b685f'; for (let i = 0; i < 128; i += 16) { c.beginPath(); c.moveTo(i, 0); c.lineTo(i, 128); c.moveTo(0, i); c.lineTo(128, i); c.stroke(); } });
 
 // ---------- world state ----------
@@ -72,7 +81,7 @@ const roads: { p: V2[]; t: string; n: string }[] = [];
 const CELL = 8; const grid = new Map<string, Seg[]>();
 const gk = (x: number, z: number) => `${Math.floor(x / CELL)},${Math.floor(z / CELL)}`;
 let nav: Nav | null = null;
-function addSeg(s: Seg) { segs.push(s); nav?.markSeg(s.a, s.b, 1); const x0 = Math.min(s.a[0], s.b[0]), x1 = Math.max(s.a[0], s.b[0]), z0 = Math.min(s.a[1], s.b[1]), z1 = Math.max(s.a[1], s.b[1]); for (let x = Math.floor(x0 / CELL); x <= Math.floor(x1 / CELL); x++) for (let z = Math.floor(z0 / CELL); z <= Math.floor(z1 / CELL); z++) { const k = x + ',' + z; (grid.get(k) || grid.set(k, []).get(k)!).push(s); } }
+function addSeg(s: Seg, low = false) { if (low) s.low = true; segs.push(s); nav?.markSeg(s.a, s.b, 1); const x0 = Math.min(s.a[0], s.b[0]), x1 = Math.max(s.a[0], s.b[0]), z0 = Math.min(s.a[1], s.b[1]), z1 = Math.max(s.a[1], s.b[1]); for (let x = Math.floor(x0 / CELL); x <= Math.floor(x1 / CELL); x++) for (let z = Math.floor(z0 / CELL); z <= Math.floor(z1 / CELL); z++) { const k = x + ',' + z; (grid.get(k) || grid.set(k, []).get(k)!).push(s); } }
 function removeSeg(s: Seg) { nav?.markSeg(s.a, s.b, -1); grid.forEach(a => { const i = a.indexOf(s); if (i >= 0) a.splice(i, 1); }); }
 function nearSegs(x: number, z: number) { const out = new Set<Seg>(); const cx = Math.floor(x / CELL), cz = Math.floor(z / CELL); for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) { const a = grid.get((cx + i) + ',' + (cz + j)); if (a) a.forEach(s => out.add(s)); } return out; }
 function los(p: V2, q: V2) { const d = Math.hypot(q[0] - p[0], q[1] - p[1]); const n = Math.ceil(d / (CELL * 0.5)) + 1; const seen = new Set<Seg>(); for (let i = 0; i <= n; i++) { const t = i / n; const a = grid.get(gk(p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t)); if (!a) continue; for (const s of a) { if (seen.has(s)) continue; seen.add(s); if (segInter(p, q, s.a, s.b)) return false; } } return true; }
@@ -135,7 +144,7 @@ function buildMap(data: any) {
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(W + 200, H + 200), new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1 }));
   ground.rotation.x = -Math.PI / 2; ground.position.set((minx + maxx) / 2, 0, (minz + maxz) / 2); ground.receiveShadow = true; scene.add(ground);
   // roads
-  const RW: Record<string, number> = { primary: 16, secondary: 12, tertiary: 9, residential: 6, unclassified: 6, living_street: 5, service: 4, pedestrian: 6, footway: 2.5 };
+  const RW: Record<string, number> = ROADW; const _unused = { primary: 16, secondary: 12, tertiary: 9, residential: 6, unclassified: 6, living_street: 5, service: 4, pedestrian: 6, footway: 2.5 };
   const rg: THREE.BufferGeometry[] = [], lg: THREE.BufferGeometry[] = [];
   for (const r of data.roads) {
     roads.push(r); const w = RW[r.t.replace('_link', '')] ?? 3;
@@ -205,13 +214,15 @@ function buildMap(data: any) {
   for (const r of roads) { const w = RW[r.t] ?? 3; if (w < 6) continue; for (let i = 0; i < r.p.length - 1; i++) {
     const [ax, az] = r.p[i], [bx, bz] = r.p[i + 1]; const L = Math.hypot(bx - ax, bz - az); if (L < 4) continue; const ang = Math.atan2(bz - az, bx - ax); const ux = Math.cos(ang), uz = Math.sin(ang), nx = -uz, nz = ux;
     for (let s = 2; s < L - 2; s += 26) { const side = rnd() < 0.5 ? 1 : -1; const lx = ax + ux * s + nx * (w / 2 + 0.4) * side, lz = az + uz * s + nz * (w / 2 + 0.4) * side; if (!bldAt(lx, lz)) lamps.push([lx, lz, Math.atan2(-nx * side, -nz * side)]); }
-    if (rnd() < 0.45) { const t = rnd() * 0.6 + 0.2; const side = rnd() < 0.5 ? 1 : -1; const n = 3 + Math.floor(rnd() * 6); for (let k = 0; k < n; k++) { const x = ax + (bx - ax) * t + ux * k * 0.75 + nx * (w / 2 - 0.7) * side, z = az + (bz - az) * t + uz * k * 0.75 + nz * (w / 2 - 0.7) * side; if (!bldAt(x, z)) spots.push({ x, z, ang: Math.atan2(-nx * side, -nz * side), kind: 'scooter' }); } }
-    if (w >= 9 && rnd() < 0.3) { const t = rnd() * 0.6 + 0.2; const side = rnd() < 0.5 ? 1 : -1; const x = ax + (bx - ax) * t + nx * (w / 2 - 1.6) * side, z = az + (bz - az) * t + nz * (w / 2 - 1.6) * side; const kind: VehicleKind = rnd() < 0.15 ? 'truck' : rnd() < 0.35 ? 'taxi' : 'car'; if (!bldAt(x, z)) { spots.push({ x, z, ang: Math.atan2(ux, uz), kind }); const hl = kind === 'truck' ? 3.25 : 2.2, hw = kind === 'truck' ? 1.15 : 0.9; const cs: V2[] = [[-hw, -hl], [hw, -hl], [hw, hl], [-hw, hl]].map(([a, b]) => [x + a * nx + b * ux, z + a * nz + b * uz] as V2); for (let q = 0; q < 4; q++) addSeg({ a: cs[q], b: cs[(q + 1) % 4] }); } }
+    if (rnd() < 0.06) { const t = rnd() * 0.6 + 0.2; const side = rnd() < 0.5 ? 1 : -1; const n = 2 + Math.floor(rnd() * 3); for (let k = 0; k < n; k++) { const x = ax + (bx - ax) * t + ux * k * 0.75 + nx * (w / 2 - 0.7) * side, z = az + (bz - az) * t + uz * k * 0.75 + nz * (w / 2 - 0.7) * side; if (!bldAt(x, z)) spots.push({ x, z, ang: Math.atan2(-nx * side, -nz * side), kind: 'scooter' }); } }
+    if (w >= 9 && rnd() < 0.05) { const t = rnd() * 0.6 + 0.2; const side = rnd() < 0.5 ? 1 : -1; const x = ax + (bx - ax) * t + nx * (w / 2 - 1.6) * side, z = az + (bz - az) * t + nz * (w / 2 - 1.6) * side; const kind: VehicleKind = rnd() < 0.15 ? 'truck' : rnd() < 0.35 ? 'taxi' : 'car'; if (!bldAt(x, z)) { spots.push({ x, z, ang: Math.atan2(ux, uz), kind }); const hl = kind === 'truck' ? 3.25 : 2.2, hw = kind === 'truck' ? 1.15 : 0.9; const cs: V2[] = [[-hw, -hl], [hw, -hl], [hw, hl], [-hw, hl]].map(([a, b]) => [x + a * nx + b * ux, z + a * nz + b * uz] as V2); for (let q = 0; q < 4; q++) addSeg({ a: cs[q], b: cs[(q + 1) % 4] }); } }
   } }
   vehicles.build(spots, mergeGeometries, rnd);
   buildLamps();
 }
 
+const ROADW: Record<string, number> = { primary: 16, secondary: 12, tertiary: 9, residential: 6, unclassified: 6, living_street: 5, service: 4, pedestrian: 6, footway: 2.5 };
+let decay: ReturnType<typeof buildDecay> | null = null; let checkpoints: V2[] = [];
 // ---------- street lamps ----------
 const lamps: [number, number, number][] = []; const lampPool: THREE.PointLight[] = []; let lampHeadMat: THREE.MeshStandardMaterial;
 const vehicles = new VehicleSystem(scene);
@@ -233,14 +244,14 @@ function updateLamps(night: number, dt: number) {
 }
 
 // ---------- characters ----------
-const SOLDIER_OPTS = { gender: 'm' as const, skin: 0xd9a87e, hair: 0x111111, top: 0x4d5a35, bottom: 0x46512f, shoes: 0x1a1a1a, soldier: true };
-const HERO: Record<string, any> = { m: { gender: 'm', skin: 0xe0b08a, hair: 0x1a1410, top: 0x2f5f8a, bottom: 0x3a3a44, shoes: 0xf0f0f0 }, f: { gender: 'f', skin: 0xf0c4a0, hair: 0x2a1a12, top: 0xc8505a, bottom: 0x2a3a5a, shoes: 0xe8e8e8 } };
+const SOLDIER_OPTS = { gender: 'm' as const, hair: 0x111111, top: 0x55603c, bottom: 0x4a5434, shoes: 0x1a1a1a, soldier: true };
+const HERO: Record<string, any> = { m: { gender: 'm', hair: 0x1a1410, top: 0xd8d4c8, jacket: 0x3d5a78, bottom: 0x34363e, shoes: 0xe8e8e8, pack: 0x2f3a2a }, f: { gender: 'f', hair: 0x1e1410, top: 0xb84a52, bottom: 0x2a3a5a, shoes: 0xe8e8e8, pack: 0x6a5240 } };
 function spawnRig(o: any) { const r = makeRig(o); scene.add(r.root); return r; }
 const player = {
   mesh: null as any as THREE.Group, rig: null as any as Rig, gender: 'm', anim: 'idle' as AnimState, moving: 0, pos: new THREE.Vector3(), hp: 100, hunger: 85, thirst: 85, fatigue: 10, bleed: false,
-  inv: { water: 1, noodle: 1 } as Record<string, number>, equip: '' as string, sneak: false, cd: 0, kills: 0, sleeping: false, light: false,
+  inv: { water: 1, noodle: 1 } as Record<string, number>, vel: new THREE.Vector3(), vaultT: 0, stun: 0, vFrom: new THREE.Vector3(), vTo: new THREE.Vector3(), equip: '' as string, sneak: false, cd: 0, kills: 0, sleeping: false, light: false,
 };
-type Sol = { rig: Rig; path?: V2[]; pi?: number; repath?: number; pgoal?: V2; speed?: number; aiming?: boolean; id: number; mesh: THREE.Group; pos: THREE.Vector3; hp: number; route: V2[]; wi: number; dir: number; state: 'patrol' | 'investigate' | 'combat' | 'dead'; target?: V2; alert: number; timer: number; cd: number; sector: number; cone: THREE.Mesh; night: boolean; lastSeen?: V2 };
+type Sol = { rig: Rig; stun?: number; vs?: number; post?: V2; path?: V2[]; pi?: number; repath?: number; pgoal?: V2; speed?: number; aiming?: boolean; id: number; mesh: THREE.Group; pos: THREE.Vector3; hp: number; route: V2[]; wi: number; dir: number; state: 'patrol' | 'investigate' | 'combat' | 'dead'; target?: V2; alert: number; timer: number; cd: number; sector: number; cone: THREE.Mesh; night: boolean; lastSeen?: V2 };
 const sols: Sol[] = [];
 const coneGeo = new THREE.CircleGeometry(1, 20, -Math.PI / 5, Math.PI * 2 / 5); coneGeo.rotateX(-Math.PI / 2); coneGeo.rotateY(Math.PI / 2);
 function spawnSoldiers(dead: Set<number>) {
@@ -269,7 +280,7 @@ function tracer(a: THREE.Vector3, b: THREE.Vector3) { const g = new THREE.Buffer
 
 // ---------- input ----------
 const keys: Record<string, boolean> = {}; let mouse = new THREE.Vector2(); let clicking = false;
-addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'Tab') { e.preventDefault(); toggleInv(); } if (!started) return; if (e.code === 'KeyC') { player.sneak = !player.sneak; log(player.sneak ? '進入潛行' : '解除潛行'); } if (e.code === 'KeyE') interact(); if (e.code === 'KeyI') toggleInv(); if (e.code === 'KeyB') barricade(); if (e.code === 'KeyZ') sleep(); if (e.code === 'KeyF') { player.light = !player.light; } if (e.code === 'Escape') closePanel(); });
+addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'Tab') { e.preventDefault(); toggleInv(); } if (!started) return; if (e.code === 'KeyC') { player.sneak = !player.sneak; log(player.sneak ? '進入潛行' : '解除潛行'); } if (e.code === 'KeyE') interact(); if (e.code === 'KeyI') toggleInv(); if (e.code === 'KeyB') barricade(); if (e.code === 'KeyZ') sleep(); if (e.code === 'KeyF') { player.light = !player.light; } if (e.code === 'Space') { e.preventDefault(); tryVault(); } if (e.code === 'KeyQ') shove(); if (e.code === 'Escape') closePanel(); });
 addEventListener('keyup', e => keys[e.code] = false);
 addEventListener('mousemove', e => { mouse.set(e.clientX / innerWidth * 2 - 1, -e.clientY / innerHeight * 2 + 1); });
 renderer.domElement.addEventListener('mousedown', e => { if (e.button === 0) clicking = true; });
@@ -335,6 +346,22 @@ function sleep() {
 }
 
 // ---------- combat ----------
+function tryVault() {
+  if (player.vaultT > 0 || player.sleeping || dead) return;
+  const fwd = player.vel.length() > 0.3 ? player.vel.clone().setY(0).normalize() : new THREE.Vector3(Math.sin(player.mesh.rotation.y), 0, Math.cos(player.mesh.rotation.y));
+  const p: V2 = [player.pos.x, player.pos.z], q: V2 = [player.pos.x + fwd.x * 1.3, player.pos.z + fwd.z * 1.3];
+  let hit: Seg | null = null; for (const sg of nearSegs(p[0], p[1])) if (segX(p, q, sg.a, sg.b)) { if (!sg.low) return log('太高了，翻不過去'); hit = sg; }
+  if (!hit) return;
+  const to = new THREE.Vector3(player.pos.x + fwd.x * 1.5, 0, player.pos.z + fwd.z * 1.5); const chk = to.clone(); collide(chk, 0.35); if (chk.distanceTo(to) > 0.2 || bldAt(to.x, to.z) !== bldAt(player.pos.x, player.pos.z)) return log('另一側沒有空間');
+  player.vFrom.copy(player.pos); player.vTo.copy(to); player.vaultT = 0.55; player.rig.vaultT = 0.55; player.mesh.rotation.y = Math.atan2(fwd.x, fwd.z); noise(player.pos.x, player.pos.z, 4);
+}
+function segX(a: V2, b: V2, c: V2, d: V2) { const o = (p: V2, q: V2, r: V2) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])); return o(a, b, c) !== o(a, b, d) && o(c, d, a) !== o(c, d, b); }
+function shove() {
+  if (player.cd > 0 || player.sleeping || dead) return; player.cd = 0.6; player.rig.shoveT = 0.35; noise(player.pos.x, player.pos.z, 3);
+  const f = new THREE.Vector3(Math.sin(player.mesh.rotation.y), 0, Math.cos(player.mesh.rotation.y));
+  for (const s of sols) { if (s.state === 'dead') continue; const to = s.pos.clone().sub(player.pos); const d = to.length(); if (d > 1.5 || to.normalize().dot(f) < 0.4) continue;
+    s.stun = 1.6; s.rig.hurtT = 0.35; s.rig.hurtSide = rnd() < 0.5 ? -1 : 1; s.pos.addScaledVector(f, 0.9); collide(s.pos, 0.35); s.state = 'combat'; s.alert = 1; s.lastSeen = [player.pos.x, player.pos.z]; log('推開！敵人踉蹌', '#ff9'); break; }
+}
 function playerAttack() {
   const k = player.equip; const d = k ? ITEMS[k] : { dmg: 8, range: 1.1, noise: 2, cd: 0.5, kind: 'melee' } as any;
   if (player.cd > 0) return; player.cd = d.cd; if (d.kind === 'gun') player.rig.shootT = 0.14; else player.rig.meleeT = 0.45;
@@ -358,7 +385,7 @@ function damageSol(s: Sol, dmg: number, stealth: boolean) {
   if (s.hp <= 0) { s.state = 'dead'; s.cone.visible = false; player.kills++; log('擊倒一名佔領軍士兵', '#ffd76a');
     const it: Record<string, number> = { a556: 5 + Math.floor(rnd() * 20) }; if (rnd() < 0.3) it.rifle = 1; if (rnd() < 0.5) it.ration = 1; if (rnd() < 0.3) it.bandage = 1;
     makeCont('d' + s.id, [s.pos.x, s.pos.z], 'crate', undefined, it); checkSectors();
-  } else { s.rig.hurtT = 0.3; s.state = 'combat'; s.alert = 1; s.lastSeen = [player.pos.x, player.pos.z]; }
+  } else { s.rig.hurtT = 0.35; s.rig.hurtSide = rnd() < 0.5 ? -1 : 1; s.stun = Math.max(s.stun || 0, 0.4); s.state = 'combat'; s.alert = 1; s.lastSeen = [player.pos.x, player.pos.z]; }
 }
 const liberated = new Set<number>();
 function checkSectors(silent = false) {
@@ -395,13 +422,20 @@ function update(dt: number) {
     if (keys.KeyW) mv.add(f); if (keys.KeyS) mv.sub(f); if (keys.KeyD) mv.add(r); if (keys.KeyA) mv.sub(r);
     const running = (keys.ShiftLeft || keys.ShiftRight) && !player.sneak && player.fatigue < 95;
     let sp = player.sneak ? 1.6 : running ? 6 : 3.4; if (player.fatigue > 80) sp *= 0.7; if (weight() > 12) sp *= 0.8;
-    if (mv.lengthSq() > 0) { mv.normalize().multiplyScalar(sp * dt); player.pos.add(mv); collide(player.pos, 0.35); if (running) { player.fatigue += dt * 0.25; acc += dt; if (acc > 0.5) { acc = 0; noise(player.pos.x, player.pos.z, 11); } } else if (!player.sneak) { acc += dt; if (acc > 1) { acc = 0; noise(player.pos.x, player.pos.z, 3.5); } } }
+    // momentum: accelerate / decelerate toward desired velocity
+    const want3 = mv.lengthSq() > 0 ? mv.clone().normalize().multiplyScalar(sp) : new THREE.Vector3();
+    if (player.vaultT > 0) { player.vaultT -= dt; const q = 1 - player.vaultT / 0.55; player.pos.lerpVectors(player.vFrom, player.vTo, q < 0 ? 0 : q > 1 ? 1 : q * q * (3 - 2 * q)); want3.set(0, 0, 0); player.vel.set(0, 0, 0); }
+    else if (player.stun > 0) { player.stun -= dt; want3.multiplyScalar(0.25); }
+    const accRate = want3.lengthSq() > player.vel.lengthSq() ? 9 : 7; player.vel.lerp(want3, Math.min(1, dt * accRate));
+    if (player.vel.lengthSq() > 0.0004 && player.vaultT <= 0) { player.pos.addScaledVector(player.vel, dt); collide(player.pos, 0.35); }
+    if (mv.lengthSq() > 0 && player.vaultT <= 0) { if (running) { player.fatigue += dt * 0.25; acc += dt; if (acc > 0.5) { acc = 0; noise(player.pos.x, player.pos.z, 11); } } else if (!player.sneak) { acc += dt; if (acc > 1) { acc = 0; noise(player.pos.x, player.pos.z, 3.5); } } }
     ray.setFromCamera(mouse, camera); ray.ray.intersectPlane(plane, aimPt);
-    const want = Math.atan2(aimPt.x - player.pos.x, aimPt.z - player.pos.z); let dr = Math.atan2(Math.sin(want - player.mesh.rotation.y), Math.cos(want - player.mesh.rotation.y)); player.mesh.rotation.y += dr * Math.min(1, dt * 14);
+    const eqk0 = player.equip ? ITEMS[player.equip].kind : ''; const faceMove = player.vel.length() > 0.5 && (running || eqk0 !== 'gun') && !clicking;
+    const want = faceMove ? Math.atan2(player.vel.x, player.vel.z) : Math.atan2(aimPt.x - player.pos.x, aimPt.z - player.pos.z); let dr = Math.atan2(Math.sin(want - player.mesh.rotation.y), Math.cos(want - player.mesh.rotation.y)); player.mesh.rotation.y += dr * Math.min(1, dt * (faceMove ? 9 : 12));
     if (clicking && !panelOpen) playerAttack();
-    player.moving = mv.lengthSq() > 0 ? sp : 0;
+    player.moving = player.vel.length();
     const eqk = player.equip ? ITEMS[player.equip].kind : '';
-    player.anim = panelOpen && curCont ? 'loot' : eqk === 'gun' && !running ? 'aim' : player.sneak ? 'sneak' : running && player.moving ? 'run' : player.moving ? 'walk' : 'idle';
+    player.anim = panelOpen && curCont ? 'loot' : eqk === 'gun' && !running ? 'aim' : player.sneak ? 'sneak' : running && player.moving > 3.5 ? 'run' : player.moving > 0.15 ? 'walk' : 'idle';
   } else player.anim = 'sleep';
   setWeapon(player.rig, player.equip); animate(player.rig, player.anim, player.moving, dt);
   player.mesh.position.copy(player.pos);
@@ -432,26 +466,28 @@ function update(dt: number) {
     else if (s.state === 'combat') {
       s.cd -= dt;
       if (sees && dist < 24) { goal = dist > 8 ? pp : null; s.dir = Math.atan2(dz, dx);
-        if (s.cd <= 0) { s.rig.shootT = 0.14; s.cd = 1.1 + rnd() * 0.6; noise(s.pos.x, s.pos.z, 40); const hitP = (0.55 - dist / 60) * (player.sneak ? 0.7 : 1) * (night ? 0.7 : 1);
+        if (s.cd <= 0 && !(s.stun! > 0)) { s.rig.shootT = 0.14; s.cd = 1.1 + rnd() * 0.6; noise(s.pos.x, s.pos.z, 40); const hitP = (0.55 - dist / 60) * (player.sneak ? 0.7 : 1) * (night ? 0.7 : 1);
           const miss = new THREE.Vector3(player.pos.x + (rnd() - 0.5) * 3, 0, player.pos.z + (rnd() - 0.5) * 3); tracer(s.pos, rnd() < hitP ? player.pos : miss);
-          if (rnd() < hitP) { player.rig.hurtT = 0.3; player.hp -= 10 + rnd() * 12; if (rnd() < 0.45 && !player.bleed) { player.bleed = true; log('你中彈流血了！用繃帶止血', '#f66'); } else log('你被擊中了！', '#f66'); flashRed(); } }
+          if (rnd() < hitP) { player.rig.hurtT = 0.35; player.rig.hurtSide = rnd() < 0.5 ? -1 : 1; player.stun = 0.35; player.hp -= 10 + rnd() * 12; if (rnd() < 0.45 && !player.bleed) { player.bleed = true; log('你中彈流血了！用繃帶止血', '#f66'); } else log('你被擊中了！', '#f66'); flashRed(); } }
       } else if (s.lastSeen) { goal = s.lastSeen; sp = 3.2; if (Math.hypot(goal[0] - s.pos.x, goal[1] - s.pos.z) < 1.2) { s.lastSeen = undefined; s.state = 'investigate'; s.target = [s.pos.x + (rnd() - .5) * 10, s.pos.z + (rnd() - .5) * 10]; s.timer = 12; s.alert = 0.5; } }
       else { s.state = 'investigate'; s.target = [s.pos.x, s.pos.z]; s.timer = 8; }
     }
-    let moved = 0; s.aiming = s.state === 'combat' && sees && dist < 24;
+    let moved = 0; s.aiming = s.state === 'combat' && sees && dist < 24 && !(s.stun! > 0); if (s.stun! > 0) { s.stun! -= dt; goal = null; }
+    if (s.post && s.state === 'patrol') { goal = Math.hypot(s.post[0] - s.pos.x, s.post[1] - s.pos.z) > 0.8 ? s.post : null; if (!goal) s.dir += Math.sin(gameMin * 0.05 + s.id) * dt * 0.3; }
     if (goal) {
       let tgt = goal;
-      if (s.state !== 'patrol' && nav) {
+      if (nav && (s.state !== 'patrol' || s.post || true)) {
         s.repath = (s.repath || 0) - dt;
         const need = !s.path || !s.pgoal || Math.hypot(goal[0] - s.pgoal[0], goal[1] - s.pgoal[1]) > 2 || s.repath <= 0;
-        if (need && pathBudget > 0) { pathBudget--; s.repath = 1.5; s.pgoal = goal.slice() as V2; const me: V2 = [s.pos.x, s.pos.z]; if (los(me, goal)) s.path = [goal]; else { const pth = nav.find(me, goal); s.path = pth ? smooth(pth, los) : [goal]; } s.pi = 0; }
+        if (need && pathBudget > 0) { pathBudget--; s.repath = s.state === 'patrol' ? 4 : 1.5; s.pgoal = goal.slice() as V2; const me: V2 = [s.pos.x, s.pos.z]; if (los(me, goal)) s.path = [goal]; else { const pth = nav.find(me, goal); s.path = pth ? smooth(pth, los) : [goal]; } s.pi = 0; }
         if (s.path) { while (s.pi! < s.path.length - 1 && Math.hypot(s.path[s.pi!][0] - s.pos.x, s.path[s.pi!][1] - s.pos.z) < 0.8) s.pi!++; tgt = s.path[s.pi!]; }
       } else s.path = undefined;
       const gx = tgt[0] - s.pos.x, gz = tgt[1] - s.pos.z; const gl = Math.hypot(gx, gz);
-      if (gl > 0.3) { const td = Math.atan2(gz, gx); let dd = Math.atan2(Math.sin(td - s.dir), Math.cos(td - s.dir)); if (!s.aiming) s.dir += clamp(dd, -dt * 6, dt * 6); const ox = s.pos.x, oz = s.pos.z; s.pos.x += gx / gl * sp * dt; s.pos.z += gz / gl * sp * dt; collide(s.pos, 0.35); moved = Math.hypot(s.pos.x - ox, s.pos.z - oz) / dt; }
+      if (gl > 0.3) { const td = Math.atan2(gz, gx); let dd = Math.atan2(Math.sin(td - s.dir), Math.cos(td - s.dir)); if (!s.aiming) s.dir += clamp(dd, -dt * 6, dt * 6); s.vs = (s.vs || 0) + (sp - (s.vs || 0)) * Math.min(1, dt * 4); const ox = s.pos.x, oz = s.pos.z; s.pos.x += gx / gl * s.vs * dt; s.pos.z += gz / gl * s.vs * dt; collide(s.pos, 0.35); moved = Math.hypot(s.pos.x - ox, s.pos.z - oz) / dt; }
     }
+    if (!moved) s.vs = (s.vs || 0) * Math.max(0, 1 - dt * 6);
     animate(s.rig, s.aiming ? 'aim' : moved > 2.9 ? 'run' : moved > 0.2 ? 'carry' : 'idle', moved, dt);
-    s.mesh.position.copy(s.pos); s.mesh.rotation.y = Math.PI / 2 - s.dir;
+    s.mesh.position.copy(s.pos); { const ty = Math.PI / 2 - s.dir; const d0 = Math.atan2(Math.sin(ty - s.mesh.rotation.y), Math.cos(ty - s.mesh.rotation.y)); s.mesh.rotation.y += d0 * Math.min(1, dt * 8); }
     s.cone.position.set(s.pos.x, 0.06, s.pos.z); s.cone.rotation.y = -s.dir; s.cone.scale.setScalar(night ? 11 : 20);
     const cm = s.cone.material as THREE.MeshBasicMaterial; cm.color.set(s.state === 'combat' ? 0xff3030 : s.state === 'investigate' ? 0xffa030 : night ? 0xfff6c0 : 0xffee88); cm.opacity = night ? 0.22 : 0.12;
   }
@@ -462,7 +498,7 @@ function update(dt: number) {
   if (!dayF) sun.position.set(player.pos.x - 30, 70, player.pos.z + 20);
   const fogC = new THREE.Color(0x0c1220).lerp(new THREE.Color(0xa7b0b5), dayF); (scene.fog as THREE.Fog).color.copy(fogC); renderer.setClearColor(fogC);
   hemi.color.setHSL(0.6, 0.5, 0.35 + dayF * 0.45);
-  updateLamps(1 - dayF, dt);
+  updateLamps(1 - dayF, dt); decay?.update(dt, 1 - dayF, player.pos.x, player.pos.z);
   flash.intensity = player.light ? 60 : 0; flash.position.set(player.pos.x, 1.6, player.pos.z); flash.target.position.copy(aimPt);
   // camera
   camera.position.copy(player.pos).add(CAM_OFF); camera.lookAt(player.pos);
@@ -519,13 +555,16 @@ async function boot() {
   // night market on the nearest named mid-size road
   let bestR: any = null, bd = 1e9; for (const r of roads) { if (!['tertiary', 'residential', 'pedestrian', 'unclassified'].includes(r.t) || r.p.length < 2) continue; const d = Math.min(...r.p.map(p => Math.hypot(p[0] - start!.c[0], p[1] - start!.c[1]))); if (d < bd && d > 15) { bd = d; bestR = r; } }
   if (bestR) nightMarket(bestR.p, bestR.t === 'tertiary' ? 9 : 6, fx, 'nm');
+  decay = buildDecay({ scene, rnd, pip, bldAt, addSeg: (q, low) => addSeg(q, low), merge: mergeGeometries, roads, blds, RW: ROADW, center: start.c, R: 140, doors: doors.map(d => d.p) });
+  checkpoints = decay.checkpoints;
   // navigation grid (built after all collision geometry exists)
-  nav = new Nav(bounds.minx - 5, bounds.minz - 5, bounds.maxx + 5, bounds.maxz + 5, 1); for (const q of segs) nav.markSeg(q.a, q.b, 1);
+  nav = new Nav(start.c[0] - 170, start.c[1] - 170, start.c[0] + 170, start.c[1] + 170, 0.5); for (const q of segs) nav.markSeg(q.a, q.b, 1);
   spawnSoldiers(new Set(sv?.dead || []));
   const sp = start.door!.p; const ip: V2 = [sp[0] + (start.c[0] - sp[0]) * 0.25, sp[1] + (start.c[1] - sp[1]) * 0.25];
   player.pos.set(ip[0], 0, ip[1]);
   if (!sv) { makeCont('start', [ip[0] + 0.4, ip[1] + 0.4], 'home', start, { knife: 1, water: 1, plank: 2, hammer: 1, bandage: 1, rice: 1 }); }
   for (const s of sols) if (s.state !== 'dead' && s.pos.distanceTo(player.pos) < 25) { s.pos.x += 40; }
+  { let k = 0; for (const cp of checkpoints) for (let g = 0; g < 2; g++) { const s = sols[k++]; if (!s || s.state === 'dead') continue; const p: V2 = [cp[0] + (g ? 2.2 : -2.2), cp[1] + (g ? 1 : -1)]; s.post = p; s.pos.set(p[0], 0, p[1]); s.sector = sectorOf(p[0], p[1]); s.night = false; } }
   checkSectors(true);
   const btns = $('btns'); $('loadmsg').textContent = `地圖：萬華・西門町（${blds.length} 棟建築，${roads.length} 條街道）`;
   const go = (load: boolean, gender = 'm') => {
@@ -543,7 +582,7 @@ async function boot() {
   const h = document.createElement('div'); h.className = 'selh'; h.textContent = sv ? '或建立新的倖存者：' : '選擇你的倖存者：'; btns.appendChild(h); btns.appendChild(sel);
   camera.position.copy(player.pos).add(CAM_OFF); camera.lookAt(player.pos);
   addEventListener('beforeunload', save);
-  (window as any).__game = { player, sols, blds, conts, nav, started: () => started, go, vehicles, setTime: (m: number) => { gameMin = m; }, tp: (x: number, z: number) => player.pos.set(x, 0, z) };
+  (window as any).__game = { player, sols, blds, conts, nav, started: () => started, go, vehicles, decay: () => decay, camera, CAM_OFF, setTime: (m: number) => { gameMin = m; }, tp: (x: number, z: number) => player.pos.set(x, 0, z) };
 }
 boot().catch(e => { console.error(e); $('loadmsg').textContent = '載入失敗：' + e; });
 loop();

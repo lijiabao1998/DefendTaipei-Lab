@@ -1,3 +1,5 @@
 node_modules
 dist
 smoke*.png
+shot-*.png
+c-*.png
