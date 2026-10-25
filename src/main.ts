@@ -22,7 +22,7 @@ import { placeRooftop, dressRoof, pickRoofMat, setShackNight } from './rooftin';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { ITEMS, LOOT } from './items';
 import { iconURL, iconMat } from './icons';
-import { makeRig, animate, setWeapon, Rig, AnimState } from './human';
+import { makeRig, animate, setWeapon, setLodFocus, Rig, AnimState } from './human';
 import { Nav, smooth } from './nav';
 import { RoadTiles } from './roads';
 import { Traffic } from './traffic';
@@ -3203,6 +3203,7 @@ function update(dt: number) {
                 : 'idle';
   } else player.anim = 'sleep';
   setWeapon(player.rig, player.equip);
+  setLodFocus(player.pos);
   animate(player.rig, player.anim, player.moving, dt);
   if (!drive.cur) player.mesh.position.copy(player.pos);
   // buildings cutaway

@@ -54,7 +54,7 @@ node scripts/tiles.mjs           # 重新切 200 m 道路細節圖塊（public/d
 | `src/textures.ts`、`texq.ts` | 程序生成的牆面／道路／招牌貼圖與材質（手機半解析度） |
 | `src/interiors.ts`、`alley.ts`、`decay.ts`、`facade.ts`、`park.ts`、`rooftin.ts` | 室內、夜巷、破舊感、窗戶與人行道、公園、頂樓加蓋 |
 | `src/roads.ts`、`roadglyphs.ts`、`traffic.ts` | 道路細節串流（v19）、標線字樣圖集（v19.2）、序章車流 |
-| `src/human.ts`、`roles.ts`、`portrait.ts` | 白面人角色與動畫、5 種職業、選角立繪 |
+| `src/human.ts`、`fabric.ts`、`roles.ts`、`portrait.ts` | 白面人角色與動畫、程序化布料材質（v17.2）、5 種職業、選角立繪 |
 | `src/drive.ts`、`vehicles.ts` | 可駕駛載具（v18）、路邊停放的車輛 |
 | `src/armor.ts`、`drone.ts`、`fpv.ts`、`roc.ts`、`pla-loot.ts` | 解放軍裝甲與無人機、FPV 自殺無人機、國軍支援、士兵掉落物 |
 | `src/items.ts`、`icons.ts` | 物品資料與圖示 |
@@ -180,6 +180,7 @@ node scripts/tiles.mjs           # 重新切 200 m 道路細節圖塊（public/d
 
 - 每個職業有自己的開局背包與白面人職業服裝（外送員安全帽、水電師傅工作帽會蓋住頭髮），選角畫面是即時算圖的 3D 立繪。
 - 早晨序章（可勾選「跳過開場」）：07:20 鬧鐘響 → 跟著黃色光柱去上班／上學，手機推播新聞 → 半路響起飛彈空襲警報、防空廣播與爆炸 → 解放軍封鎖路口，正式開始求生。
+- v17.2：角色改為光滑亮面的白色人台風格——蛋形無臉光頭、明顯的頸部、手肘與手指、較細的腰；衣物加上翻領、袖口、腰帶扣、口袋、縫線、手肘膝蓋皺褶、褲腳堆疊與鞋底；`src/fabric.ts` 以程序化法線／粗糙度貼圖做出棉布、丹寧斜紋、格紋、皮革與軍規織帶（所有角色共用材質）；遠處角色（> 22 m）隱藏細節網格（LOD）。角色檢視頁：`scripts/checks/lineup/`（`npx vite` 後執行 `scripts/checks/v172chars.mjs`）。
 
 ## v18 — 可駕駛載具
 - 機車（迅風 125、老狼 150、外送版）、電動機車、微笑單車（鎖在停車柱上，要用鐵鎚或鐵管撬開，聲音很大）、菜籃車、小貨卡、計程車、轎車、麵包車；公車與垃圾車太大開不動，只能當掩體。車款、塗裝與車牌皆為虛構。
