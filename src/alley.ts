@@ -124,8 +124,8 @@ export function buildAlley(c: ACtx) {
       else if (r0 < 0.82) I.add('chair', x, 0, z, ry, [0x2a5a8a, 0x888888, 0xc8a050][Math.floor(rnd() * 3)]);
       else if (r0 < 0.84) I.add('cone', x, 0, z, ry, 0xff6a10);
     }
-    // red curb line + drain grates on the street edge
-    if (E.open >= 3) { const off = Math.min(E.open - 0.3, 2.2); for (let d = 0.3; d < E.L - 0.6; d += 1.2) { const [x, z] = P(E, d + 0.5, off); if (c.bldAt(x, z)) continue; vadd(place(B(1.1, 0.05, 0.12, 0, 0.03, 0), x, 0, z, E.fy + Math.PI / 2), 0xc81c1c); if (rnd() < 0.12) GRATE.push(place(new THREE.PlaneGeometry(0.9, 0.35).rotateX(-Math.PI / 2), x - E.nx * 0.25, 0.05, z - E.nz * 0.25, E.fy + Math.PI / 2)); } }
+    // drain grates on the street edge
+    if (E.open >= 3) { const off = Math.min(E.open - 0.3, 2.2); for (let d = 0.3; d < E.L - 0.6; d += 1.2) { const [x, z] = P(E, d + 0.5, off); if (c.bldAt(x, z)) continue; rnd(); /* red curb now drawn continuously per-road in facade.ts */ if (rnd() < 0.12) GRATE.push(place(new THREE.PlaneGeometry(0.9, 0.35).rotateX(-Math.PI / 2), x - E.nx * 0.25, 0.05, z - E.nz * 0.25, E.fy + Math.PI / 2)); } }
     // one 神桌佛具 shop with a wooden statue display
     if (!shrine && E.L > 5 && E.open >= 3 && near(E.b.c[0], E.b.c[1], R * 0.5)) { shrine = true; const mid = E.L / 2; const [x, z] = P(E, mid, 0.1); shrineP = P(E, mid, 2);
       SIGN.push(place(uvBox(B(Math.min(E.L - 0.5, 4.5), 0.75, 0.12), cell(16), [4, 5]), x, 3.25, z, E.fy)); neon.push({ p: new THREE.Vector3(x + E.nx * 1.5, 2.5, z + E.nz * 1.5), col: 0xffa040 });

@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { buildFacade } from './facade';
+let facade: ReturnType<typeof buildFacade> | null = null;
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { ITEMS, LOOT } from './items';
 import { iconURL } from './icons';
@@ -73,13 +75,17 @@ const wallMats = wallTexs.map(t => new THREE.MeshStandardMaterial({ map: t, roug
 const wallMatsT = wallTexs.map(t => new THREE.MeshStandardMaterial({ map: t, roughness: 0.9, transparent: true, opacity: 0.22, depthWrite: false }));
 const roofMat = new THREE.MeshStandardMaterial({ color: 0x8c8a82, roughness: 1, side: THREE.DoubleSide });
 const tinMat = new THREE.MeshStandardMaterial({ color: 0x7f9fb0, roughness: 0.6, metalness: 0.3 });
+/* 鐵皮加蓋 variants: faded blue corrugated, rusted brown, grey-white, with rust streaks */
+const tinMats = [['#5f86a6', '#46667e'], ['#8a5634', '#5e3820'], ['#a8aaa6', '#7e807c'], ['#4f7a5a', '#3a5a42']].map(([b, l]) => new THREE.MeshStandardMaterial({ roughness: 0.65, metalness: 0.25, map: canvasTex(64, 64, c => { c.fillStyle = b; c.fillRect(0, 0, 64, 64); c.fillStyle = l; for (let i = 0; i < 64; i += 4) c.fillRect(i, 0, 1.5, 64); for (let i = 0; i < 10; i++) { const x = Math.random() * 64; const g = c.createLinearGradient(0, 0, 0, 64); g.addColorStop(0, 'rgba(120,60,25,.7)'); g.addColorStop(1, 'rgba(120,60,25,0)'); c.fillStyle = g; c.fillRect(x, 0, 2 + Math.random() * 4, 20 + Math.random() * 44); } }) }));
 const tankMat = new THREE.MeshStandardMaterial({ color: 0xd8d8d0, roughness: 0.5, metalness: 0.4 });
 const floorMat = new THREE.MeshStandardMaterial({ map: canvasTex(64, 64, c => { c.fillStyle = '#b9ad98'; c.fillRect(0, 0, 64, 64); c.strokeStyle = '#8f8572'; c.strokeRect(0, 0, 32, 32); c.strokeRect(32, 32, 32, 32); c.strokeRect(0, 32, 32, 32); c.strokeRect(32, 0, 32, 32); }), side: THREE.DoubleSide });
 const roadTex = canvasTex(256, 256, c => { c.fillStyle = '#3c3e41'; c.fillRect(0, 0, 256, 256); for (let i = 0; i < 2500; i++) { c.fillStyle = `rgba(${Math.random() < 0.5 ? '255,255,255' : '0,0,0'},${Math.random() * 0.07})`; c.fillRect(Math.random() * 256, Math.random() * 256, 2, 2); }
   for (let i = 0; i < 5; i++) { c.fillStyle = `rgba(${20 + Math.random() * 30},${20 + Math.random() * 30},${25 + Math.random() * 30},.6)`; c.fillRect(Math.random() * 220, Math.random() * 220, 20 + Math.random() * 60, 15 + Math.random() * 40); } // asphalt patches
   c.strokeStyle = 'rgba(15,15,15,.75)'; c.lineWidth = 1.2; for (let i = 0; i < 14; i++) { let x = Math.random() * 256, y = Math.random() * 256; c.beginPath(); c.moveTo(x, y); for (let k = 0; k < 8; k++) { x += (Math.random() - 0.5) * 30; y += (Math.random() - 0.5) * 30; c.lineTo(x, y); } c.stroke(); } // cracks
   for (let i = 0; i < 6; i++) { const g = c.createRadialGradient(0, 0, 0, 0, 0, 20); g.addColorStop(0, 'rgba(10,10,12,.45)'); g.addColorStop(1, 'rgba(10,10,12,0)'); c.save(); c.translate(Math.random() * 256, Math.random() * 256); c.scale(1, 0.6); c.fillStyle = g; c.fillRect(-20, -20, 40, 40); c.restore(); } }); // oil stains
-const groundTex = canvasTex(128, 128, c => { c.fillStyle = '#7d7a70'; c.fillRect(0, 0, 128, 128); c.strokeStyle = '#6b685f'; for (let i = 0; i < 128; i += 16) { c.beginPath(); c.moveTo(i, 0); c.lineTo(i, 128); c.moveTo(0, i); c.lineTo(128, i); c.stroke(); } });
+const groundTex = canvasTex(256, 256, c => { c.fillStyle = '#55565a'; c.fillRect(0, 0, 256, 256); for (let i = 0; i < 3000; i++) { c.fillStyle = `rgba(${Math.random() < 0.5 ? '255,255,255' : '0,0,0'},${Math.random() * 0.06})`; c.fillRect(Math.random() * 256, Math.random() * 256, 2, 2); }
+  for (let i = 0; i < 7; i++) { c.fillStyle = `rgba(${95 + Math.random() * 30},${95 + Math.random() * 25},${90 + Math.random() * 20},.55)`; c.fillRect(Math.random() * 230, Math.random() * 230, 20 + Math.random() * 70, 15 + Math.random() * 50); } // poured-cement patches
+  c.strokeStyle = 'rgba(20,20,20,.6)'; c.lineWidth = 1; for (let i = 0; i < 10; i++) { let x = Math.random() * 256, y = Math.random() * 256; c.beginPath(); c.moveTo(x, y); for (let k = 0; k < 7; k++) { x += (Math.random() - 0.5) * 30; y += (Math.random() - 0.5) * 30; c.lineTo(x, y); } c.stroke(); } });
 
 // ---------- world state ----------
 const blds: Bld[] = []; const segs: Seg[] = []; const conts: Cont[] = []; const doors: Door[] = [];
@@ -146,7 +152,7 @@ function buildMap(data: any) {
   for (const r of data.roads) for (const p of r.p) { minx = Math.min(minx, p[0]); maxx = Math.max(maxx, p[0]); minz = Math.min(minz, p[1]); maxz = Math.max(maxz, p[1]); }
   Object.assign(bounds, { minx: minx + 10, maxx: maxx - 10, minz: minz + 10, maxz: maxz - 10 });
   const W = maxx - minx, H = maxz - minz;
-  groundTex.repeat.set(W / 4, H / 4);
+  groundTex.repeat.set(W / 8, H / 8);
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(W + 200, H + 200), new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1 }));
   ground.rotation.x = -Math.PI / 2; ground.position.set((minx + maxx) / 2, 0, (minz + maxz) / 2); ground.receiveShadow = true; scene.add(ground);
   // roads
@@ -176,7 +182,12 @@ function buildMap(data: any) {
     // door: longest edge
     let di = 0, dl = 0; for (let i = 0; i < pts.length; i++) { const a = pts[i], c = pts[(i + 1) % pts.length]; const l = Math.hypot(c[0] - a[0], c[1] - a[1]); if (l > dl) { dl = l; di = i; } }
     const wg: THREE.BufferGeometry[] = [];
-    const wallBox = (a: V2, c: V2, y0: number, y1: number) => { const l = Math.hypot(c[0] - a[0], c[1] - a[1]); if (l < 0.05) return; const g = new THREE.BoxGeometry(l + 0.25, y1 - y0, 0.25); const uv = g.attributes.uv; for (let k = 0; k < uv.count; k++) uv.setXY(k, uv.getX(k) * l / 3.2, uv.getY(k) * (y1 - y0) / 3.2); g.rotateY(-Math.atan2(c[1] - a[1], c[0] - a[0])); g.translate((a[0] + c[0]) / 2, (y0 + y1) / 2, (a[1] + c[1]) / 2); wg.push(g); };
+    const wins: { x: number; z: number; y: number; ry: number; f: number }[] = []; (b as any).wins = wins;
+    const wallBox = (a: V2, c: V2, y0: number, y1: number) => { const l = Math.hypot(c[0] - a[0], c[1] - a[1]); if (l < 0.05) return; const g = new THREE.BoxGeometry(l + 0.25, y1 - y0, 0.25); const uv = g.attributes.uv; for (let k = 0; k < uv.count; k++) uv.setXY(k, uv.getX(k) * l / 3.2, uv.getY(k) * (y1 - y0) / 3.2); g.rotateY(-Math.atan2(c[1] - a[1], c[0] - a[0])); g.translate((a[0] + c[0]) / 2, (y0 + y1) / 2, (a[1] + c[1]) / 2); wg.push(g);
+      /* window slots matching the painted wall-texture windows (for 3D window units near the player) */
+      if (y0 === 0 && h > 4) { const ux = (c[0] - a[0]) / l, uz = (c[1] - a[1]) / l; let nx = -uz, nz = ux, back = false; if (pip([(a[0] + c[0]) / 2 + nx * 0.5, (a[1] + c[1]) / 2 + nz * 0.5], pts)) { nx = -nx; nz = -nz; back = true; }
+        const T = 3.2 * (l + 0.25) / l; for (let k = 0; k < 40; k++) { const sd = back ? l + 0.125 - (k + 0.5) * T : -0.125 + (k + 0.5) * T; if (back ? sd < 0.9 : sd > l - 0.9) break; if (sd < 0.9 || sd > l - 0.9) continue;
+          for (let f = 1; f * 3.2 + 2.7 < h; f++) wins.push({ x: a[0] + ux * sd + nx * 0.126, z: a[1] + uz * sd + nz * 0.126, y: f * 3.2 + 1.95, ry: Math.atan2(nx, nz), f }); } } };
     for (let i = 0; i < pts.length; i++) {
       const a = pts[i], c = pts[(i + 1) % pts.length];
       if (i === di && dl > 2.6 && A > 20) {
@@ -206,7 +217,7 @@ function buildMap(data: any) {
     // rooftop additions 頂樓加蓋 + water tanks
     if (A > 40 && rnd() < 0.55 || A > 30 && hh(3) < (lv <= 3 ? 0.6 : 0)) {
       const sx = (b.maxx - b.minx) * 0.4, sz = (b.maxz - b.minz) * 0.4;
-      const tin = new THREE.Mesh(new THREE.BoxGeometry(sx, 2.6, sz), tinMat); tin.position.set(cx, h + 1.3, cz); if (pip([cx, cz], pts)) { tin.castShadow = true; b.roof.add(tin); }
+      const tin = new THREE.Mesh(new THREE.BoxGeometry(sx, 2.6, sz), tinMats[Math.floor(hh(7) * 4)]); tin.position.set(cx, h + 1.3, cz); if (pip([cx, cz], pts)) { tin.castShadow = true; b.roof.add(tin); }
     }
     const tq = rnd(); if (tq < 0.5 || hh(4) < (lv <= 3 ? 0.5 : 0)) { const st = lv <= 3 ? 1.6 : 0; const t = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 1.4, 10), tankMat); const tp: V2 = tq < 0.5 ? [cx + (rnd() - 0.5) * 2, cz + (rnd() - 0.5) * 2] : [cx + (hh(5) - 0.5) * 2, cz + (hh(6) - 0.5) * 2]; if (pip(tp, pts)) { t.position.set(tp[0], h + 0.7 + st, tp[1]); t.castShadow = true; b.roof.add(t); if (st) for (const [ox, oz] of [[-0.45, -0.45], [0.45, -0.45], [0.45, 0.45], [-0.45, 0.45]]) { const lg = new THREE.Mesh(new THREE.BoxGeometry(0.07, st, 0.07), tinMat); lg.position.set(tp[0] + ox, h + st / 2, tp[1] + oz); b.roof.add(lg); } } }
     group.add(b.roof);
@@ -395,7 +406,7 @@ function damageSol(s: Sol, dmg: number, stealth: boolean) {
 }
 const liberated = new Set<number>();
 function checkSectors(silent = false) {
-  for (let i = 0; i < SX * SZ; i++) { if (liberated.has(i)) continue; const alive = sols.filter(s => s.sector === i && s.state !== 'dead').length; const total = sols.filter(s => s.sector === i).length; if (total > 0 && alive === 0) { liberated.add(i); if (!silent) log(`★ ${SECTOR_LABEL(i)} 街區已解放！`, '#7fff7f'); } }
+  for (let i = 0; i < SX * SZ; i++) { if (liberated.has(i)) continue; const alive = sols.filter(s => s.sector === i && s.state !== 'dead').length; const total = sols.filter(s => s.sector === i).length; if (total > 0 && alive === 0) { liberated.add(i); if (!silent) log(`★ ${SECTOR_LABEL(i)} 街區已奪回！`, '#7fff7f'); } }
 }
 
 // ---------- save ----------
@@ -524,7 +535,7 @@ function update(dt: number) {
   if (!dayF) sun.position.set(player.pos.x - 30, 70, player.pos.z + 20);
   const fogC = new THREE.Color(0x0c1220).lerp(new THREE.Color(0xa7b0b5), dayF); (scene.fog as THREE.Fog).color.copy(fogC); renderer.setClearColor(fogC);
   hemi.color.setHSL(0.6, 0.5, 0.35 + dayF * 0.45);
-  const PW = UT.power ? 1 : 0; if ((updateLamps as any).pw !== PW) { (updateLamps as any).pw = PW; setPower(!!PW); } updateLamps((1 - dayF) * PW, dt); decay?.update(dt, (1 - dayF) * PW, player.pos.x, player.pos.z); alley?.update(dt, (1 - dayF) * PW, player.pos.x, player.pos.z, PW); roadMat.roughness = 0.95 - (1 - dayF) * 0.55; roadMat.metalness = (1 - dayF) * 0.35;
+  const PW = UT.power ? 1 : 0; if ((updateLamps as any).pw !== PW) { (updateLamps as any).pw = PW; setPower(!!PW); } updateLamps((1 - dayF) * PW, dt); decay?.update(dt, (1 - dayF) * PW, player.pos.x, player.pos.z); facade?.update(1 - dayF, PW); alley?.update(dt, (1 - dayF) * PW, player.pos.x, player.pos.z, PW); roadMat.roughness = 0.95 - (1 - dayF) * 0.55; roadMat.metalness = (1 - dayF) * 0.35;
   flash.intensity = player.light ? 60 : 0; flash.position.set(player.pos.x, 1.6, player.pos.z); flash.target.position.copy(aimPt);
   // camera
   camera.position.copy(player.pos).add(CAM_OFF); camera.lookAt(player.pos);
@@ -534,7 +545,7 @@ function update(dt: number) {
   drawHud(inside);
 }
 let redT = 0; function flashRed() { redT = 0.25; renderer.domElement.style.filter = 'saturate(2) hue-rotate(-20deg) brightness(1.2)'; setTimeout(() => renderer.domElement.style.filter = '', 150); }
-function updateStreet() { let best = '', bd = 25; for (const r of roads) { if (!r.n) continue; for (let i = 0; i < r.p.length - 1; i++) { const [ax, az] = r.p[i], [bx, bz] = r.p[i + 1]; const dx = bx - ax, dz = bz - az; const l2 = dx * dx + dz * dz || 1; const t = clamp(((player.pos.x - ax) * dx + (player.pos.z - az) * dz) / l2, 0, 1); const d = Math.hypot(player.pos.x - ax - dx * t, player.pos.z - az - dz * t); if (d < bd) { bd = d; best = r.n; } } } const sec = sectorOf(player.pos.x, player.pos.z); $('street').textContent = `📍 ${best || '巷弄'}・${SECTOR_LABEL(sec)}區 ${liberated.has(sec) ? '（已解放）' : '（佔領中）'}`; }
+function updateStreet() { let best = '', bd = 25; for (const r of roads) { if (!r.n) continue; for (let i = 0; i < r.p.length - 1; i++) { const [ax, az] = r.p[i], [bx, bz] = r.p[i + 1]; const dx = bx - ax, dz = bz - az; const l2 = dx * dx + dz * dz || 1; const t = clamp(((player.pos.x - ax) * dx + (player.pos.z - az) * dz) / l2, 0, 1); const d = Math.hypot(player.pos.x - ax - dx * t, player.pos.z - az - dz * t); if (d < bd) { bd = d; best = r.n; } } } const sec = sectorOf(player.pos.x, player.pos.z); $('street').textContent = `📍 ${best || '巷弄'}・${SECTOR_LABEL(sec)}區 ${liberated.has(sec) ? '（已奪回）' : '（佔領中）'}`; }
 function bar(name: string, v: number, col: string) { return `<div class="bar"><div class="t"><span>${name}</span><span>${Math.round(v)}</span></div><div class="b"><i style="width:${clamp(v, 0, 100)}%;background:${col}"></i></div></div>`; }
 function drawHud(inside: Bld | null) {
   const m: string[] = []; if (player.hunger < 25) m.push('飢餓'); if (player.thirst < 25) m.push('口渴'); if (player.fatigue > 75) m.push('疲憊'); if (player.bleed) m.push('流血'); if (player.hp < 30) m.push('重傷'); if (player.sneak) m.push('潛行中'); if (player.sleeping) m.push('睡眠中'); if (sols.some(s => s.state === 'combat' && s.mesh.visible)) m.push('被追捕');
@@ -542,7 +553,7 @@ function drawHud(inside: Bld | null) {
   const day = Math.floor(gameMin / 1440) + 1, h = Math.floor(gameMin / 60) % 24, mi = Math.floor(gameMin) % 60;
   $('clock').textContent = `第 ${day} 天 ${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')} ${isNight() ? '🌙 宵禁' : '☀'}`;
   const alive = sols.filter(s => s.state !== 'dead').length;
-  $('objective').textContent = `已解放街區 ${liberated.size} / ${SX * SZ}｜殘存佔領軍 ${alive}`;
+  $('objective').textContent = `已奪回街區 ${liberated.size} / ${SX * SZ}｜殘存佔領軍 ${alive}`;
   const eq = player.equip ? ITEMS[player.equip] : null; $('equip').innerHTML = `武器：<b>${eq ? eq.name : '徒手'}</b>${eq && eq.kind === 'gun' ? `　彈藥 ${player.inv[eq.ammo!] || 0}` : ''}　負重 ${weight().toFixed(1)}kg${player.light ? '　🔦' : ''}`;
   const c = nearestCont(), d = nearestDoor(); const pr = $('prompt');
   if (c && !panelOpen) { pr.style.display = 'block'; pr.textContent = `[E] 搜刮 ${c.label}${Object.keys(c.items).length ? '' : '（空）'}`; }
@@ -553,7 +564,7 @@ function drawHud(inside: Bld | null) {
 function die() {
   dead = true; localStorage.removeItem(SAVE); closePanel();
   const t = $('title'); t.style.display = 'flex'; const day = Math.floor(gameMin / 1440) + 1;
-  t.innerHTML = `<h1 style="color:#c33">你陣亡了</h1><h2>這就是你的結局。</h2><p>你在淪陷的台北撐過了 ${day} 天，擊倒 ${player.kills} 名佔領軍，解放了 ${liberated.size} 個街區。</p><button onclick="location.reload()">重新開始（新的倖存者）</button>`;
+  t.innerHTML = `<h1 style="color:#c33">你陣亡了</h1><h2>這就是你的結局。</h2><p>你在淪陷的台北撐過了 ${day} 天，擊倒 ${player.kills} 名佔領軍，奪回了 ${liberated.size} 個街區。</p><button onclick="location.reload()">重新開始（新的倖存者）</button>`;
 }
 function loop() { const dt = Math.min(clock.getDelta(), 0.05); update(dt); renderer.render(scene, camera); requestAnimationFrame(loop); }
 
@@ -584,6 +595,7 @@ async function boot() {
   decay = buildDecay({ scene, rnd, pip, bldAt, addSeg: (q, low) => addSeg(q, low), merge: mergeGeometries, roads, blds, RW: ROADW, center: start.c, R: 140, doors: doors.map(d => d.p) });
   checkpoints = decay.checkpoints;
   alley = buildAlley({ poles: decay.polePos, scene, rnd, pip, bldAt, addSeg: (q, low) => addSeg(q, low), merge: mergeGeometries, roads, blds, RW: ROADW, center: start.c, R: 85, doors: doors.map(d => d.p) });
+  facade = buildFacade({ scene, pip, bldAt, merge: mergeGeometries, roads, blds, RW: ROADW, center: start.c, R: 110 }); console.log('facade', JSON.stringify(facade.stats));
   // navigation grid (built after all collision geometry exists)
   nav = new Nav(start.c[0] - 170, start.c[1] - 170, start.c[0] + 170, start.c[1] + 170, 0.5); for (const q of segs) nav.markSeg(q.a, q.b, 1);
   spawnSoldiers(new Set(sv?.dead || []));
@@ -609,7 +621,7 @@ async function boot() {
   const h = document.createElement('div'); h.className = 'selh'; h.textContent = sv ? '或建立新的倖存者：' : '選擇你的倖存者：'; btns.appendChild(h); btns.appendChild(sel);
   camera.position.copy(player.pos).add(CAM_OFF); camera.lookAt(player.pos);
   addEventListener('beforeunload', save);
-  (window as any).__game = { player, sols, blds, conts, nav, started: () => started, go, vehicles, decay: () => decay, alley: () => alley, camera, CAM_OFF, setTime: (m: number) => { gameMin = m; }, UT, start: () => start!.c, scene, gm: () => gameMin, tp: (x: number, z: number) => player.pos.set(x, 0, z) };
+  (window as any).__game = { player, sols, blds, conts, nav, started: () => started, go, vehicles, decay: () => decay, alley: () => alley, facade: () => facade, camera, CAM_OFF, setTime: (m: number) => { gameMin = m; }, UT, start: () => start!.c, scene, gm: () => gameMin, tp: (x: number, z: number) => player.pos.set(x, 0, z) };
 }
 boot().catch(e => { console.error(e); $('loadmsg').textContent = '載入失敗：' + e; });
 loop();
