@@ -6,142 +6,611 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 type Seg = [number, number, number, number, number, string, number, string, number?, number?];
 type Node = [number, number, number, [number, number, number][], number?];
 type TileData = { tx: number; tz: number; seed: number; segs: Seg[]; nodes: Node[]; clip?: [number, number, number][] };
-export type Wreck = { id: string; key: string; x: number; z: number; kind: 'car' | 'bus'; looted: boolean; g: THREE.Object3D };
+export type Wreck = {
+  id: string;
+  key: string;
+  x: number;
+  z: number;
+  kind: 'car' | 'bus';
+  looted: boolean;
+  g: THREE.Object3D;
+};
 export type Light = { x: number; z: number; ax: number; lamps: THREE.Mesh[] };
-type Tile = { key: string; g: THREE.Group; lights: Light[]; wrecks: Wreck[]; barriers: { id: string; key: string; x: number; z: number; g: THREE.Object3D }[]; geos: THREE.BufferGeometry[] };
-export type RoadDeps = { scene: THREE.Scene; base: string; bldAt: (x: number, z: number) => any; power: () => boolean; war: () => boolean };
-const M = (c: number, o: Partial<THREE.MeshStandardMaterialParameters> = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3, ...o });
-const MAT = { white: M(0xe8e6dc), yellow: M(0xd8b040), red: M(0xb02a22), green: M(0x2f7a4a, { roughness: 0.7 }), dark: M(0x1b1c1e, { roughness: 0.95 }), patch: M(0x3a3b3e, { roughness: 0.9 }), patch2: M(0x55565a), crack: M(0x121212),
-  puddle: new THREE.MeshStandardMaterial({ color: 0x1a2230, roughness: 0.04, metalness: 0.6, transparent: true, opacity: 0.85, polygonOffset: true, polygonOffsetFactor: -4 }), curb: new THREE.MeshStandardMaterial({ color: 0x9a988f, roughness: 0.9 }),
-  pole: new THREE.MeshStandardMaterial({ color: 0x5a5e62, roughness: 0.6, metalness: 0.4 }), orange: new THREE.MeshStandardMaterial({ color: 0xe07a20, roughness: 0.6 }), mirror: new THREE.MeshStandardMaterial({ color: 0xc8d4dc, roughness: 0.05, metalness: 0.95 }),
-  wood: new THREE.MeshStandardMaterial({ color: 0x7a5a34, roughness: 0.9 }), wire: new THREE.MeshStandardMaterial({ color: 0x8a8a8a, metalness: 0.7, roughness: 0.4 }), sand: new THREE.MeshStandardMaterial({ color: 0x8a7a54, roughness: 1 }),
-  burnt: new THREE.MeshStandardMaterial({ color: 0x1e1a18, roughness: 1 }), rust: new THREE.MeshStandardMaterial({ color: 0x5a3020, roughness: 1 }), crater: M(0x0e0d0c, { roughness: 1 }), rubble: new THREE.MeshStandardMaterial({ color: 0x5a5650, roughness: 1 }),
-  housing: new THREE.MeshStandardMaterial({ color: 0x24282a, roughness: 0.6 }), scoot: new THREE.MeshStandardMaterial({ color: 0x8a9aa8, roughness: 0.5 }) };
-const LAMP = { r: [new THREE.MeshStandardMaterial({ color: 0x3a1010, emissive: 0xff2010, emissiveIntensity: 0 }), 0xff2010], y: [new THREE.MeshStandardMaterial({ color: 0x3a3010, emissive: 0xffb000, emissiveIntensity: 0 }), 0xffb000], g: [new THREE.MeshStandardMaterial({ color: 0x103a20, emissive: 0x20ff80, emissiveIntensity: 0 }), 0x20ff80] } as const;
+type Tile = {
+  key: string;
+  g: THREE.Group;
+  lights: Light[];
+  wrecks: Wreck[];
+  barriers: { id: string; key: string; x: number; z: number; g: THREE.Object3D }[];
+  geos: THREE.BufferGeometry[];
+};
+export type RoadDeps = {
+  scene: THREE.Scene;
+  base: string;
+  bldAt: (x: number, z: number) => any;
+  power: () => boolean;
+  war: () => boolean;
+};
+const M = (c: number, o: Partial<THREE.MeshStandardMaterialParameters> = {}) =>
+  new THREE.MeshStandardMaterial({
+    color: c,
+    roughness: 0.85,
+    polygonOffset: true,
+    polygonOffsetFactor: -3,
+    polygonOffsetUnits: -3,
+    ...o,
+  });
+const MAT = {
+  white: M(0xe8e6dc),
+  yellow: M(0xd8b040),
+  red: M(0xb02a22),
+  green: M(0x2f7a4a, { roughness: 0.7 }),
+  dark: M(0x1b1c1e, { roughness: 0.95 }),
+  patch: M(0x3a3b3e, { roughness: 0.9 }),
+  patch2: M(0x55565a),
+  crack: M(0x121212),
+  puddle: new THREE.MeshStandardMaterial({
+    color: 0x1a2230,
+    roughness: 0.04,
+    metalness: 0.6,
+    transparent: true,
+    opacity: 0.85,
+    polygonOffset: true,
+    polygonOffsetFactor: -4,
+  }),
+  curb: new THREE.MeshStandardMaterial({ color: 0x9a988f, roughness: 0.9 }),
+  pole: new THREE.MeshStandardMaterial({ color: 0x5a5e62, roughness: 0.6, metalness: 0.4 }),
+  orange: new THREE.MeshStandardMaterial({ color: 0xe07a20, roughness: 0.6 }),
+  mirror: new THREE.MeshStandardMaterial({ color: 0xc8d4dc, roughness: 0.05, metalness: 0.95 }),
+  wood: new THREE.MeshStandardMaterial({ color: 0x7a5a34, roughness: 0.9 }),
+  wire: new THREE.MeshStandardMaterial({ color: 0x8a8a8a, metalness: 0.7, roughness: 0.4 }),
+  sand: new THREE.MeshStandardMaterial({ color: 0x8a7a54, roughness: 1 }),
+  burnt: new THREE.MeshStandardMaterial({ color: 0x1e1a18, roughness: 1 }),
+  rust: new THREE.MeshStandardMaterial({ color: 0x5a3020, roughness: 1 }),
+  crater: M(0x0e0d0c, { roughness: 1 }),
+  rubble: new THREE.MeshStandardMaterial({ color: 0x5a5650, roughness: 1 }),
+  housing: new THREE.MeshStandardMaterial({ color: 0x24282a, roughness: 0.6 }),
+  scoot: new THREE.MeshStandardMaterial({ color: 0x8a9aa8, roughness: 0.5 }),
+};
+const LAMP = {
+  r: [new THREE.MeshStandardMaterial({ color: 0x3a1010, emissive: 0xff2010, emissiveIntensity: 0 }), 0xff2010],
+  y: [new THREE.MeshStandardMaterial({ color: 0x3a3010, emissive: 0xffb000, emissiveIntensity: 0 }), 0xffb000],
+  g: [new THREE.MeshStandardMaterial({ color: 0x103a20, emissive: 0x20ff80, emissiveIntensity: 0 }), 0x20ff80],
+} as const;
 // lamp materials per phase: shared so a single update drives every light
-const LM = { r0: LAMP.r[0], y0: LAMP.y[0], g0: LAMP.g[0], r1: LAMP.r[0].clone(), y1: LAMP.y[0].clone(), g1: LAMP.g[0].clone() };
+const LM = {
+  r0: LAMP.r[0],
+  y0: LAMP.y[0],
+  g0: LAMP.g[0],
+  r1: LAMP.r[0].clone(),
+  y1: LAMP.y[0].clone(),
+  g1: LAMP.g[0].clone(),
+};
 const SAVE = 'dt-tiles-v1';
 export class RoadTiles {
-  size = 200; have = new Set<string>(); tiles = new Map<string, Tile>(); loading = new Set<string>(); cache = new Map<string, TileData>();
-  state: Record<string, string[]> = {}; cur = ''; phase = 0; stats = { loads: 0, unloads: 0, built: 0 };
-  constructor(public d: RoadDeps) { try { this.state = JSON.parse(localStorage.getItem(SAVE) || '{}'); } catch { this.state = {}; } }
-  async init() { const ix = await (await fetch(this.d.base + 'data/tiles/index.json')).json(); this.size = ix.size; for (const k of ix.tiles) this.have.add(k); }
-  reset() { this.state = {}; localStorage.removeItem(SAVE); for (const k of [...this.tiles.keys()]) this.unload(k); this.cur = ''; }
-  rebuild() { for (const k of [...this.tiles.keys()]) this.unload(k); this.cur = ''; }
-  mark(key: string, id: string) { (this.state[key] ||= []).push(id); localStorage.setItem(SAVE, JSON.stringify(this.state)); }
-  done(key: string, id: string) { return !!this.state[key]?.includes(id); }
+  size = 200;
+  have = new Set<string>();
+  tiles = new Map<string, Tile>();
+  loading = new Set<string>();
+  cache = new Map<string, TileData>();
+  state: Record<string, string[]> = {};
+  cur = '';
+  phase = 0;
+  stats = { loads: 0, unloads: 0, built: 0 };
+  constructor(public d: RoadDeps) {
+    try {
+      this.state = JSON.parse(localStorage.getItem(SAVE) || '{}');
+    } catch {
+      this.state = {};
+    }
+  }
+  async init() {
+    const ix = await (await fetch(this.d.base + 'data/tiles/index.json')).json();
+    this.size = ix.size;
+    for (const k of ix.tiles) this.have.add(k);
+  }
+  reset() {
+    this.state = {};
+    localStorage.removeItem(SAVE);
+    for (const k of [...this.tiles.keys()]) this.unload(k);
+    this.cur = '';
+  }
+  rebuild() {
+    for (const k of [...this.tiles.keys()]) this.unload(k);
+    this.cur = '';
+  }
+  mark(key: string, id: string) {
+    (this.state[key] ||= []).push(id);
+    localStorage.setItem(SAVE, JSON.stringify(this.state));
+  }
+  done(key: string, id: string) {
+    return !!this.state[key]?.includes(id);
+  }
   update(px: number, pz: number, dt: number) {
-    const tx = Math.floor(px / this.size), tz = Math.floor(pz / this.size), ck = tx + '_' + tz;
-    if (ck !== this.cur) { this.cur = ck; const want = new Set<string>(); for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) want.add((tx + i) + '_' + (tz + j));
+    const tx = Math.floor(px / this.size),
+      tz = Math.floor(pz / this.size),
+      ck = tx + '_' + tz;
+    if (ck !== this.cur) {
+      this.cur = ck;
+      const want = new Set<string>();
+      for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) want.add(tx + i + '_' + (tz + j));
       for (const k of [...this.tiles.keys()]) if (!want.has(k)) this.unload(k);
-      for (const k of want) if (this.have.has(k) && !this.tiles.has(k) && !this.loading.has(k)) this.load(k); }
+      for (const k of want) if (this.have.has(k) && !this.tiles.has(k) && !this.loading.has(k)) this.load(k);
+    }
     // traffic-light cycle: 0-12 s axis A green, 12-15 amber, 15-27 axis B green, 27-30 amber; all dark after the blackout
-    this.phase = (this.phase + dt) % 30; const on = this.d.power(), p = this.phase;
-    const a = p < 12 ? 'g' : p < 15 ? 'y' : 'r', b = p < 15 ? 'r' : p < 27 ? 'g' : 'y';
-    for (const [k, m] of [['r0', a === 'r'], ['y0', a === 'y'], ['g0', a === 'g'], ['r1', b === 'r'], ['y1', b === 'y'], ['g1', b === 'g']] as const) (LM as any)[k].emissiveIntensity = on && m ? 2.2 : 0;
+    this.phase = (this.phase + dt) % 30;
+    const on = this.d.power(),
+      p = this.phase;
+    const a = p < 12 ? 'g' : p < 15 ? 'y' : 'r',
+      b = p < 15 ? 'r' : p < 27 ? 'g' : 'y';
+    for (const [k, m] of [
+      ['r0', a === 'r'],
+      ['y0', a === 'y'],
+      ['g0', a === 'g'],
+      ['r1', b === 'r'],
+      ['y1', b === 'y'],
+      ['g1', b === 'g'],
+    ] as const)
+      (LM as any)[k].emissiveIntensity = on && m ? 2.2 : 0;
   }
   /** can a car moving along (ux,uz) proceed past a signalised junction? */
-  green(ux: number, uz: number) { if (!this.d.power()) return true; const axA = Math.abs(ux) >= Math.abs(uz); const p = this.phase; return axA ? p < 13 : p >= 15 && p < 28; }
-  lightsNear(x: number, z: number, r: number) { const o: Light[] = []; for (const t of this.tiles.values()) for (const l of t.lights) if (Math.hypot(l.x - x, l.z - z) < r) o.push(l); return o; }
-  wreckNear(x: number, z: number, r = 2.6) { let b: Wreck | null = null, bd = r; for (const t of this.tiles.values()) for (const w of t.wrecks) { const d = Math.hypot(w.x - x, w.z - z); if (d < bd) { bd = d; b = w; } } return b; }
-  barrierAt(x: number, z: number, r = 1.2) { for (const t of this.tiles.values()) for (const b of t.barriers) if (Math.hypot(b.x - x, b.z - z) < r) return b; return null; }
-  loot(w: Wreck) { if (w.looted) return false; w.looted = true; this.mark(w.key, w.id); w.g.traverse(o => { if ((o as any).userData.trunk) (o as THREE.Mesh).rotation.x = -1.1; }); return true; }
-  clear(key: string, id: string) { const t = this.tiles.get(key); if (!t) return; const i = t.barriers.findIndex(b => b.id === id); if (i < 0) return; t.g.remove(t.barriers[i].g); t.barriers.splice(i, 1); this.mark(key, id); }
-  private async load(k: string) { this.loading.add(k); try { const td = this.cache.get(k) || await (await fetch(this.d.base + `data/tiles/${k}.json`)).json(); this.cache.set(k, td); if (this.loading.has(k) && !this.tiles.has(k)) { this.tiles.set(k, this.build(k, td)); this.stats.loads++; } } catch (e) { console.warn('tile', k, e); } this.loading.delete(k); }
-  private unload(k: string) { const t = this.tiles.get(k); this.loading.delete(k); if (!t) return; this.d.scene.remove(t.g); t.g.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh && !(m.geometry as any).shared) m.geometry.dispose(); }); this.tiles.delete(k); this.stats.unloads++; }
+  green(ux: number, uz: number) {
+    if (!this.d.power()) return true;
+    const axA = Math.abs(ux) >= Math.abs(uz);
+    const p = this.phase;
+    return axA ? p < 13 : p >= 15 && p < 28;
+  }
+  lightsNear(x: number, z: number, r: number) {
+    const o: Light[] = [];
+    for (const t of this.tiles.values()) for (const l of t.lights) if (Math.hypot(l.x - x, l.z - z) < r) o.push(l);
+    return o;
+  }
+  wreckNear(x: number, z: number, r = 2.6) {
+    let b: Wreck | null = null,
+      bd = r;
+    for (const t of this.tiles.values())
+      for (const w of t.wrecks) {
+        const d = Math.hypot(w.x - x, w.z - z);
+        if (d < bd) {
+          bd = d;
+          b = w;
+        }
+      }
+    return b;
+  }
+  barrierAt(x: number, z: number, r = 1.2) {
+    for (const t of this.tiles.values()) for (const b of t.barriers) if (Math.hypot(b.x - x, b.z - z) < r) return b;
+    return null;
+  }
+  loot(w: Wreck) {
+    if (w.looted) return false;
+    w.looted = true;
+    this.mark(w.key, w.id);
+    w.g.traverse(o => {
+      if ((o as any).userData.trunk) (o as THREE.Mesh).rotation.x = -1.1;
+    });
+    return true;
+  }
+  clear(key: string, id: string) {
+    const t = this.tiles.get(key);
+    if (!t) return;
+    const i = t.barriers.findIndex(b => b.id === id);
+    if (i < 0) return;
+    t.g.remove(t.barriers[i].g);
+    t.barriers.splice(i, 1);
+    this.mark(key, id);
+  }
+  private async load(k: string) {
+    this.loading.add(k);
+    try {
+      const td = this.cache.get(k) || (await (await fetch(this.d.base + `data/tiles/${k}.json`)).json());
+      this.cache.set(k, td);
+      if (this.loading.has(k) && !this.tiles.has(k)) {
+        this.tiles.set(k, this.build(k, td));
+        this.stats.loads++;
+      }
+    } catch (e) {
+      console.warn('tile', k, e);
+    }
+    this.loading.delete(k);
+  }
+  private unload(k: string) {
+    const t = this.tiles.get(k);
+    this.loading.delete(k);
+    if (!t) return;
+    this.d.scene.remove(t.g);
+    t.g.traverse(o => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh && !(m.geometry as any).shared) m.geometry.dispose();
+    });
+    this.tiles.delete(k);
+    this.stats.unloads++;
+  }
   private build(key: string, td: TileData): Tile {
-    let sd = td.seed % 2147483646 + 1; const r = () => (sd = (sd * 16807) % 2147483647) / 2147483647; const bldAt = this.d.bldAt; const war = this.d.war();
-    const G: Record<string, THREE.BufferGeometry[]> = {}; const put = (m: string, g: THREE.BufferGeometry) => (G[m] ||= []).push(g);
-    const quad = (m: string, x: number, z: number, ang: number, l: number, w: number, y = 0.045) => { const g = new THREE.PlaneGeometry(l, w); g.rotateX(-Math.PI / 2); g.rotateY(-ang); g.translate(x, y, z); put(m, g); };
-    const disc = (m: string, x: number, z: number, rad: number, y = 0.047, seg = 14) => { const g = new THREE.CircleGeometry(rad, seg); g.rotateX(-Math.PI / 2); g.translate(x, y, z); put(m, g); };
-    const solid = (m: string, g: THREE.BufferGeometry, x: number, y: number, z: number, ry = 0) => { g.rotateY(ry); g.translate(x, y, z); put(m, g); };
+    let sd = (td.seed % 2147483646) + 1;
+    const r = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+    const bldAt = this.d.bldAt;
+    const war = this.d.war();
+    const G: Record<string, THREE.BufferGeometry[]> = {};
+    const put = (m: string, g: THREE.BufferGeometry) => (G[m] ||= []).push(g);
+    const quad = (m: string, x: number, z: number, ang: number, l: number, w: number, y = 0.045) => {
+      const g = new THREE.PlaneGeometry(l, w);
+      g.rotateX(-Math.PI / 2);
+      g.rotateY(-ang);
+      g.translate(x, y, z);
+      put(m, g);
+    };
+    const disc = (m: string, x: number, z: number, rad: number, y = 0.047, seg = 14) => {
+      const g = new THREE.CircleGeometry(rad, seg);
+      g.rotateX(-Math.PI / 2);
+      g.translate(x, y, z);
+      put(m, g);
+    };
+    const solid = (m: string, g: THREE.BufferGeometry, x: number, y: number, z: number, ry = 0) => {
+      g.rotateY(ry);
+      g.translate(x, y, z);
+      put(m, g);
+    };
     const tile: Tile = { key, g: new THREE.Group(), lights: [], wrecks: [], barriers: [], geos: [] };
     const clip = td.clip || [];
     for (const [ax, az, bx, bz, w0, cls, , , f = 0, ow = w0] of td.segs) {
-      const L = Math.hypot(bx - ax, bz - az), ux = (bx - ax) / L, uz = (bz - az) / L, nx = -uz, nz = ux, ang = Math.atan2(uz, ux);
+      const L = Math.hypot(bx - ax, bz - az),
+        ux = (bx - ax) / L,
+        uz = (bz - az) / L,
+        nx = -uz,
+        nz = ux,
+        ang = Math.atan2(uz, ux);
       const at = (t: number, o: number): [number, number] => [ax + ux * t + nx * o, az + uz * t + nz * o];
       // v19.1: visible spans along the segment = [0,L] minus junction areas (markings stop before the zebra)
       let spans: [number, number][] = [[0, L]];
-      for (const [cx, cz, cr] of clip) { const rx = cx - ax, rz = cz - az, tc = rx * ux + rz * uz, lat = Math.abs(rx * nx + rz * nz); if (lat >= cr + w0 / 2) continue;
-        const h = Math.sqrt(Math.max(0, cr * cr - Math.min(lat, cr) ** 2)) + w0 / 4, t0 = tc - h, t1 = tc + h; const nsp: [number, number][] = [];
-        for (const [s0, s1] of spans) { if (t1 <= s0 || t0 >= s1) { nsp.push([s0, s1]); continue; } if (t0 > s0) nsp.push([s0, t0]); if (t1 < s1) nsp.push([t1, s1]); } spans = nsp.filter(([a, b]) => b - a > 0.6); }
+      for (const [cx, cz, cr] of clip) {
+        const rx = cx - ax,
+          rz = cz - az,
+          tc = rx * ux + rz * uz,
+          lat = Math.abs(rx * nx + rz * nz);
+        if (lat >= cr + w0 / 2) continue;
+        const h = Math.sqrt(Math.max(0, cr * cr - Math.min(lat, cr) ** 2)) + w0 / 4,
+          t0 = tc - h,
+          t1 = tc + h;
+        const nsp: [number, number][] = [];
+        for (const [s0, s1] of spans) {
+          if (t1 <= s0 || t0 >= s1) {
+            nsp.push([s0, s1]);
+            continue;
+          }
+          if (t0 > s0) nsp.push([s0, t0]);
+          if (t1 < s1) nsp.push([t1, s1]);
+        }
+        spans = nsp.filter(([a, b]) => b - a > 0.6);
+      }
       const inSpan = (t: number) => spans.some(([a, b]) => t >= a && t <= b);
-      const line = (m: string, o: number, wd: number, y = 0.045, frac = 1) => { for (const [a, b] of spans) { const l = (b - a) * frac; const [x, z] = at((a + b) / 2, o); quad(m, x, z, ang, l, wd, y); } };
+      const line = (m: string, o: number, wd: number, y = 0.045, frac = 1) => {
+        for (const [a, b] of spans) {
+          const l = (b - a) * frac;
+          const [x, z] = at((a + b) / 2, o);
+          quad(m, x, z, ang, l, wd, y);
+        }
+      };
       if ((cls === 'main' || cls === 'street') && f !== 2) {
         // f: 0 normal two-way, 3/4 = one half of a dual carriageway (outer side +1 / -1), 2 = duplicate way (no markings)
-        const half = f === 3 || f === 4, outer = f === 4 ? -1 : 1; const w = half ? Math.max(6, ow) : w0;
-        if (!half) { const lanes = w >= 16 ? 2 : 1; // lanes per direction
-          if (w < 12) for (let t = 1; t < L - 1; t += 6) { if (!inSpan(t) || !inSpan(t + 3)) continue; const [x, z] = at(t + 1.5, 0); quad('yellow', x, z, ang, 3, 0.14); } // dashed yellow centre
+        const half = f === 3 || f === 4,
+          outer = f === 4 ? -1 : 1;
+        const w = half ? Math.max(6, ow) : w0;
+        if (!half) {
+          const lanes = w >= 16 ? 2 : 1; // lanes per direction
+          if (w < 12)
+            for (let t = 1; t < L - 1; t += 6) {
+              if (!inSpan(t) || !inSpan(t + 3)) continue;
+              const [x, z] = at(t + 1.5, 0);
+              quad('yellow', x, z, ang, 3, 0.14);
+            } // dashed yellow centre
           else line('yellow', 0, 0.14);
-          if (lanes === 2) for (const sgn of [-1, 1]) for (let t = 1; t < L - 1; t += 8) { if (!inSpan(t) || !inSpan(t + 4)) continue; const [x, z] = at(t + 2, sgn * w / 4); quad('white', x, z, ang, 4, 0.12); } // lane dividers
-          for (const sgn of [-1, 1]) { line('white', sgn * (w / 2 - 0.25), 0.1);
-            const [cx, cz] = at(L / 2, sgn * (w / 2 + 0.08)); if (!bldAt(cx, cz)) solid('curb', new THREE.BoxGeometry(L, 0.14, 0.18), cx, 0.07, cz, -ang);
-            if (w >= 12 && r() < 0.35) line('red', sgn * (w / 2 - 0.05), 0.12, 0.05, 0.8); }
-          if (w >= 16 && r() < 0.5) line('green', w / 2 - 1.1, 1.4, 0.044, 0.9); }
-        else { // one carriageway of a divided road: outer edge + curb on the outside, single yellow along the median side, one dashed divider
-          line('white', outer * (w / 2 - 0.25), 0.1); line('yellow', -outer * (w / 2 - 0.3), 0.12, 0.046);
-          const [cx, cz] = at(L / 2, outer * (w / 2 + 0.08)); if (!bldAt(cx, cz)) solid('curb', new THREE.BoxGeometry(L, 0.14, 0.18), cx, 0.07, cz, -ang);
-          if (w >= 8) for (let t = 1; t < L - 1; t += 8) { if (!inSpan(t) || !inSpan(t + 4)) continue; const [x, z] = at(t + 2, 0); quad('white', x, z, ang, 4, 0.12); }
-          if (r() < 0.35) line('red', outer * (w / 2 - 0.05), 0.12, 0.05, 0.8); }
-      } else if (cls === 'lane' || cls === 'alley') { const w = w0;
+          if (lanes === 2)
+            for (const sgn of [-1, 1])
+              for (let t = 1; t < L - 1; t += 8) {
+                if (!inSpan(t) || !inSpan(t + 4)) continue;
+                const [x, z] = at(t + 2, (sgn * w) / 4);
+                quad('white', x, z, ang, 4, 0.12);
+              } // lane dividers
+          for (const sgn of [-1, 1]) {
+            line('white', sgn * (w / 2 - 0.25), 0.1);
+            const [cx, cz] = at(L / 2, sgn * (w / 2 + 0.08));
+            if (!bldAt(cx, cz)) solid('curb', new THREE.BoxGeometry(L, 0.14, 0.18), cx, 0.07, cz, -ang);
+            if (w >= 12 && r() < 0.35) line('red', sgn * (w / 2 - 0.05), 0.12, 0.05, 0.8);
+          }
+          if (w >= 16 && r() < 0.5) line('green', w / 2 - 1.1, 1.4, 0.044, 0.9);
+        } else {
+          // one carriageway of a divided road: outer edge + curb on the outside, single yellow along the median side, one dashed divider
+          line('white', outer * (w / 2 - 0.25), 0.1);
+          line('yellow', -outer * (w / 2 - 0.3), 0.12, 0.046);
+          const [cx, cz] = at(L / 2, outer * (w / 2 + 0.08));
+          if (!bldAt(cx, cz)) solid('curb', new THREE.BoxGeometry(L, 0.14, 0.18), cx, 0.07, cz, -ang);
+          if (w >= 8)
+            for (let t = 1; t < L - 1; t += 8) {
+              if (!inSpan(t) || !inSpan(t + 4)) continue;
+              const [x, z] = at(t + 2, 0);
+              quad('white', x, z, ang, 4, 0.12);
+            }
+          if (r() < 0.35) line('red', outer * (w / 2 - 0.05), 0.12, 0.05, 0.8);
+        }
+      } else if (cls === 'lane' || cls === 'alley') {
+        const w = w0;
         for (const sgn of [-1, 1]) line('white', sgn * (w / 2 - 0.2), 0.08);
-        const ds = r() < 0.5 ? 1 : -1; for (let t = 1; t < L - 1; t += 1.2) { const [x, z] = at(t, ds * (w / 2 - 0.45)); if (!bldAt(x, z)) quad('dark', x, z, ang, 1.0, 0.35, 0.046); } // gutter drain grates
-        for (let t = 2; t < L - 2; t += 2.4 + r() * 6) if (r() < 0.35) { const [x, z] = at(t, -ds * (w / 2 - 0.7)); if (bldAt(x, z)) continue; // parked scooters along the alley wall
-          const g = new THREE.Group(); const b = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.45, 1.5), MAT.scoot); b.position.y = 0.45; g.add(b); const s = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.7), MAT.dark); s.position.set(0, 0.74, -0.2); g.add(s);
-          for (const zz of [-0.55, 0.55]) { const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.1, 10), MAT.dark); wh.rotation.z = Math.PI / 2; wh.position.set(0, 0.22, zz); g.add(wh); }
-          g.position.set(x, 0, z); g.rotation.y = Math.atan2(nx, nz) + (r() - 0.5) * 0.4; ((b.material as any).color as THREE.Color); tile.g.add(g); }
+        const ds = r() < 0.5 ? 1 : -1;
+        for (let t = 1; t < L - 1; t += 1.2) {
+          const [x, z] = at(t, ds * (w / 2 - 0.45));
+          if (!bldAt(x, z)) quad('dark', x, z, ang, 1.0, 0.35, 0.046);
+        } // gutter drain grates
+        for (let t = 2; t < L - 2; t += 2.4 + r() * 6)
+          if (r() < 0.35) {
+            const [x, z] = at(t, -ds * (w / 2 - 0.7));
+            if (bldAt(x, z)) continue; // parked scooters along the alley wall
+            const g = new THREE.Group();
+            const b = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.45, 1.5), MAT.scoot);
+            b.position.y = 0.45;
+            g.add(b);
+            const s = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.7), MAT.dark);
+            s.position.set(0, 0.74, -0.2);
+            g.add(s);
+            for (const zz of [-0.55, 0.55]) {
+              const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.1, 10), MAT.dark);
+              wh.rotation.z = Math.PI / 2;
+              wh.position.set(0, 0.22, zz);
+              g.add(wh);
+            }
+            g.position.set(x, 0, z);
+            g.rotation.y = Math.atan2(nx, nz) + (r() - 0.5) * 0.4;
+            (b.material as any).color as THREE.Color;
+            tile.g.add(g);
+          }
       }
-      const w = w0; if (w < 4) continue;
+      const w = w0;
+      if (w < 4) continue;
       // surface wear
-      for (let t = 3; t < L - 2; t += 9) { const o = (r() - 0.5) * (w - 1.5);
-        const q = r(); const [x, z] = at(t + r() * 5, o);
-        if (q < 0.12) { disc('dark', x, z, 0.35, 0.048); disc('patch2', x, z, 0.3, 0.049); } // manhole
-        else if (q < 0.3) quad(r() < 0.5 ? 'patch' : 'patch2', x, z, ang + (r() - 0.5) * 0.2, 1 + r() * 3, 0.8 + r() * 1.5, 0.043); // asphalt patch
-        else if (q < 0.45) for (let c = 0; c < 4; c++) { const [cx, cz] = at(t + c * 0.6, o + (r() - 0.5) * 0.5); quad('crack', cx, cz, ang + (r() - 0.5) * 1.6, 0.7, 0.03, 0.047); } // crack
-        else if (q < 0.53) { const g = new THREE.CircleGeometry(0.6 + r() * 1.2, 12); g.scale(1, 0.6, 1); g.rotateX(-Math.PI / 2); g.translate(x, 0.05, z); put('puddle', g); } } // puddle
+      for (let t = 3; t < L - 2; t += 9) {
+        const o = (r() - 0.5) * (w - 1.5);
+        const q = r();
+        const [x, z] = at(t + r() * 5, o);
+        if (q < 0.12) {
+          disc('dark', x, z, 0.35, 0.048);
+          disc('patch2', x, z, 0.3, 0.049);
+        } // manhole
+        else if (q < 0.3)
+          quad(r() < 0.5 ? 'patch' : 'patch2', x, z, ang + (r() - 0.5) * 0.2, 1 + r() * 3, 0.8 + r() * 1.5, 0.043); // asphalt patch
+        else if (q < 0.45)
+          for (let c = 0; c < 4; c++) {
+            const [cx, cz] = at(t + c * 0.6, o + (r() - 0.5) * 0.5);
+            quad('crack', cx, cz, ang + (r() - 0.5) * 1.6, 0.7, 0.03, 0.047);
+          } // crack
+        else if (q < 0.53) {
+          const g = new THREE.CircleGeometry(0.6 + r() * 1.2, 12);
+          g.scale(1, 0.6, 1);
+          g.rotateX(-Math.PI / 2);
+          g.translate(x, 0.05, z);
+          put('puddle', g);
+        }
+      } // puddle
       // war damage on main roads
-      if (war && w >= 9 && L > 12) { const q = r();
-        if (q < 0.1) { const [x, z] = at(L * (0.3 + r() * 0.4), (r() - 0.5) * (w - 4)); disc('crater', x, z, 1.4 + r(), 0.051, 16); for (let k = 0; k < 9; k++) { const a = r() * 6.28, d = 1.6 + r() * 1.4; solid('rubble', new THREE.DodecahedronGeometry(0.12 + r() * 0.2), x + Math.cos(a) * d, 0.1, z + Math.sin(a) * d, r()); } }
-        else if (q < 0.18) { const [x, z] = at(L * (0.3 + r() * 0.4), 0); this.barrierRow(tile, key, `b${ax | 0}_${az | 0}`, x, z, ang, w, r); }
-        else if (q < 0.26 || (q < 0.3 && w >= 12)) { const bus = q >= 0.26; const [x, z] = at(L * (0.2 + r() * 0.6), (r() < 0.5 ? 1 : -1) * (w / 2 - (bus ? 1.8 : 1.5))); if (!bldAt(x, z)) this.wreck(tile, key, `w${x | 0}_${z | 0}`, x, z, Math.atan2(ux, uz) + (r() - 0.5) * 0.7, bus, r); } }
+      if (war && w >= 9 && L > 12) {
+        const q = r();
+        if (q < 0.1) {
+          const [x, z] = at(L * (0.3 + r() * 0.4), (r() - 0.5) * (w - 4));
+          disc('crater', x, z, 1.4 + r(), 0.051, 16);
+          for (let k = 0; k < 9; k++) {
+            const a = r() * 6.28,
+              d = 1.6 + r() * 1.4;
+            solid(
+              'rubble',
+              new THREE.DodecahedronGeometry(0.12 + r() * 0.2),
+              x + Math.cos(a) * d,
+              0.1,
+              z + Math.sin(a) * d,
+              r(),
+            );
+          }
+        } else if (q < 0.18) {
+          const [x, z] = at(L * (0.3 + r() * 0.4), 0);
+          this.barrierRow(tile, key, `b${ax | 0}_${az | 0}`, x, z, ang, w, r);
+        } else if (q < 0.26 || (q < 0.3 && w >= 12)) {
+          const bus = q >= 0.26;
+          const [x, z] = at(L * (0.2 + r() * 0.6), (r() < 0.5 ? 1 : -1) * (w / 2 - (bus ? 1.8 : 1.5)));
+          if (!bldAt(x, z))
+            this.wreck(tile, key, `w${x | 0}_${z | 0}`, x, z, Math.atan2(ux, uz) + (r() - 0.5) * 0.7, bus, r);
+        }
+      }
     }
     // junctions: zebras, stop lines, 待轉格, signals; mirrors at alley corners
     for (const [x, z, w, arms, rad = w / 2] of td.nodes) {
-      if (w >= 9) { const sig = arms.length >= 3;
-        for (const [ux, uz, aw] of arms) { const ang = Math.atan2(uz, ux), nx = -uz, nz = ux; const d0 = Math.max(rad, aw / 2) + 1.6; const hw = aw / 2 - 0.3; if (aw < 6) continue;
-          for (let o = -hw + 0.3; o < hw; o += 0.9) quad('white', x + ux * d0 + nx * o, z + uz * d0 + nz * o, ang, 2.6, 0.45); // zebra
-          quad('white', x + ux * (d0 + 2.0) + nx * hw / 2, z + uz * (d0 + 2.0) + nz * hw / 2, ang + Math.PI / 2, hw, 0.3); // stop line (right half)
-          if (aw >= 12) { const bx = x + ux * (d0 - 2.6) - nx * (hw * 0.6), bz = z + uz * (d0 - 2.6) - nz * (hw * 0.6); for (const [l, ww, oa, ob] of [[2.6, 0.08, 0, 0.9], [2.6, 0.08, 0, -0.9], [0.08, 1.8, 1.3, 0], [0.08, 1.8, -1.3, 0]] as const) quad('white', bx + ux * oa + nx * ob, bz + uz * oa + nz * ob, ang, l, ww, 0.046); } // 待轉格 (two-stage left-turn box)
-          if (sig) { const px = x + ux * (d0 + 2.6) + nx * (aw / 2 + 0.4), pz = z + uz * (d0 + 2.6) + nz * (aw / 2 + 0.4); if (bldAt(px, pz)) continue; this.signal(tile, px, pz, ang, Math.abs(ux) >= Math.abs(uz) ? 0 : 1); } } }
-      else if (arms.length >= 3) { const [ux, uz] = arms[0]; const px = x - uz * (w / 2 + 0.5) - ux * 0.5, pz = z + ux * (w / 2 + 0.5) - uz * 0.5; if (!bldAt(px, pz) && r() < 0.6) { // convex traffic mirror
-          const g = new THREE.Group(); const p = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.6, 6), MAT.orange); p.position.y = 1.3; g.add(p); const rim = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.04, 6, 18), MAT.orange); rim.position.set(0, 2.7, 0.06); g.add(rim);
-          const m = new THREE.Mesh(new THREE.SphereGeometry(0.34, 14, 8, 0, Math.PI * 2, 0, 0.6), MAT.mirror); m.rotation.x = Math.PI / 2; m.position.set(0, 2.7, 0.06); g.add(m); g.position.set(px, 0, pz); g.rotation.y = Math.atan2(x - px, z - pz); tile.g.add(g); } }
+      if (w >= 9) {
+        const sig = arms.length >= 3;
+        for (const [ux, uz, aw] of arms) {
+          const ang = Math.atan2(uz, ux),
+            nx = -uz,
+            nz = ux;
+          const d0 = Math.max(rad, aw / 2) + 1.6;
+          const hw = aw / 2 - 0.3;
+          if (aw < 6) continue;
+          for (let o = -hw + 0.3; o < hw; o += 0.9)
+            quad('white', x + ux * d0 + nx * o, z + uz * d0 + nz * o, ang, 2.6, 0.45); // zebra
+          quad(
+            'white',
+            x + ux * (d0 + 2.0) + (nx * hw) / 2,
+            z + uz * (d0 + 2.0) + (nz * hw) / 2,
+            ang + Math.PI / 2,
+            hw,
+            0.3,
+          ); // stop line (right half)
+          if (aw >= 12) {
+            const bx = x + ux * (d0 - 2.6) - nx * (hw * 0.6),
+              bz = z + uz * (d0 - 2.6) - nz * (hw * 0.6);
+            for (const [l, ww, oa, ob] of [
+              [2.6, 0.08, 0, 0.9],
+              [2.6, 0.08, 0, -0.9],
+              [0.08, 1.8, 1.3, 0],
+              [0.08, 1.8, -1.3, 0],
+            ] as const)
+              quad('white', bx + ux * oa + nx * ob, bz + uz * oa + nz * ob, ang, l, ww, 0.046);
+          } // 待轉格 (two-stage left-turn box)
+          if (sig) {
+            const px = x + ux * (d0 + 2.6) + nx * (aw / 2 + 0.4),
+              pz = z + uz * (d0 + 2.6) + nz * (aw / 2 + 0.4);
+            if (bldAt(px, pz)) continue;
+            this.signal(tile, px, pz, ang, Math.abs(ux) >= Math.abs(uz) ? 0 : 1);
+          }
+        }
+      } else if (arms.length >= 3) {
+        const [ux, uz] = arms[0];
+        const px = x - uz * (w / 2 + 0.5) - ux * 0.5,
+          pz = z + ux * (w / 2 + 0.5) - uz * 0.5;
+        if (!bldAt(px, pz) && r() < 0.6) {
+          // convex traffic mirror
+          const g = new THREE.Group();
+          const p = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.6, 6), MAT.orange);
+          p.position.y = 1.3;
+          g.add(p);
+          const rim = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.04, 6, 18), MAT.orange);
+          rim.position.set(0, 2.7, 0.06);
+          g.add(rim);
+          const m = new THREE.Mesh(new THREE.SphereGeometry(0.34, 14, 8, 0, Math.PI * 2, 0, 0.6), MAT.mirror);
+          m.rotation.x = Math.PI / 2;
+          m.position.set(0, 2.7, 0.06);
+          g.add(m);
+          g.position.set(px, 0, pz);
+          g.rotation.y = Math.atan2(x - px, z - pz);
+          tile.g.add(g);
+        }
+      }
     }
-    for (const [m, gs] of Object.entries(G)) { const me = new THREE.Mesh(mergeGeometries(gs), (MAT as any)[m]); me.receiveShadow = true; if (['curb', 'rubble'].includes(m)) me.castShadow = true; tile.g.add(me); gs.forEach(g => g.dispose()); }
-    tile.g.name = 'tile ' + key; this.d.scene.add(tile.g); this.stats.built++; return tile;
+    for (const [m, gs] of Object.entries(G)) {
+      const me = new THREE.Mesh(mergeGeometries(gs), (MAT as any)[m]);
+      me.receiveShadow = true;
+      if (['curb', 'rubble'].includes(m)) me.castShadow = true;
+      tile.g.add(me);
+      gs.forEach(g => g.dispose());
+    }
+    tile.g.name = 'tile ' + key;
+    this.d.scene.add(tile.g);
+    this.stats.built++;
+    return tile;
   }
   private signal(t: Tile, x: number, z: number, ang: number, ax: number) {
-    const g = new THREE.Group(); const p = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 5.2, 8), MAT.pole); p.position.y = 2.6; g.add(p);
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 3.2), MAT.pole); arm.position.set(0, 5.1, -1.6); g.add(arm);
-    const h = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.4, 0.3), MAT.housing); h.position.set(0, 4.85, -2.9); g.add(h); const lamps: THREE.Mesh[] = [];
-    (['r', 'y', 'g'] as const).forEach((c, i) => { const l = new THREE.Mesh(new THREE.CircleGeometry(0.13, 12), (LM as any)[c + ax]); l.position.set(-0.34 + i * 0.34, 4.85, -2.74); g.add(l); lamps.push(l); });
-    const pb = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.24, 0.12), MAT.housing); pb.position.set(0, 1.2, 0.1); g.add(pb); // pedestrian button box
-    g.position.set(x, 0, z); g.rotation.y = -ang - Math.PI / 2; g.traverse(o => { o.castShadow = true; }); t.g.add(g); t.lights.push({ x, z, ax, lamps });
+    const g = new THREE.Group();
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 5.2, 8), MAT.pole);
+    p.position.y = 2.6;
+    g.add(p);
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 3.2), MAT.pole);
+    arm.position.set(0, 5.1, -1.6);
+    g.add(arm);
+    const h = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.4, 0.3), MAT.housing);
+    h.position.set(0, 4.85, -2.9);
+    g.add(h);
+    const lamps: THREE.Mesh[] = [];
+    (['r', 'y', 'g'] as const).forEach((c, i) => {
+      const l = new THREE.Mesh(new THREE.CircleGeometry(0.13, 12), (LM as any)[c + ax]);
+      l.position.set(-0.34 + i * 0.34, 4.85, -2.74);
+      g.add(l);
+      lamps.push(l);
+    });
+    const pb = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.24, 0.12), MAT.housing);
+    pb.position.set(0, 1.2, 0.1);
+    g.add(pb); // pedestrian button box
+    g.position.set(x, 0, z);
+    g.rotation.y = -ang - Math.PI / 2;
+    g.traverse(o => {
+      o.castShadow = true;
+    });
+    t.g.add(g);
+    t.lights.push({ x, z, ax, lamps });
   }
   private barrierRow(t: Tile, key: string, id: string, x: number, z: number, ang: number, w: number, r: () => number) {
-    const nx = -Math.sin(ang), nz = Math.cos(ang); const n = Math.floor(w / 2.4);
-    for (let i = 0; i < n; i++) { const bid = id + '_' + i; if (this.done(key, bid)) continue; const o = -w / 2 + 1.2 + i * 2.4; const g = new THREE.Group();
-      if (r() < 0.75) { for (const s of [-1, 1]) for (const e of [-0.9, 0.9]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.3, 0.1), MAT.wood); leg.position.set(e, 0.55, 0); leg.rotation.x = s * 0.6; g.add(leg); } // 拒馬: X-legs + rail + razor wire
-        const rail = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.1, 0.1), MAT.wood); rail.position.y = 0.9; g.add(rail); const wire = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.015, 4, 10), MAT.wire); for (let k = -2; k <= 2; k++) { const c = wire.clone(); c.position.set(k * 0.4, 1.0, 0); c.rotation.y = Math.PI / 2; g.add(c); } }
-      else for (let k = 0; k < 6; k++) { const s = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.25, 0.4), MAT.sand); s.position.set(-0.8 + (k % 3) * 0.75, 0.13 + Math.floor(k / 3) * 0.25, 0); g.add(s); } // sandbags
-      g.position.set(x + nx * o, 0, z + nz * o); g.rotation.y = -ang + Math.PI / 2 + Math.PI / 2; g.traverse(q => { q.castShadow = true; }); t.g.add(g); t.barriers.push({ id: bid, key, x: x + nx * o, z: z + nz * o, g }); }
+    const nx = -Math.sin(ang),
+      nz = Math.cos(ang);
+    const n = Math.floor(w / 2.4);
+    for (let i = 0; i < n; i++) {
+      const bid = id + '_' + i;
+      if (this.done(key, bid)) continue;
+      const o = -w / 2 + 1.2 + i * 2.4;
+      const g = new THREE.Group();
+      if (r() < 0.75) {
+        for (const s of [-1, 1])
+          for (const e of [-0.9, 0.9]) {
+            const leg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.3, 0.1), MAT.wood);
+            leg.position.set(e, 0.55, 0);
+            leg.rotation.x = s * 0.6;
+            g.add(leg);
+          } // 拒馬: X-legs + rail + razor wire
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.1, 0.1), MAT.wood);
+        rail.position.y = 0.9;
+        g.add(rail);
+        const wire = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.015, 4, 10), MAT.wire);
+        for (let k = -2; k <= 2; k++) {
+          const c = wire.clone();
+          c.position.set(k * 0.4, 1.0, 0);
+          c.rotation.y = Math.PI / 2;
+          g.add(c);
+        }
+      } else
+        for (let k = 0; k < 6; k++) {
+          const s = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.25, 0.4), MAT.sand);
+          s.position.set(-0.8 + (k % 3) * 0.75, 0.13 + Math.floor(k / 3) * 0.25, 0);
+          g.add(s);
+        } // sandbags
+      g.position.set(x + nx * o, 0, z + nz * o);
+      g.rotation.y = -ang + Math.PI / 2 + Math.PI / 2;
+      g.traverse(q => {
+        q.castShadow = true;
+      });
+      t.g.add(g);
+      t.barriers.push({ id: bid, key, x: x + nx * o, z: z + nz * o, g });
+    }
   }
   private wreck(t: Tile, key: string, id: string, x: number, z: number, hd: number, bus: boolean, r: () => number) {
-    const g = new THREE.Group(); const L = bus ? 11 : 4.3, W = bus ? 2.5 : 1.7, H = bus ? 2.9 : 1.4; const burnt = bus || r() < 0.4; const body = burnt ? MAT.burnt : new THREE.MeshStandardMaterial({ color: [0x8a8a8a, 0x3a4a6a, 0xd8d4c8, 0x6a2a2a, 0xd8b020][Math.floor(r() * 5)], roughness: 0.6, metalness: 0.3 });
-    const b = new THREE.Mesh(new THREE.BoxGeometry(W, H * 0.55, L), body); b.position.y = H * 0.35 + 0.2; g.add(b); const c = new THREE.Mesh(new THREE.BoxGeometry(W * 0.92, H * 0.42, L * (bus ? 0.96 : 0.5)), burnt ? MAT.rust : MAT.dark); c.position.set(0, H * 0.8 + 0.2, bus ? 0 : -L * 0.05); g.add(c);
-    for (const sx of [-1, 1]) for (const sz of bus ? [-0.35, 0.35] : [-0.32, 0.32]) { const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.24, 10), MAT.dark); wh.rotation.z = Math.PI / 2; wh.position.set(sx * W / 2, burnt ? 0.2 : 0.34, sz * L); g.add(wh); }
-    if (!bus) { const tr = new THREE.Mesh(new THREE.BoxGeometry(W * 0.9, 0.06, L * 0.22), body); tr.position.set(0, H * 0.63 + 0.2, -L * 0.4); tr.userData.trunk = 1; g.add(tr); }
-    g.position.set(x, 0, z); g.rotation.set(0, hd, burnt ? (r() - 0.5) * 0.08 : 0); g.traverse(q => { q.castShadow = true; }); t.g.add(g);
-    const looted = this.done(key, id); const wk: Wreck = { id, key, x, z, kind: bus ? 'bus' : 'car', looted, g }; if (looted) g.traverse(o => { if ((o as any).userData.trunk) (o as THREE.Mesh).rotation.x = -1.1; }); t.wrecks.push(wk);
+    const g = new THREE.Group();
+    const L = bus ? 11 : 4.3,
+      W = bus ? 2.5 : 1.7,
+      H = bus ? 2.9 : 1.4;
+    const burnt = bus || r() < 0.4;
+    const body = burnt
+      ? MAT.burnt
+      : new THREE.MeshStandardMaterial({
+          color: [0x8a8a8a, 0x3a4a6a, 0xd8d4c8, 0x6a2a2a, 0xd8b020][Math.floor(r() * 5)],
+          roughness: 0.6,
+          metalness: 0.3,
+        });
+    const b = new THREE.Mesh(new THREE.BoxGeometry(W, H * 0.55, L), body);
+    b.position.y = H * 0.35 + 0.2;
+    g.add(b);
+    const c = new THREE.Mesh(
+      new THREE.BoxGeometry(W * 0.92, H * 0.42, L * (bus ? 0.96 : 0.5)),
+      burnt ? MAT.rust : MAT.dark,
+    );
+    c.position.set(0, H * 0.8 + 0.2, bus ? 0 : -L * 0.05);
+    g.add(c);
+    for (const sx of [-1, 1])
+      for (const sz of bus ? [-0.35, 0.35] : [-0.32, 0.32]) {
+        const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.24, 10), MAT.dark);
+        wh.rotation.z = Math.PI / 2;
+        wh.position.set((sx * W) / 2, burnt ? 0.2 : 0.34, sz * L);
+        g.add(wh);
+      }
+    if (!bus) {
+      const tr = new THREE.Mesh(new THREE.BoxGeometry(W * 0.9, 0.06, L * 0.22), body);
+      tr.position.set(0, H * 0.63 + 0.2, -L * 0.4);
+      tr.userData.trunk = 1;
+      g.add(tr);
+    }
+    g.position.set(x, 0, z);
+    g.rotation.set(0, hd, burnt ? (r() - 0.5) * 0.08 : 0);
+    g.traverse(q => {
+      q.castShadow = true;
+    });
+    t.g.add(g);
+    const looted = this.done(key, id);
+    const wk: Wreck = { id, key, x, z, kind: bus ? 'bus' : 'car', looted, g };
+    if (looted)
+      g.traverse(o => {
+        if ((o as any).userData.trunk) (o as THREE.Mesh).rotation.x = -1.1;
+      });
+    t.wrecks.push(wk);
   }
 }

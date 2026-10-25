@@ -1,17 +1,64 @@
 import { chromium } from 'playwright';
-const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] }); const p = await b.newPage({ viewport: { width: 1024, height: 640 } });
-const errs = []; p.on('pageerror', e => errs.push(String(e)));
-await p.goto('http://localhost:4173/DefendTaipei-Lab/'); await p.waitForFunction(() => window.__game, null, { timeout: 120000 });
-await p.evaluate(() => localStorage.clear()); await p.reload(); await p.waitForFunction(() => window.__game, null, { timeout: 120000 });
-await p.click('.ch[data-g="f"]'); await p.waitForTimeout(4000);
-const stats = await p.evaluate(() => { let n = 0, draws = 0; window.__game.blds.forEach(b => b.roof.traverse(o => { if (o.isGroup && o.children.length >= 3 && o.parent === b.roof) n++; })); return { shacks: n, fps: 0 }; }); console.log(stats);
+const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+const p = await b.newPage({ viewport: { width: 1024, height: 640 } });
+const errs = [];
+p.on('pageerror', e => errs.push(String(e)));
+await p.goto('http://localhost:4173/DefendTaipei-Lab/');
+await p.waitForFunction(() => window.__game, null, { timeout: 120000 });
+await p.evaluate(() => localStorage.clear());
+await p.reload();
+await p.waitForFunction(() => window.__game, null, { timeout: 120000 });
+await p.click('.ch[data-g="f"]');
+await p.waitForTimeout(4000);
+const stats = await p.evaluate(() => {
+  let n = 0,
+    draws = 0;
+  window.__game.blds.forEach(b =>
+    b.roof.traverse(o => {
+      if (o.isGroup && o.children.length >= 3 && o.parent === b.roof) n++;
+    }),
+  );
+  return { shacks: n, fps: 0 };
+});
+console.log(stats);
 await p.screenshot({ path: '/workspace/defendtaipei-v9-rooftop-overview-day.png' });
-for (let i = 0; i < 5; i++) await p.mouse.wheel(0, -100); await p.waitForTimeout(2500);
-const t0 = Date.now(); let f0 = await p.evaluate(() => window.__game.player.pos.x);
+for (let i = 0; i < 5; i++) await p.mouse.wheel(0, -100);
+await p.waitForTimeout(2500);
+const t0 = Date.now();
+let f0 = await p.evaluate(() => window.__game.player.pos.x);
 await p.screenshot({ path: '/workspace/defendtaipei-v9-rooftop-close-day.png' });
-await p.evaluate(() => { const g = window.__game; const s = []; g.blds.forEach(b => b.roof.children.forEach(o => { if (o.isGroup && o.children.length >= 3) s.push([b.roof.parent ? o.getWorldPosition(new o.position.constructor()) : o.position]); })); const q = s[3] && s[3][0]; if (q) g.player.pos.set(q.x + 6, 0, q.z + 8); });
-await p.waitForTimeout(3000); await p.screenshot({ path: '/workspace/defendtaipei-v9-rooftop-close2-day.png' });
-await p.evaluate(() => window.__game.setMin(22 * 60)); await p.waitForTimeout(4000); await p.screenshot({ path: '/workspace/defendtaipei-v9-rooftop-close-night.png' });
-for (let i = 0; i < 5; i++) await p.mouse.wheel(0, 100); await p.waitForTimeout(2500); await p.screenshot({ path: '/workspace/defendtaipei-v9-rooftop-overview-night.png' });
-const fr = await p.evaluate(() => new Promise(r => { let n = 0; const t = performance.now(); const f = () => { n++; if (performance.now() - t < 3000) requestAnimationFrame(f); else r(n / 3); }; f(); })); console.log('fps(swiftshader)', fr, 'errors', errs);
+await p.evaluate(() => {
+  const g = window.__game;
+  const s = [];
+  g.blds.forEach(b =>
+    b.roof.children.forEach(o => {
+      if (o.isGroup && o.children.length >= 3)
+        s.push([b.roof.parent ? o.getWorldPosition(new o.position.constructor()) : o.position]);
+    }),
+  );
+  const q = s[3] && s[3][0];
+  if (q) g.player.pos.set(q.x + 6, 0, q.z + 8);
+});
+await p.waitForTimeout(3000);
+await p.screenshot({ path: '/workspace/defendtaipei-v9-rooftop-close2-day.png' });
+await p.evaluate(() => window.__game.setMin(22 * 60));
+await p.waitForTimeout(4000);
+await p.screenshot({ path: '/workspace/defendtaipei-v9-rooftop-close-night.png' });
+for (let i = 0; i < 5; i++) await p.mouse.wheel(0, 100);
+await p.waitForTimeout(2500);
+await p.screenshot({ path: '/workspace/defendtaipei-v9-rooftop-overview-night.png' });
+const fr = await p.evaluate(
+  () =>
+    new Promise(r => {
+      let n = 0;
+      const t = performance.now();
+      const f = () => {
+        n++;
+        if (performance.now() - t < 3000) requestAnimationFrame(f);
+        else r(n / 3);
+      };
+      f();
+    }),
+);
+console.log('fps(swiftshader)', fr, 'errors', errs);
 await b.close();
