@@ -41,3 +41,9 @@ Specs checked against English Wikipedia infoboxes (CC BY-SA 4.0), retrieved 2026
 - CM11 Brave Tiger — 105 mm M68A1, 50 t — https://en.wikipedia.org/wiki/CM11_Brave_Tiger
 - Clouded Leopard (CM-32/CM-34) — 8×8, 30 mm Mk44 (CM-34) — https://en.wikipedia.org/wiki/Clouded_Leopard_Armored_Vehicle
 Weights marked 約值 in-game (T93, T75 pistol) are approximations. Vehicle and weapon models are original low-poly / canvas drawings; no third-party assets.
+
+## v14 FPV flight model
+- Concepts (not code) from lijiabao1998/Physical-Fpv-Simulator — https://github.com/lijiabao1998/Physical-Fpv-Simulator — fixed 240 Hz step, per-motor thrust/torque ∝ ω², 4-motor mixer, rate P-control, OCV-vs-SOC + internal-resistance battery sag, body-frame quadratic drag, stick deadzone/expo. That repo has no LICENSE file, so no code was copied; everything here is a reimplementation.
+- Betaflight rate formula (RC rate / super rate / expo) — https://github.com/betaflight/betaflight (GPL-3.0; formula reimplemented, no code copied).
+- Ground effect approximation T/T∞ = 1/(1 − (R/4z)²) (Cheeseman & Bennett, 1955).
+- 5.8 GHz free-space path loss — https://en.wikipedia.org/wiki/Free-space_path_loss

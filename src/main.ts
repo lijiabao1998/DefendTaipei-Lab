@@ -165,7 +165,7 @@ function blast(p: THREE.Vector3, fromAbove: boolean) { lastBlast = { x: p.x, y: 
   for (const s of sols) if (s.state !== 'dead' && Math.hypot(s.pos.x - p.x, s.pos.z - p.z) < 6) damageSol(s, 220, true);
   if (armor) armor.hit(p.x, p.z, fromAbove ? 160 : 55, true);
   const dp = Math.hypot(player.pos.x - p.x, player.pos.z - p.z); if (dp < 6) { player.hp -= 45 * (1 - dp / 6); player.rig.hurtT = 0.35; } }
-function launchFPV() { fpv = fpv || new FPV({ scene, renderer, player: () => player.pos, mobile: MOBILE, wind: () => (raining() ? 2.2 : 0.8),
+function launchFPV() { fpv = fpv || new FPV({ scene, renderer, player: () => player.pos, mobile: MOBILE, surf: (x, z) => bldAt(x, z)?.h ?? 0, wind: () => (raining() ? 2.2 : 0.8),
     blocked: (x, z, y) => { const b = bldAt(x, z); if (b && y < b.h + 0.5) return true; return !!armor && armor.list.some(a => Math.hypot(a.g.position.x - x, a.g.position.z - z) < 2.6 && y < 3.2); },
     los: (a, b) => los(a, b), jammers: () => checkpoints.filter((_, i) => i % 2 === 0 && !liberated.has(sectorOf(checkpoints[i][0], checkpoints[i][1]))), explode: blast, log });
   if (!MOBILE) renderer.domElement.requestPointerLock?.();
@@ -818,7 +818,7 @@ function die() {
   const t = $('title'); t.style.display = 'flex'; const day = Math.floor(gameMin / 1440) + 1;
   t.innerHTML = `<h1 style="color:#c33">你陣亡了</h1><h2>這就是你的結局。</h2><p>你在淪陷的台北撐過了 ${day} 天，擊倒 ${player.kills} 名佔領軍，奪回了 ${liberated.size} 個街區。</p><button onclick="location.reload()">重新開始（新的倖存者）</button>`;
 }
-function loop() { const dt = Math.min(clock.getDelta(), 0.05); if (cine.on) { requestAnimationFrame(loop); return; } if (rocCine) { rocCineStep(dt); renderer.render(scene, camera); requestAnimationFrame(loop); return; } update(dt); if (fpv?.active) { fpv.update(dt); renderer.render(scene, fpv.active ? fpv.cam : camera); } else renderer.render(scene, camera); requestAnimationFrame(loop); }
+function loop() { const dt = Math.min(clock.getDelta(), 0.05); if (cine.on) { requestAnimationFrame(loop); return; } if (rocCine) { rocCineStep(dt); renderer.render(scene, camera); requestAnimationFrame(loop); return; } update(dt); if (fpv?.active) { fpv.update(dt); if (fpv.active) fpv.render(renderer); else renderer.render(scene, camera); } else renderer.render(scene, camera); requestAnimationFrame(loop); }
 
 // ---------- boot ----------
 async function boot() {
