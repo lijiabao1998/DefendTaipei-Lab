@@ -1,9 +1,9 @@
-import { chromium } from 'playwright';
-const url = process.argv[2];
+import { launch, shot, gameUrl } from '../lib.mjs';
+const url = gameUrl(process.argv[2]);
 const errs = [];
 const out = {};
-const S = n => `/workspace/defendtaipei-v20-mp-${n}.png`;
-const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+const S = n => shot(`v20-mp-${n}.png`);
+const b = await launch();
 const mk = async (q, n) => {
   const ctx = await b.newContext({ viewport: { width: 1100, height: 700 } });
   const p = await ctx.newPage();

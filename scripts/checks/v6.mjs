@@ -1,8 +1,6 @@
-import { chromium } from 'playwright';
-import { spawn } from 'node:child_process';
-const srv = spawn('npx', ['vite', 'preview', '--port', '4181', '--strictPort'], { stdio: 'ignore' });
-await new Promise(r => setTimeout(r, 2500));
-const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+import { launch, shot as shotPath, pickRole, preview } from '../lib.mjs';
+const srv = await preview(4181);
+const b = await launch();
 const p = await b.newPage({ viewport: { width: 1280, height: 800 } });
 const errs = [];
 p.on('pageerror', e => errs.push(String(e)));
@@ -10,9 +8,9 @@ p.on('console', m => {
   if (m.text().startsWith('facade')) console.log(m.text());
 });
 const t0 = Date.now();
-await p.goto('http://localhost:4181/DefendTaipei-Lab/');
+await p.goto(srv.url);
 await p.waitForFunction(() => window.__game, null, { timeout: 90000 });
-await p.click('.ch[data-g="f"]');
+await pickRole(p, { g: 'f' });
 await p.waitForTimeout(800);
 console.log('load ms', Date.now() - t0);
 await p.evaluate(() => {
@@ -24,7 +22,7 @@ const sp = await p.evaluate(() => window.__game.facade().spots);
 console.log(JSON.stringify(sp), await p.evaluate(() => document.getElementById('objective').textContent));
 const shot = async (n, w = 3000) => {
   await p.waitForTimeout(w);
-  await p.screenshot({ path: `/workspace/defendtaipei-v6-${n}.png` });
+  await p.screenshot({ path: shotPath(`v6-${n}.png`) });
 };
 const tp = async xz => p.evaluate(([x, z]) => window.__game.tp(x, z), xz);
 for (let i = 0; i < 4; i++) await p.mouse.wheel(0, -100);
@@ -52,5 +50,5 @@ await p.evaluate(() => window.__game.setTime(21 * 60));
 await shot('windows-night', 15000);
 console.log('errors', errs.length, errs.slice(0, 3));
 await b.close();
-srv.kill();
+srv.stop();
 process.exit(errs.length ? 1 : 0);

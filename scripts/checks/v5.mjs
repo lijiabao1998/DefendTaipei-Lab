@@ -1,14 +1,12 @@
-import { chromium } from 'playwright';
-import { spawn } from 'node:child_process';
-const srv = spawn('npx', ['vite', 'preview', '--port', '4180', '--strictPort'], { stdio: 'ignore' });
-await new Promise(r => setTimeout(r, 2500));
-const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+import { launch, shot as shotPath, pickRole, preview } from '../lib.mjs';
+const srv = await preview(4180);
+const b = await launch();
 const p = await b.newPage({ viewport: { width: 1280, height: 800 } });
 const errs = [];
 p.on('pageerror', e => errs.push(String(e)));
-await p.goto('http://localhost:4180/DefendTaipei-Lab/');
+await p.goto(srv.url);
 await p.waitForFunction(() => window.__game, null, { timeout: 90000 });
-await p.click('.ch[data-g="' + (process.env.G || 'f') + '"]');
+await pickRole(p, { g: process.env.G || 'f' });
 await p.waitForTimeout(800);
 await p.evaluate(() => {
   const g = window.__game;
@@ -36,7 +34,7 @@ const info = await p.evaluate(() => {
 console.log(JSON.stringify(info));
 const shot = async (n, w = 2500) => {
   await p.waitForTimeout(w);
-  await p.screenshot({ path: `c-v5-${n}.png` });
+  await p.screenshot({ path: shotPath(`c-v5-${n}.png`) });
 };
 await p.evaluate(([x, z]) => window.__game.tp(x + 3, z + 3), info.street);
 await shot('street-day');
@@ -60,5 +58,5 @@ await p.evaluate(() => window.__game.setTime(4 * 1440 + 8 * 60));
 await shot('water-off', 6000);
 console.log('errors', errs.length, errs.slice(0, 3));
 await b.close();
-srv.kill();
+srv.stop();
 process.exit(errs.length ? 1 : 0);

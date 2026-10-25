@@ -4,3 +4,5 @@ smoke*.png
 shot-*.png
 c-*.png
 ref/
+# screenshots from scripts/smoke.mjs and scripts/checks/*
+shots/

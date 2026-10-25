@@ -1,14 +1,14 @@
-import { chromium } from 'playwright';
-const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+import { launch, shot, gameUrl, pickRole } from '../lib.mjs';
+const b = await launch();
 const p = await b.newPage({ viewport: { width: 1024, height: 640 } });
 const errs = [];
 p.on('pageerror', e => errs.push(String(e)));
-await p.goto('http://localhost:4173/DefendTaipei-Lab/');
+await p.goto(gameUrl());
 await p.waitForFunction(() => window.__game, null, { timeout: 120000 });
 await p.evaluate(() => localStorage.clear());
 await p.reload();
 await p.waitForFunction(() => window.__game, null, { timeout: 120000 });
-await p.click('.ch[data-g="f"]');
+await pickRole(p, { g: 'f' });
 await p.waitForTimeout(4000);
 const stats = await p.evaluate(() => {
   let n = 0,
@@ -21,12 +21,12 @@ const stats = await p.evaluate(() => {
   return { shacks: n, fps: 0 };
 });
 console.log(stats);
-await p.screenshot({ path: '/workspace/defendtaipei-v9-rooftop-overview-day.png' });
+await p.screenshot({ path: shot('v9-rooftop-overview-day.png') });
 for (let i = 0; i < 5; i++) await p.mouse.wheel(0, -100);
 await p.waitForTimeout(2500);
 const t0 = Date.now();
 let f0 = await p.evaluate(() => window.__game.player.pos.x);
-await p.screenshot({ path: '/workspace/defendtaipei-v9-rooftop-close-day.png' });
+await p.screenshot({ path: shot('v9-rooftop-close-day.png') });
 await p.evaluate(() => {
   const g = window.__game;
   const s = [];
@@ -40,13 +40,13 @@ await p.evaluate(() => {
   if (q) g.player.pos.set(q.x + 6, 0, q.z + 8);
 });
 await p.waitForTimeout(3000);
-await p.screenshot({ path: '/workspace/defendtaipei-v9-rooftop-close2-day.png' });
+await p.screenshot({ path: shot('v9-rooftop-close2-day.png') });
 await p.evaluate(() => window.__game.setMin(22 * 60));
 await p.waitForTimeout(4000);
-await p.screenshot({ path: '/workspace/defendtaipei-v9-rooftop-close-night.png' });
+await p.screenshot({ path: shot('v9-rooftop-close-night.png') });
 for (let i = 0; i < 5; i++) await p.mouse.wheel(0, 100);
 await p.waitForTimeout(2500);
-await p.screenshot({ path: '/workspace/defendtaipei-v9-rooftop-overview-night.png' });
+await p.screenshot({ path: shot('v9-rooftop-overview-night.png') });
 const fr = await p.evaluate(
   () =>
     new Promise(r => {

@@ -1,8 +1,8 @@
 // v19.1 before/after: same camera position on two builds. argv: url outfile [x z]  (no x z => use v19 alley-finder and print position)
-import { chromium } from 'playwright';
+import { launch } from '../lib.mjs';
 const [url, outf, X, Z] = process.argv.slice(2);
 const errs = [];
-const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+const b = await launch();
 const p = await b.newPage({ viewport: { width: 1366, height: 820 } });
 p.on('pageerror', e => errs.push(String(e)));
 await p.goto(url);

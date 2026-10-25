@@ -1,9 +1,9 @@
-import { chromium } from 'playwright';
-const url = process.argv[2];
+import { launch, shot, gameUrl } from '../lib.mjs';
+const url = gameUrl(process.argv[2]);
 const errs = [];
 const out = {};
-const S = n => `/workspace/defendtaipei-v19-roads-${n}.png`;
-const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+const S = n => shot(`v19-roads-${n}.png`);
+const b = await launch();
 const p = await b.newPage({ viewport: { width: 1366, height: 820 } });
 p.on('pageerror', e => errs.push(String(e)));
 p.on('console', m => {

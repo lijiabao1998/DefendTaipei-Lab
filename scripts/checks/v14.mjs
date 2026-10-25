@@ -1,14 +1,14 @@
-import { chromium, devices } from 'playwright';
-const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+import { launch, shot, gameUrl, pickRole, devices } from '../lib.mjs';
+const b = await launch();
 const errs = [];
 const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
 p.on('pageerror', e => errs.push(String(e)));
 p.on('console', m => {
   if (m.type() === 'error') errs.push(m.text());
 });
-await p.goto('http://localhost:4173/DefendTaipei-Lab/');
+await p.goto(gameUrl());
 await p.waitForFunction(() => window.__game, null, { timeout: 180000 });
-await p.click('.ch[data-g="f"]', { noWaitAfter: true, timeout: 120000 });
+await pickRole(p, { g: 'f' });
 await p.waitForTimeout(3000);
 const st = `(()=>{const f=window.__game.fpv();return {act:f.active,y:+f.pos.y.toFixed(2),v:+f.vel.length().toFixed(1),vz:+f.vel.z.toFixed(1),V:+f.volt.toFixed(2),A:+f.amps.toFixed(1),mah:Math.round(f.mah),soc:+f.soc.toFixed(3),sig:+f.sig.toFixed(2),rssi:Math.round(f.rssi),wash:+f.wash.toFixed(2),ghost:+f.ghost.toFixed(4),warn:f.warn}})()`;
 await p.evaluate(`(()=>{const g=window.__game,q=g.roadPt();g.tp(q[0],q[1]);g.launchFPV();window.__why='';})()`);
@@ -31,7 +31,7 @@ console.log(
   ),
 );
 await p.waitForTimeout(800);
-await p.screenshot({ path: '/workspace/defendtaipei-v14-fpv-punch.png' });
+await p.screenshot({ path: shot('v14-fpv-punch.png') });
 await p.evaluate(RL);
 console.log(
   'forward',
@@ -41,7 +41,7 @@ console.log(
   ),
 );
 await p.waitForTimeout(800);
-await p.screenshot({ path: '/workspace/defendtaipei-v14-fpv-forward.png' });
+await p.screenshot({ path: shot('v14-fpv-forward.png') });
 // descent into prop wash
 await p.evaluate(RL);
 console.log(
@@ -52,7 +52,7 @@ console.log(
   ),
 );
 await p.waitForTimeout(600);
-await p.screenshot({ path: '/workspace/defendtaipei-v14-fpv-propwash.png' });
+await p.screenshot({ path: shot('v14-fpv-propwash.png') });
 // weak signal / breakup / roll / BW
 await p.evaluate(RL);
 console.log(
@@ -63,7 +63,7 @@ console.log(
   ),
 );
 await p.waitForTimeout(500);
-await p.screenshot({ path: '/workspace/defendtaipei-v14-fpv-weak.png' });
+await p.screenshot({ path: shot('v14-fpv-weak.png') });
 // low battery
 await p.evaluate(RL);
 console.log(
@@ -74,7 +74,7 @@ console.log(
   ),
 );
 await p.waitForTimeout(500);
-await p.screenshot({ path: '/workspace/defendtaipei-v14-fpv-lowbatt.png' });
+await p.screenshot({ path: shot('v14-fpv-lowbatt.png') });
 // gentle bump on a roof, then kill armour from above
 console.log(
   'bump',
@@ -92,15 +92,15 @@ console.log(
 const ctx = await b.newContext({ ...devices['iPhone 13'] });
 const m = await ctx.newPage();
 m.on('pageerror', e => errs.push(String(e)));
-await m.goto('http://localhost:4173/DefendTaipei-Lab/');
+await m.goto(gameUrl());
 await m.waitForFunction(() => window.__game, null, { timeout: 180000 });
-await m.tap('.ch[data-g="f"]', { noWaitAfter: true, timeout: 120000 });
+await pickRole(m, { g: 'f' });
 await m.waitForTimeout(3000);
 await m.evaluate(
   `(()=>{const g=window.__game,q=g.roadPt();g.tp(q[0],q[1]);g.launchFPV();const f=g.fpv();f.ls.y=0.0;f.rs.y=-0.4})()`,
 );
 await m.waitForTimeout(2500);
 console.log('mobile', await m.evaluate(st));
-await m.screenshot({ path: '/workspace/defendtaipei-v14-fpv-mobile.png' });
+await m.screenshot({ path: shot('v14-fpv-mobile.png') });
 console.log('errors', errs);
 await b.close();

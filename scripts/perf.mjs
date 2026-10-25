@@ -1,7 +1,7 @@
-import { chromium, devices } from 'playwright';
-const [url, tag] = [process.argv[2], process.argv[3] || 'x'];
+import { launch, gameUrl, devices } from './lib.mjs';
+const [url, tag] = [gameUrl(process.argv[2]), process.argv[3] || 'x'];
 const out = {};
-const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+const b = await launch();
 for (const [name, dev, thr] of [
   ['desktop', { viewport: { width: 1366, height: 820 } }, null],
   [

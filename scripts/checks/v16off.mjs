@@ -1,6 +1,6 @@
-import { chromium } from 'playwright';
-const url = process.argv[2];
-const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+import { launch, shot, gameUrl } from '../lib.mjs';
+const url = gameUrl(process.argv[2]);
+const b = await launch();
 const ctx = await b.newContext();
 const p = await ctx.newPage();
 p.on('requestfailed', r => console.log('RF', r.url(), r.failure()?.errorText));
@@ -20,6 +20,6 @@ const ok = await p
   .waitForSelector('.ch', { state: 'visible', timeout: 90000 })
   .then(() => 'offline OK')
   .catch(e => 'FAIL ' + String(e).slice(0, 100));
-await p.screenshot({ path: '/workspace/defendtaipei-v16-offline.png' });
+await p.screenshot({ path: shot('v16-offline.png') });
 console.log(ok);
 await b.close();

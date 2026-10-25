@@ -1,76 +1,132 @@
-import { chromium } from 'playwright';
-import { spawn } from 'node:child_process';
-const local = !process.env.URL;
-const srv = local ? spawn('npx', ['vite', 'preview', '--port', '4179', '--strictPort'], { stdio: 'ignore' }) : null;
-if (local) await new Promise(r => setTimeout(r, 2500));
-const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+// Smoke test for the built game: load it, start a new game through the character select and the morning
+// prologue, walk, open the inventory, loot a store, switch to night. Fails on any page or console error, or if
+// one of the checks below fails. Run `npm run build` first; it serves dist/ itself unless URL is set.
+// Screenshots go to ./shots (see scripts/lib.mjs for the environment variables).
+import { launch, shot, pickRole, preview } from './lib.mjs';
+
+const srv = process.env.URL ? null : await preview(4179);
+const url = process.env.URL || srv.url;
+const b = await launch();
 const p = await b.newPage({ viewport: { width: 1280, height: 800 } });
 const errs = [];
+const failed = [];
 p.on('console', m => {
   if (m.type() === 'error') errs.push(m.text());
 });
 p.on('pageerror', e => errs.push(String(e)));
-await p.goto(process.env.URL || 'http://localhost:4179/DefendTaipei-Lab/');
+const check = (ok, what) => {
+  console.log(ok ? '  ok  ' : '  FAIL', what);
+  if (!ok) failed.push(what);
+};
+const finish = async () => {
+  console.log('errors:', errs.length, errs.slice(0, 5));
+  if (failed.length || errs.length) await p.screenshot({ path: shot('smoke-fail.png') }).catch(() => {});
+  await b.close();
+  srv?.stop();
+  process.exit(failed.length || errs.length ? 1 : 0);
+};
+
+await p.goto(url);
 try {
-  await p.waitForFunction(() => window.__game, null, { timeout: 60000 });
-} catch (e) {
-  console.log('ERRS', errs);
-  await p.screenshot({ path: 'shot-fail.png' });
-  process.exit(1);
+  await p.waitForFunction(() => window.__game, null, { timeout: 120000 });
+} catch {
+  check(false, 'game loads');
+  await finish();
 }
-await p.screenshot({ path: 'shot-title.png' });
-await p.click('.ch[data-g="f"]');
+check(true, 'game loads');
+await p.screenshot({ path: shot('smoke-title.png') });
+
+// new game with the prologue (alarm clock, commute), then skip it
+await pickRole(p, { g: 'f', role: 'nurse', skipIntro: false });
 await p.waitForTimeout(1500);
-await p.screenshot({ path: 'shot-spawn.png' });
+check(
+  await p.evaluate(() => window.__game.started() && window.__game.role().id === 'nurse'),
+  'new game starts as nurse',
+);
+check(await p.evaluate(() => window.__game.PRO.on && !!document.getElementById('wake')), 'prologue runs');
+await p.screenshot({ path: shot('smoke-prologue.png') });
+await p.evaluate(() => window.__game.endPrologue());
+await p.waitForTimeout(500);
+check(await p.evaluate(() => !window.__game.PRO.on), 'prologue can be skipped');
+
+// walk and run
+const p0 = await p.evaluate(() => [window.__game.player.pos.x, window.__game.player.pos.z]);
 await p.keyboard.down('KeyW');
 await p.keyboard.down('ShiftLeft');
 await p.waitForTimeout(700);
-await p.screenshot({ path: 'shot-run.png' });
+await p.screenshot({ path: shot('smoke-run.png') });
 await p.keyboard.up('ShiftLeft');
-await p.keyboard.up('KeyW');
-await p.keyboard.down('KeyW');
 await p.waitForTimeout(1200);
 await p.keyboard.up('KeyW');
+const p1 = await p.evaluate(() => [window.__game.player.pos.x, window.__game.player.pos.z]);
+check(Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) > 0.5, 'player moves with WASD');
+
+// A* from the nearest soldiers to where the player stands now (some soldiers sit at walled-in posts, so at
+// least one complete path is enough)
+const paths = await p.evaluate(() => {
+  const g = window.__game;
+  const P = [g.player.pos.x, g.player.pos.z];
+  let ok = 0,
+    tot = 0;
+  for (const t of g.sols.filter(t => t.state !== 'dead' && t.pos.distanceTo(g.player.pos) < 120).slice(0, 10)) {
+    tot++;
+    const pth = g.nav.find([t.pos.x, t.pos.z], P);
+    const e = pth && pth[pth.length - 1];
+    if (e && Math.hypot(e[0] - P[0], e[1] - P[1]) < 1.5) ok++;
+  }
+  return [ok, tot];
+});
+check(paths[1] === 0 || paths[0] > 0, `soldiers can path-find to the player (${paths[0]}/${paths[1]})`);
+
+// inventory
 await p.keyboard.press('Tab');
 await p.waitForTimeout(400);
-await p.screenshot({ path: 'shot-inv.png' });
+check(
+  await p.evaluate(() => !document.getElementById('panel').classList.contains('hidden')),
+  'Tab opens the inventory',
+);
+await p.screenshot({ path: shot('smoke-inv.png') });
 await p.keyboard.press('Escape');
-// visit a detailed store
-const st = await p.evaluate(() => {
+
+// visit a detailed store and loot it
+const store = await p.evaluate(() => {
   const g = window.__game;
   const b = g.blds.find(b => b.detailed === 'store');
-  if (!b) return null;
+  if (!b) return false;
   const d = b.door.p;
-  g.tp(d[0] + (b.c[0] - d[0]) * 0.3, d[1] + (b.c[1] - d[1]) * 0.3);
-  return b.detailed;
+  const at = [d[0] + (b.c[0] - d[0]) * 0.3, d[1] + (b.c[1] - d[1]) * 0.3];
+  // stand next to the store's closest shelf or fridge
+  const c = g.conts
+    .filter(c => c.b === b)
+    .sort((x, y) => Math.hypot(x.p[0] - at[0], x.p[1] - at[1]) - Math.hypot(y.p[0] - at[0], y.p[1] - at[1]))[0];
+  if (c) g.tp(c.p[0] + 0.3, c.p[1] + 0.3);
+  else g.tp(at[0], at[1]);
+  return true;
 });
+check(store, 'a furnished 7-12 store exists');
 await p.waitForTimeout(800);
-await p.screenshot({ path: 'shot-store.png' });
+await p.screenshot({ path: shot('smoke-store.png') });
 await p.keyboard.press('KeyE');
 await p.waitForTimeout(400);
-await p.screenshot({ path: 'shot-loot.png' });
+check(
+  await p.evaluate(() => document.querySelectorAll('#panel .col').length === 2),
+  'E opens a container next to the bag',
+);
+await p.screenshot({ path: shot('smoke-loot.png') });
 await p.keyboard.press('Escape');
+
+// night
 await p.evaluate(() => window.__game.setTime(22 * 60));
 await p.waitForTimeout(1500);
-await p.screenshot({ path: 'shot-night.png' });
+check(await p.evaluate(() => document.getElementById('clock').textContent.includes('宵禁')), 'curfew shows at 22:00');
+await p.screenshot({ path: shot('smoke-night.png') });
+
 const info = await p.evaluate(() => {
   const g = window.__game;
   const det = {};
   g.blds.forEach(b => {
     if (b.detailed) det[b.detailed] = (det[b.detailed] || 0) + 1;
   });
-  const s = g.sols.find(s => s.state !== 'dead');
-  let ok = 0,
-    tot = 0;
-  for (const t of g.sols.filter(t => t.state !== 'dead' && t.pos.distanceTo(g.player.pos) < 120).slice(0, 10)) {
-    tot++;
-    const pth = g.nav.find([t.pos.x, t.pos.z], [g.player.pos.x, g.player.pos.z]);
-    if (pth) {
-      const e = pth[pth.length - 1];
-      if (Math.hypot(e[0] - g.player.pos.x, e[1] - g.player.pos.z) < 1.5) ok++;
-    }
-  }
-  const path = [ok, tot];
   const d = g.decay();
   const al = g.alley();
   return {
@@ -78,17 +134,13 @@ const info = await p.evaluate(() => {
     poles: d && d.poles,
     acs: d && d.acs,
     cps: d && d.checkpoints.length,
-    started: g.started(),
     sols: g.sols.length,
     conts: g.conts.length,
     det,
     vehicles: g.vehicles.list.length,
-    paths: path,
-    store: !!0,
+    drivable: g.drive.list.length,
   };
 });
-console.log(JSON.stringify(info), st);
-console.log('errors:', errs.length, errs.slice(0, 5));
-await b.close();
-srv?.kill();
-process.exit(errs.length ? 1 : 0);
+console.log(JSON.stringify(info));
+check(info.sols === 64, '64 PLA soldiers spawned');
+await finish();

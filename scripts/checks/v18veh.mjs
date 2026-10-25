@@ -1,8 +1,8 @@
-import { chromium, devices } from 'playwright';
-const url = process.argv[2];
+import { launch, shot, gameUrl, devices } from '../lib.mjs';
+const url = gameUrl(process.argv[2]);
 const errs = [];
 const out = {};
-const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+const b = await launch();
 for (const dv of (process.argv[3] || 'desk,phone').split(',')) {
   const ctx = await b.newContext(dv === 'phone' ? devices['iPhone 13'] : { viewport: { width: 1366, height: 820 } });
   const p = await ctx.newPage();
@@ -29,7 +29,7 @@ for (const dv of (process.argv[3] || 'desk,phone').split(',')) {
     );
     if (!ok) continue;
     await p.waitForTimeout(2500);
-    await p.screenshot({ path: `/workspace/defendtaipei-v18-vehicles-${dv}-${k}.png`, timeout: 120000 });
+    await p.screenshot({ path: shot(`v18-vehicles-${dv}-${k}.png`), timeout: 120000 });
   }
   // enter + drive
   const r = await p.evaluate(
@@ -54,7 +54,7 @@ for (const dv of (process.argv[3] || 'desk,phone').split(',')) {
   }
   const p1 = await p.evaluate(`(()=>{const v=window.__game.drive.cur;return v?[v.pos.x,v.pos.z,v.fuel,v.v]:null})()`);
   out[dv + '_drive'] = { p0, p1 };
-  await p.screenshot({ path: `/workspace/defendtaipei-v18-vehicles-${dv}-driving.png`, timeout: 120000 });
+  await p.screenshot({ path: shot(`v18-vehicles-${dv}-driving.png`), timeout: 120000 });
   await ctx.close();
 }
 console.log(JSON.stringify(out, null, 1));

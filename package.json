@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit -p .",
+    "format": "prettier --write .",
     "preview": "vite preview",
     "fetch-osm": "node scripts/fetch-osm.mjs",
     "smoke": "node scripts/smoke.mjs"
