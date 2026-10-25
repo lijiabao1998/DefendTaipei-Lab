@@ -7,9 +7,19 @@ export type MapDeps = {
   blds: MapBld[];
   roads: MapRoad[];
   bounds: { minx: number; maxx: number; minz: number; maxz: number };
-  SX: number;
-  SZ: number;
+  /** v21: named 萬華 areas (nearest-anchor regions) */
+  sectors: { n: string; x: number; z: number }[];
+  sectorOf: (x: number, z: number) => number;
   sectorName: (i: number) => string;
+  /** v21: whole-district overlay (admin boundary, water, parks, landmarks) + lazily loaded footprints/roads */
+  district?: {
+    boundary: V2[][];
+    water: V2[][];
+    park: { p: V2[] }[];
+    river: number[][];
+    landmarks: { n: string; x: number; z: number }[];
+    more?: () => Promise<{ b: number[][]; r: MapRoad[] }>;
+  };
   liberated: () => Set<number>;
   player: () => { x: number; z: number; rot: number };
   parks: V2[];
@@ -36,8 +46,8 @@ const ZONE = (b: MapBld) => {
   if (b.type === 'police') return '#9cb0d0';
   return '#bdb6a2';
 };
-const KEY = 'defendtaipei-map-v1';
-const FG = 160;
+const KEY = 'defendtaipei-map-v2'; // v21: world grew to all of 萬華區 → new fog grid
+const FG = 320; // v21: finer fog grid for the 3 × 4.5 km district
 export class GameMap {
   el: HTMLDivElement;
   cv: HTMLCanvasElement;
@@ -46,7 +56,11 @@ export class GameMap {
   fogA: Uint8Array;
   notes: Note[] = [];
   open = false;
-  S = 2048;
+  S = typeof matchMedia !== 'undefined' && matchMedia('(pointer:coarse)').matches ? 2048 : 3072;
+  extraB: number[][] = [];
+  extraR: MapRoad[] = [];
+  secCv?: HTMLCanvasElement;
+  secKey = '';
   k = 1;
   ox = 0;
   oy = 0;
@@ -65,6 +79,12 @@ export class GameMap {
     this.base = document.createElement('canvas');
     this.base.width = this.base.height = this.S;
     this.drawBase();
+    d.district?.more?.().then(m => {
+      this.extraB = m.b;
+      this.extraR = m.r;
+      this.drawBase();
+      this.dirty = true;
+    });
     this.fog = document.createElement('canvas');
     this.fog.width = this.fog.height = FG;
     this.fogA = new Uint8Array(FG * FG);
@@ -81,7 +101,7 @@ export class GameMap {
     this.el = document.createElement('div');
     this.el.id = 'gmap';
     this.el.className = 'hidden';
-    this.el.innerHTML = `<div class="mhead"><b>萬華 · 生存者地圖</b><span class="mhint">拖曳平移・滾輪／雙指縮放・點一下加註記</span><button class="mz" data-z="1.4">＋</button><button class="mz" data-z="0.7">－</button><button class="mc">置中</button><button class="mx">關閉 (M)</button></div><div class="mleg"></div><div class="mcred">© OpenStreetMap contributors (ODbL)</div>`;
+    this.el.innerHTML = `<div class="mhead"><b>萬華 · 生存者地圖</b><span class="mhint">拖曳平移・滾輪／雙指縮放・點一下加註記</span><button class="mz" data-z="1.4">＋</button><button class="mz" data-z="0.7">－</button><button class="mc">置中</button><button class="mall">全區</button><button class="mx">關閉 (M)</button></div><div class="mleg"></div><div class="mcred">© OpenStreetMap contributors (ODbL)</div>`;
     this.cv = document.createElement('canvas');
     this.el.appendChild(this.cv);
     document.body.appendChild(this.el);
@@ -104,6 +124,7 @@ export class GameMap {
         .map(([, [t, c]]) => `<em style="color:${c}">●</em>${t}`)
         .join(' ');
     (this.el.querySelector('.mx') as HTMLElement).onclick = () => this.toggle(false);
+    (this.el.querySelector('.mall') as HTMLElement).onclick = () => this.fit();
     (this.el.querySelector('.mc') as HTMLElement).onclick = () => {
       this.center();
     };
@@ -133,13 +154,50 @@ export class GameMap {
       c.fillRect(Math.random() * S, Math.random() * S, 2 + Math.random() * 8, 2 + Math.random() * 8);
     }
     // 淡水河 along the west edge (the world's river side is x < bounds.minx)
+    const poly = (p: V2[]) => {
+      c.beginPath();
+      p.forEach(([x, z], i) => (i ? c.lineTo(this.wx(x), this.wy(z)) : c.moveTo(this.wx(x), this.wy(z))));
+      c.closePath();
+    };
+    const D = d.district;
+    // outside 萬華區: neighbouring districts (grey wash); 淡水河・新店溪 along the west/south boundary
+    c.fillStyle = D ? '#cfc8b6' : '#7fb0c4';
+    c.fillRect(0, 0, S, S);
+    if (D) {
+      c.fillStyle = '#e8dfc8';
+      for (const b of D.boundary) {
+        poly(b);
+        c.fill();
+      }
+      c.fillStyle = '#7fb0c4';
+      for (const [ax, az, bx, bz, w, nx, nz] of D.river) {
+        const o = 140; // outward half-width (district.ts RIVER_W)
+        poly([
+          [ax + nx * w, az + nz * w],
+          [bx + nx * w, bz + nz * w],
+          [bx - nx * o, bz - nz * o],
+          [ax - nx * o, az - nz * o],
+        ]);
+        c.fill();
+      }
+      for (const w of D.water) {
+        poly(w);
+        c.fill();
+      }
+      c.fillStyle = '#7fa860';
+      for (const pk of D.park) {
+        poly(pk.p);
+        c.fill();
+      }
+    } else {
+      c.fillStyle = '#e8dfc8';
+      c.fillRect(this.wx(d.bounds.minx + 2), 0, S, S);
+    }
     const rx = this.wx(d.bounds.minx + 2);
-    c.fillStyle = '#7fb0c4';
-    c.fillRect(0, 0, rx, S);
-    c.fillStyle = '#2e6e8e';
-    c.fillRect(rx - 3, 0, 3, S);
     c.save();
-    c.translate(rx * 0.45, S / 2);
+    const rs = D?.river.length ? D.river.reduce((a, q) => (q[1] < a[1] ? q : a)) : null; // northern-most river edge
+    if (rs) c.translate(this.wx(rs[0] - rs[5] * 60), this.wy(rs[1] + 200));
+    else c.translate(Math.max(60, rx * 0.45), S / 2);
     c.rotate(-Math.PI / 2);
     c.fillStyle = '#1e4e6e';
     c.font = 'italic bold 44px serif';
@@ -162,8 +220,16 @@ export class GameMap {
       footway: 2,
       pedestrian: 4,
     };
+    for (const b of this.extraB) {
+      c.fillStyle = '#c4bda9';
+      c.beginPath();
+      for (let i = 0; i < b.length; i += 2)
+        i ? c.lineTo(this.wx(b[i]), this.wy(b[i + 1])) : c.moveTo(this.wx(b[i]), this.wy(b[i + 1]));
+      c.closePath();
+      c.fill();
+    }
     for (const pass of [0, 1])
-      for (const r of d.roads) {
+      for (const r of [...this.extraR, ...d.roads]) {
         const w = (RW[r.t] ?? 5) * this.k;
         c.strokeStyle = pass ? (w > 9 * this.k ? '#f4efe2' : '#efe9da') : '#8c8576';
         c.lineWidth = w + (pass ? 0 : 2.5);
@@ -184,7 +250,7 @@ export class GameMap {
     }
     // street names along the longest segment of each named way (one label per name)
     const seen = new Set<string>();
-    const named = d.roads.filter(r => r.n).sort((a, b) => len(b.p) - len(a.p));
+    const named = [...d.roads, ...this.extraR].filter(r => r.n).sort((a, b) => len(b.p) - len(a.p));
     c.font = 'bold 22px "Noto Sans TC", sans-serif';
     c.textAlign = 'center';
     c.textBaseline = 'middle';
@@ -215,24 +281,27 @@ export class GameMap {
       c.fillText(r.n!, 0, 0);
       c.restore();
     }
-    // sector grid labels
-    const b = d.bounds;
-    c.setLineDash([12, 8]);
-    c.strokeStyle = 'rgba(80,60,40,.5)';
-    c.lineWidth = 2;
-    for (let i = 1; i < d.SX; i++) {
-      const x = this.wx(b.minx + ((b.maxx - b.minx) * i) / d.SX);
-      c.beginPath();
-      c.moveTo(x, this.wy(b.minz));
-      c.lineTo(x, this.wy(b.maxz));
-      c.stroke();
-    }
-    for (let j = 1; j < d.SZ; j++) {
-      const y = this.wy(b.minz + ((b.maxz - b.minz) * j) / d.SZ);
-      c.beginPath();
-      c.moveTo(this.wx(b.minx), y);
-      c.lineTo(this.wx(b.maxx), y);
-      c.stroke();
+    // 萬華區 boundary + landmarks
+    if (D) {
+      c.setLineDash([16, 8]);
+      c.strokeStyle = 'rgba(120,40,30,.7)';
+      c.lineWidth = 4;
+      for (const b of D.boundary) {
+        poly(b);
+        c.stroke();
+      }
+      c.setLineDash([]);
+      c.font = 'bold 26px "Noto Sans TC", serif';
+      for (const l of D.landmarks) {
+        c.fillStyle = '#8a1f1a';
+        c.beginPath();
+        c.arc(this.wx(l.x), this.wy(l.z), 8, 0, 7);
+        c.fill();
+        c.lineWidth = 5;
+        c.strokeStyle = '#efe9da';
+        c.strokeText('⛩ ' + l.n, this.wx(l.x), this.wy(l.z) - 22);
+        c.fillText('⛩ ' + l.n, this.wx(l.x), this.wy(l.z) - 22);
+      }
     }
     c.setLineDash([]);
   }
@@ -301,6 +370,13 @@ export class GameMap {
     this.panX = innerWidth / 2 - this.wx(p.x) * this.zoom * 1;
     this.panY = innerHeight / 2 - this.wy(p.z) * this.zoom;
     void r;
+    this.dirty = true;
+  }
+  /** whole 萬華區 in view */
+  fit() {
+    this.zoom = Math.min(innerWidth, innerHeight - 60) / this.S;
+    this.panX = (innerWidth - this.S * this.zoom) / 2;
+    this.panY = 50;
     this.dirty = true;
   }
   zoomAt(f: number, sx: number, sy: number) {
@@ -420,19 +496,39 @@ export class GameMap {
       L = d.liberated();
     c.textAlign = 'center';
     c.textBaseline = 'middle';
-    for (let j = 0; j < d.SZ; j++)
-      for (let i = 0; i < d.SX; i++) {
-        const s = i + j * d.SX;
-        const x0 = this.wx(b.minx + ((b.maxx - b.minx) * i) / d.SX),
-          y0 = this.wy(b.minz + ((b.maxz - b.minz) * j) / d.SZ),
-          w = ((b.maxx - b.minx) / d.SX) * this.k,
-          h = ((b.maxz - b.minz) / d.SZ) * this.k;
-        c.fillStyle = L.has(s) ? 'rgba(60,170,70,.18)' : 'rgba(200,40,30,.13)';
-        c.fillRect(x0, y0, w, h);
-        c.font = 'bold 34px "Noto Sans TC", sans-serif';
-        c.fillStyle = L.has(s) ? 'rgba(30,110,40,.8)' : 'rgba(150,30,20,.7)';
-        c.fillText(`${d.sectorName(s)}（${L.has(s) ? '已奪回' : '佔領中'}）`, x0 + w / 2, y0 + 30);
-      }
+    const key = [...L].sort().join(',');
+    if (!this.secCv || key !== this.secKey) {
+      // low-res nearest-anchor raster, tinted by 奪回/佔領 state
+      const N = 192,
+        cv = (this.secCv ||= document.createElement('canvas'));
+      cv.width = cv.height = N;
+      const sc = cv.getContext('2d')!,
+        im = sc.createImageData(N, N);
+      const cs = this.S / this.k / N;
+      for (let j = 0; j < N; j++)
+        for (let i = 0; i < N; i++) {
+          const x = this.ox + (i + 0.5) * cs,
+            z = this.oy + (j + 0.5) * cs;
+          const si = d.sectorOf(x, z),
+            e = d.sectorOf(x + cs, z) !== si || d.sectorOf(x, z + cs) !== si;
+          const o = (j * N + i) * 4;
+          const lib = L.has(si);
+          im.data.set(e ? [110, 70, 50, 120] : lib ? [60, 170, 70, 44] : [200, 40, 30, 32], o);
+        }
+      sc.putImageData(im, 0, 0);
+      this.secKey = key;
+    }
+    c.imageSmoothingEnabled = false;
+    c.drawImage(this.secCv, 0, 0, this.S, this.S);
+    d.sectors.forEach((q, s) => {
+      c.font = 'bold 34px "Noto Sans TC", sans-serif';
+      c.lineWidth = 6;
+      c.strokeStyle = 'rgba(239,233,218,.85)';
+      const t = `${d.sectorName(s)}（${L.has(s) ? '已奪回' : '佔領中'}）`;
+      c.strokeText(t, this.wx(q.x), this.wy(q.z));
+      c.fillStyle = L.has(s) ? 'rgba(30,110,40,.9)' : 'rgba(150,30,20,.85)';
+      c.fillText(t, this.wx(q.x), this.wy(q.z));
+    });
     // fog of war
     if (this.dirty) {
       const fc = this.fog.getContext('2d')!;

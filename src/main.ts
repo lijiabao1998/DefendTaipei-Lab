@@ -53,6 +53,7 @@ import { VehicleSystem, VehicleKind } from './vehicles';
 import { furnish, nightMarket, setPower } from './interiors';
 import { buildDecay } from './decay';
 import { buildAlley } from './alley';
+import { dressWalkup, District, type TileInfo } from './district';
 
 // ---------- utils ----------
 let seed = 20261024;
@@ -111,8 +112,22 @@ const CELL = 8;
 const grid = new Map<string, Seg[]>();
 const gk = (x: number, z: number) => `${Math.floor(x / CELL)},${Math.floor(z / CELL)}`;
 let nav: Nav | null = null;
+// v21: hand-built core = the original 1.1 × 1.0 km bbox (西門町–龍山寺); the rest of 萬華區 streams via district.ts
+const CORE = { minx: -555, maxx: 555, minz: -497, maxz: 497 };
+const inCore = (x: number, z: number) => x > CORE.minx && x < CORE.maxx && z > CORE.minz && z < CORE.maxz;
+const district = new District({
+  scene,
+  base: import.meta.env.BASE_URL,
+  addSeg: s => addSeg(s as Seg),
+  removeSeg: s => removeSeg(s as Seg),
+  inCore,
+  onLoad: t => onTileLoad(t),
+  onUnload: k => onTileUnload(k),
+});
 function roadDist(x: number, z: number) {
   let best = 1e9;
+  if (district?.ix && (x < CORE.minx + 40 || x > CORE.maxx - 40 || z < CORE.minz + 40 || z > CORE.maxz - 40))
+    best = district.roadDist(x, z);
   for (const r of roads) {
     const hw = (ROADW[r.t.replace('_link', '')] ?? 3) / 2;
     for (let i = 0; i < r.p.length - 1; i++) {
@@ -144,10 +159,18 @@ function addSeg(s: Seg, low = false) {
 }
 function removeSeg(s: Seg) {
   nav?.markSeg(s.a, s.b, -1);
-  grid.forEach(a => {
-    const i = a.indexOf(s);
-    if (i >= 0) a.splice(i, 1);
-  });
+  const x0 = Math.min(s.a[0], s.b[0]),
+    x1 = Math.max(s.a[0], s.b[0]),
+    z0 = Math.min(s.a[1], s.b[1]),
+    z1 = Math.max(s.a[1], s.b[1]);
+  for (let x = Math.floor(x0 / CELL); x <= Math.floor(x1 / CELL); x++)
+    for (let z = Math.floor(z0 / CELL); z <= Math.floor(z1 / CELL); z++) {
+      const a = grid.get(x + ',' + z);
+      const i = a ? a.indexOf(s) : -1;
+      if (i >= 0) a!.splice(i, 1);
+    }
+  const j = segs.indexOf(s);
+  if (j >= 0) segs.splice(j, 1);
 }
 function nearSegs(x: number, z: number) {
   const out = new Set<Seg>();
@@ -197,24 +220,51 @@ function collide(pos: THREE.Vector3, r: number) {
         pos.z = cz + (oz / d) * r;
       }
     }
-  pos.x = clamp(pos.x, bounds.minx, bounds.maxx);
-  pos.z = clamp(pos.z, bounds.minz, bounds.maxz);
+  pos.x = clamp(pos.x, WORLD.minx, WORLD.maxx);
+  pos.z = clamp(pos.z, WORLD.minz, WORLD.maxz);
 }
 const bounds = { minx: -500, maxx: 500, minz: -500, maxz: 500 };
+/** whole-district clamp (set from the district index; falls back to the core bounds) */
+const WORLD = { minx: -500, maxx: 500, minz: -500, maxz: 500 };
+const WORLD_B = { ...WORLD };
 function bldAt(x: number, z: number) {
   for (const b of blds) if (x > b.minx && x < b.maxx && z > b.minz && z < b.maxz && pip([x, z], b.pts)) return b;
   return null;
 }
 
 // ---------- sectors ----------
-const SX = 3,
-  SZ = 3;
-const sectorNames = ['華江', '西園', '萬大', '龍山寺', '剝皮寮', '大理街', '西門町', '中華路', '漢中街'];
-const sectorOf = (x: number, z: number) =>
-  clamp(Math.floor(((x - bounds.minx) / (bounds.maxx - bounds.minx)) * SX), 0, SX - 1) +
-  SX * clamp(Math.floor(((z - bounds.minz) / (bounds.maxz - bounds.minz)) * SZ), 0, SZ - 1);
-// layout: west->east, north->south ; names roughly mapped
-const SECTOR_LABEL = (i: number) => sectorNames[[6, 7, 8, 3, 4, 5, 0, 1, 2][i]] ?? '第' + (i + 1) + '區';
+// v21: named 萬華 areas (nearest anchor). Core areas are liberated by clearing their soldiers; outer areas by
+// wiping the garrison at their outpost tile (streamed, saved per tile).
+const SECTORS: { n: string; x: number; z: number }[] = [
+  { n: '西門町', x: 330, z: -230 },
+  { n: '中華路', x: 420, z: 260 },
+  { n: '康定路', x: -40, z: 60 },
+  { n: '龍山寺', x: -260, z: 360 },
+  { n: '貴陽街', x: -430, z: -220 },
+  { n: '華西街', x: -480, z: 330 },
+  { n: '西園路', x: -600, z: 1100 },
+  { n: '華江', x: -1300, z: 820 },
+  { n: '東園', x: -1000, z: 1550 },
+  { n: '萬大路', x: -200, z: 1430 },
+  { n: '南機場', x: 150, z: 1320 },
+  { n: '青年公園', x: 300, z: 1990 },
+  { n: '加蚋仔', x: -1000, z: 2120 },
+  { n: '馬場町', x: 420, z: 2350 },
+  { n: '雙園', x: -1300, z: 2560 },
+];
+const NSEC = SECTORS.length;
+const sectorNames = SECTORS.map(s => s.n);
+const sectorOf = (x: number, z: number) => {
+  let bi = 0,
+    bd = 1e18;
+  SECTORS.forEach((s, i) => {
+    const d = (s.x - x) ** 2 + (s.z - z) ** 2;
+    if (d < bd) ((bd = d), (bi = i));
+  });
+  return bi;
+};
+const SECTOR_LABEL = (i: number) => sectorNames[i] ?? '第' + (i + 1) + '區';
+const outerSector = (i: number) => !inCore(SECTORS[i].x, SECTORS[i].z);
 
 // ---------- build map ----------
 function shopType(s: string, n: string) {
@@ -551,9 +601,9 @@ function rocCheck(silent: boolean) {
     li.label = '受傷聯絡官的背包';
     (ROC as any).liaison = lp;
   }
-  if (ROC.unlocked && !ROC.offensive && liberated.size >= SX * SZ - 2 && roc && !silent) {
+  if (ROC.unlocked && !ROC.offensive && liberated.size >= NSEC - 2 && roc && !silent) {
     ROC.offensive = true;
-    const rest = [...Array(SX * SZ).keys()].filter(i => !liberated.has(i));
+    const rest = [...Array(NSEC).keys()].filter(i => !liberated.has(i));
     const r = nearestRoad(player.pos.x, player.pos.z, /西園路/) || mainRoads[0];
     const route = r.p.length > 1 ? (r.p[0][1] > r.p[r.p.length - 1][1] ? r.p.slice() : r.p.slice().reverse()) : r.p;
     (ROC as any).col = route;
@@ -565,7 +615,7 @@ function rocCheck(silent: boolean) {
     log(`🎖 國軍反攻！M1A2T、勇虎、雲豹縱隊開進 ${r.n || '西園路'}——奪回最後的據點！`, '#ffd76a');
     slowDown('國軍反攻');
   }
-  if (ROC.offensive && !ROC.ended && liberated.size >= SX * SZ && !silent) {
+  if (ROC.offensive && !ROC.ended && liberated.size >= NSEC && !silent) {
     ROC.ended = true;
     rocEnding();
   }
@@ -601,7 +651,7 @@ function rocCineStep(dt: number) {
     const d = document.createElement('div');
     d.id = 'evacend';
     d.className = 'win';
-    d.innerHTML = `<h1>奪回萬華</h1><h2>結局：國軍與萬華的街坊並肩，把佔領軍趕出了艋舺。</h2><table><tr><td>存活天數</td><td>${day} 天</td></tr><tr><td>奪回街區</td><td>${liberated.size} / ${SX * SZ}</td></tr><tr><td>擊倒佔領軍</td><td>${player.kills}</td></tr><tr><td>擊毀裝甲</td><td>${armor ? armor.list.filter(a => a.dead).length : 0}</td></tr></table><p>另有兩種結局：搭直升機或小艇撤離至福特號航空母艦。</p><button onclick="location.reload()">再玩一次</button>`;
+    d.innerHTML = `<h1>奪回萬華</h1><h2>結局：國軍與萬華的街坊並肩，把佔領軍趕出了艋舺。</h2><table><tr><td>存活天數</td><td>${day} 天</td></tr><tr><td>奪回街區</td><td>${liberated.size} / ${NSEC}</td></tr><tr><td>擊倒佔領軍</td><td>${player.kills}</td></tr><tr><td>擊毀裝甲</td><td>${armor ? armor.list.filter(a => a.dead).length : 0}</td></tr></table><p>另有兩種結局：搭直升機或小艇撤離至福特號航空母艦。</p><button onclick="location.reload()">再玩一次</button>`;
     document.body.appendChild(d);
   }
 }
@@ -983,6 +1033,11 @@ function buildMap(data: any) {
             const pr = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
             dressRoof(roofG, pts as any, h, pr, pip as any, A > 25);
           }
+          if (A < 600) {
+            let sd = s8 ^ 0x5bd1;
+            const pr = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+            dressWalkup(pts as any, h, roadDist, pr, roofG);
+          }
         },
       });
     }
@@ -1224,6 +1279,9 @@ type Sol = {
   cone: THREE.Mesh;
   night: boolean;
   lastSeen?: V2;
+  /** v21: streamed district soldier (tile key + index within tile) */
+  tile?: string;
+  tid?: number;
 };
 const sols: Sol[] = [];
 const coneGeo = new THREE.CircleGeometry(1, 20, -Math.PI / 5, (Math.PI * 2) / 5);
@@ -1272,6 +1330,171 @@ function spawnSoldiers(dead: Set<number>) {
     }
     sols.push(s);
   }
+}
+
+// ---------- v21: district tile content (per-tile density budget, deterministic per-tile seed) ----------
+const GARRISON = 5;
+const DBUDGET = { loot: 3, patrol: 2, solCap: 36 };
+const gKeys = new Map<number, string | null>();
+function garrisonKey(i: number) {
+  if (gKeys.has(i)) return gKeys.get(i)!;
+  if (!district.ix) return null;
+  const T = district.ix.T,
+    a = SECTORS[i];
+  let best: string | null = null,
+    bd = 1e18;
+  for (const [k, [nb, nr]] of Object.entries(district.ix.tiles)) {
+    if (nr < 3 || nb < 4) continue;
+    const [tx, tz] = k.split('_').map(Number);
+    const cx = (tx + 0.5) * T,
+      cz = (tz + 0.5) * T;
+    if (inCore(cx, cz)) continue;
+    const d = (cx - a.x) ** 2 + (cz - a.z) ** 2;
+    if (d < bd) ((bd = d), (best = k));
+  }
+  gKeys.set(i, best);
+  return best;
+}
+const garrisonOf = (i: number) => {
+  const k = garrisonKey(i);
+  return k ? { key: k } : null;
+};
+function rollLoot(type: string, r: () => number) {
+  const items: Record<string, number> = {};
+  const table = LOOT[type] || LOOT.home;
+  const tot = table.reduce((s, x) => s + x[1], 0);
+  for (let i = 0, n = 1 + Math.floor(r() * 3); i < n; i++) {
+    let q = r() * tot;
+    for (const [k, w, m] of table) {
+      q -= w;
+      if (q <= 0) {
+        items[k] = (items[k] || 0) + 1 + Math.floor(r() * m);
+        break;
+      }
+    }
+  }
+  return items;
+}
+const dTile = new Map<string, { sols: Sol[]; conts: Cont[]; marks: THREE.Object3D[]; cps: V2[] }>();
+let dSolId = 100000;
+const sandMat = new THREE.MeshStandardMaterial({ color: 0x8a7a58, roughness: 1 });
+function dSoldier(key: string, tid: number, route: V2[], sector: number, post?: V2) {
+  const rig = spawnRig(SOLDIER_OPTS);
+  setWeapon(rig, 'rifle');
+  const cone = new THREE.Mesh(
+    coneGeo,
+    new THREE.MeshBasicMaterial({ color: 0xffee88, transparent: true, opacity: 0.12, depthWrite: false }),
+  );
+  cone.position.y = 0.06;
+  scene.add(cone);
+  const p = post || route[0];
+  const s: Sol = {
+    rig,
+    id: dSolId++,
+    mesh: rig.root,
+    pos: new THREE.Vector3(p[0], 0, p[1]),
+    hp: 100,
+    route,
+    wi: 1,
+    dir: 0,
+    state: 'patrol',
+    alert: 0,
+    timer: 0,
+    cd: 0,
+    sector,
+    cone,
+    night: false,
+    tile: key,
+    tid,
+  };
+  if (post) s.post = post;
+  sols.push(s);
+  return s;
+}
+function onTileLoad(t: TileInfo) {
+  const rec = { sols: [] as Sol[], conts: [] as Cont[], marks: [] as THREE.Object3D[], cps: [] as V2[] };
+  dTile.set(t.key, rec);
+  const sv = district.saved[t.key] || {};
+  const dead = sv.dead || {};
+  const r = t.rnd;
+  // loot: a few caches on the shop frontage
+  const types = ['home', 'store', 'stall', 'breakfast', 'hardware', 'kitchen'];
+  const nL = t.fronts.length ? Math.min(DBUDGET.loot, Math.floor(t.fronts.length / 8) + (r() < 0.5 ? 1 : 0)) : 0;
+  for (let i = 0; i < nL; i++) {
+    const f = t.fronts[Math.floor(r() * t.fronts.length)];
+    const ty = types[Math.floor(r() * types.length)];
+    const rolled = rollLoot(ty, r);
+    const preset = sv.c?.[i] ?? rolled;
+    rec.conts.push(
+      makeCont(`t${t.key}:${i}`, [f.x + f.ux * (r() - 0.5) * 2, f.z + f.uz * (r() - 0.5) * 2], 'crate', undefined, {
+        ...preset,
+      }),
+    );
+  }
+  const big = t.roads.filter(q => q.p.length >= 2 && !/foot|path|steps|cycle|service/.test(q.t));
+  // garrison outpost for the area this tile anchors
+  const gs = SECTORS.findIndex((_, i) => outerSector(i) && garrisonKey(i) === t.key);
+  if (gs >= 0 && big.length) {
+    let cp: V2 = big[0].p[0],
+      bd = 1e9;
+    for (const q of big)
+      for (const v of q.p) {
+        const d = Math.hypot(v[0] - t.cx, v[1] - t.cz);
+        if (d < bd) ((bd = d), (cp = v));
+      }
+    const g = new THREE.Group();
+    for (let k = 0; k < 10; k++) {
+      const a = (k / 10) * Math.PI * 2;
+      const sb = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 0.6), sandMat);
+      sb.position.set(cp[0] + Math.cos(a) * 4.2, 0.25 + (k % 2) * 0.02, cp[1] + Math.sin(a) * 4.2);
+      sb.rotation.y = -a + Math.PI / 2;
+      sb.castShadow = true;
+      g.add(sb);
+    }
+    scene.add(g);
+    rec.marks.push(g);
+    rec.cps.push(cp);
+    checkpoints.push(cp);
+    for (let k = 0; k < GARRISON; k++) {
+      if (dead[k]) continue;
+      const a = (k / GARRISON) * Math.PI * 2;
+      const post: V2 = [cp[0] + Math.cos(a) * 2.5, cp[1] + Math.sin(a) * 2.5];
+      rec.sols.push(dSoldier(t.key, k, [post, cp], gs, post));
+    }
+  }
+  // patrols (bounded globally)
+  const live = sols.filter(q => q.tile && q.state !== 'dead').length;
+  const nP =
+    big.length && live < DBUDGET.solCap ? Math.min(DBUDGET.patrol, (r() < 0.6 ? 1 : 0) + (r() < 0.3 ? 1 : 0)) : 0;
+  for (let j = 0; j < nP; j++) {
+    const q = big[Math.floor(r() * big.length)];
+    if (dead[GARRISON + j] || q.p.length < 2) continue;
+    rec.sols.push(dSoldier(t.key, GARRISON + j, q.p.slice(0, 6) as V2[], -1));
+  }
+}
+function onTileUnload(key: string) {
+  const rec = dTile.get(key);
+  if (!rec) return;
+  for (const q of rec.sols) {
+    scene.remove(q.rig.root);
+    scene.remove(q.cone);
+    const i = sols.indexOf(q);
+    if (i >= 0) sols.splice(i, 1);
+  }
+  const c: Record<number, Record<string, number>> = { ...(district.saved[key]?.c || {}) };
+  for (const q of rec.conts) {
+    c[+q.id.split(':')[1]] = q.items;
+    q.mesh.parent?.remove(q.mesh);
+    const i = conts.indexOf(q);
+    if (i >= 0) conts.splice(i, 1);
+  }
+  if (rec.conts.length) district.save(key, 'c', c);
+  for (const m of rec.marks) scene.remove(m);
+  for (const cp of rec.cps) {
+    const i = checkpoints.indexOf(cp);
+    if (i >= 0) checkpoints.splice(i, 1);
+  }
+  dTile.delete(key);
 }
 
 // ---------- player role, drivable vehicles, streamed road detail, traffic ----------
@@ -1848,7 +2071,7 @@ function talkInformant() {
       INF.scouted = 0;
       dlg('抓到叛徒線人', `他跪地求饒：「我說、我說！真的船在 ${RV[INF.spot].n}，${hhmm(INF.rvT)}！」`, []);
     } else {
-      const sec = Math.min(SX * SZ - 1, sectorOf(infPos[0], infPos[1]));
+      const sec = Math.min(NSEC - 1, sectorOf(infPos[0], infPos[1]));
       for (const s of sols)
         if (s.sector === sec && s.state !== 'dead' && Math.random() < 0.5) {
           s.state = 'dead';
@@ -2324,14 +2547,10 @@ function useItem(k: string) {
     log('📻 無線電修好了！可以呼叫國軍裝甲支援（通話會引來巡邏）', '#9f9');
   } else if (k === 'tmap') {
     if (--player.inv[k] <= 0) delete player.inv[k];
-    const si = Math.floor(Math.random() * SX * SZ),
-      i = si % SX,
-      j = Math.floor(si / SX);
-    const w = (bounds.maxx - bounds.minx) / SX,
-      h = (bounds.maxz - bounds.minz) / SZ;
-    const x0 = bounds.minx + i * w,
-      z0 = bounds.minz + j * h;
-    gmap?.revealRect(x0, z0, x0 + w, z0 + h);
+    const si = Math.floor(Math.random() * NSEC);
+    const x0 = SECTORS[si].x - 250,
+      z0 = SECTORS[si].z - 250;
+    gmap?.revealRect(x0, z0, x0 + 500, z0 + 500);
     checkpoints.forEach((c, n) => {
       if (sectorOf(c[0], c[1]) === si) gmap?.intel('out' + n, c[0], c[1], 'out', '解放軍哨點');
     });
@@ -2449,6 +2668,10 @@ function take(c: Cont, k: string, all = false) {
   addItem(k, n);
   c.items[k] -= n;
   if (c.items[k] <= 0) delete c.items[k];
+  if (c.id[0] === 't' && c.id.includes(':')) {
+    const [key, i] = c.id.slice(1).split(':');
+    district.save(key, 'c', { ...(district.saved[key]?.c || {}), [i]: c.items });
+  }
   const gm = (c as any).gunMesh;
   if (gm && !Object.keys(c.items).some(q => ITEMS[q].kind === 'gun' || ITEMS[q].mag)) gm.visible = false;
   updateVis(c);
@@ -2769,6 +2992,7 @@ function damageSol(s: Sol, dmg: number, stealth: boolean) {
   if (s.hp <= 0) {
     s.state = 'dead';
     s.cone.visible = false;
+    if (s.tile) district.save(s.tile, 'dead', { ...(district.saved[s.tile]?.dead || {}), [s.tid!]: 1 });
     player.kills++;
     log('擊倒一名佔領軍士兵', '#ffd76a');
     const it = plaDrop(s.id);
@@ -2787,10 +3011,17 @@ function damageSol(s: Sol, dmg: number, stealth: boolean) {
 }
 const liberated = new Set<number>();
 function checkSectors(silent = false) {
-  for (let i = 0; i < SX * SZ; i++) {
+  for (let i = 0; i < NSEC; i++) {
     if (liberated.has(i)) continue;
-    const alive = sols.filter(s => s.sector === i && s.state !== 'dead').length;
-    const total = sols.filter(s => s.sector === i).length;
+    let alive = sols.filter(s => s.sector === i && s.state !== 'dead').length;
+    let total = sols.filter(s => s.sector === i).length;
+    if (outerSector(i)) {
+      const g = garrisonOf(i);
+      total = g ? GARRISON : 0;
+      alive = g
+        ? GARRISON - Object.keys(district.saved[g.key]?.dead || {}).filter(k => +k >= 0 && +k < GARRISON).length
+        : 0;
+    }
     if (total > 0 && alive === 0) {
       liberated.add(i);
       if (!silent) log(`★ ${SECTOR_LABEL(i)} 街區已奪回！`, '#7fff7f');
@@ -2825,7 +3056,7 @@ function doEvac(mode: 'heli' | 'boat' = 'heli') {
   playEvac(renderer, mode, () => {
     const d = document.createElement('div');
     d.id = 'evacend';
-    d.innerHTML = `<h1>您已成功撤離至 福特號航空母艦（USS Gerald R. Ford, CVN-78）</h1><h2>另一個結局：你活了下來，把萬華的故事帶出去。（撤離路線：${mode === 'boat' ? '小艇・淡水河出海' : '直升機・河濱撤離區'}）</h2><table><tr><td>撤離路線</td><td>${mode === 'boat' ? '🚤 小艇（線人接應）' : '🚁 直升機'}</td></tr><tr><td>存活天數</td><td>${day} 天（第 ${day} 天 ${hh2}）</td></tr><tr><td>奪回街區</td><td>${liberated.size} / ${SX * SZ}</td></tr><tr><td>擊倒佔領軍</td><td>${player.kills}</td></tr><tr><td>攜帶物品</td><td>${items} 件</td></tr></table><div><button id=evcont>繼續留在萬華（奪回之路）</button><button id=evnew>新遊戲</button></div><p style="font-size:12px;color:#678;margin-top:18px">虛構作品・艦艇與直升機為通用低多邊形模型</p>`;
+    d.innerHTML = `<h1>您已成功撤離至 福特號航空母艦（USS Gerald R. Ford, CVN-78）</h1><h2>另一個結局：你活了下來，把萬華的故事帶出去。（撤離路線：${mode === 'boat' ? '小艇・淡水河出海' : '直升機・河濱撤離區'}）</h2><table><tr><td>撤離路線</td><td>${mode === 'boat' ? '🚤 小艇（線人接應）' : '🚁 直升機'}</td></tr><tr><td>存活天數</td><td>${day} 天（第 ${day} 天 ${hh2}）</td></tr><tr><td>奪回街區</td><td>${liberated.size} / ${NSEC}</td></tr><tr><td>擊倒佔領軍</td><td>${player.kills}</td></tr><tr><td>攜帶物品</td><td>${items} 件</td></tr></table><div><button id=evcont>繼續留在萬華（奪回之路）</button><button id=evnew>新遊戲</button></div><p style="font-size:12px;color:#678;margin-top:18px">虛構作品・艦艇與直升機為通用低多邊形模型</p>`;
     document.body.appendChild(d);
     $('evcont').onclick = () => {
       d.remove();
@@ -2833,7 +3064,7 @@ function doEvac(mode: 'heli' | 'boat' = 'heli') {
       log('你決定留下來，繼續奪回萬華。', '#ffd27a');
     };
     $('evnew').onclick = () => {
-      localStorage.removeItem(SAVE);
+      (localStorage.removeItem(SAVE), localStorage.removeItem('dt.tiles'));
       location.reload();
     };
   });
@@ -3083,6 +3314,7 @@ function update(dt: number) {
     }
   } else drive.update(dt, new THREE.Vector3(), UT.power);
   roadT.update(player.pos.x, player.pos.z, dt);
+  district.update(player.pos.x, player.pos.z);
   traffic.update(dt);
   netFrame(dt);
   if (drive.cur) {
@@ -3524,7 +3756,7 @@ function drawHud(inside: Bld | null) {
   const alive = sols.filter(s => s.state !== 'dead').length;
   if (!PRO.on)
     $('objective').textContent =
-      `已奪回街區 ${liberated.size} / ${SX * SZ}｜殘存佔領軍 ${alive}` +
+      `已奪回街區 ${liberated.size} / ${NSEC}｜殘存佔領軍 ${alive}` +
       (evacOpen()
         ? `｜🚁 撤離窗口剩 ${Math.floor((EV1 - gameMin) / 60)} 小時 ${Math.floor((EV1 - gameMin) % 60)} 分`
         : '');
@@ -3558,7 +3790,7 @@ function drawHud(inside: Bld | null) {
 }
 function die() {
   dead = true;
-  localStorage.removeItem(SAVE);
+  (localStorage.removeItem(SAVE), localStorage.removeItem('dt.tiles'));
   closePanel();
   const t = $('title');
   t.style.display = 'flex';
@@ -3767,8 +3999,23 @@ function pumpRoofs(px: number, pz: number, budgetMs: number, maxD = 1e9) {
 async function boot() {
   await prog(0.3, '下載萬華地圖資料（OpenStreetMap）…');
   const data = await (await fetch(import.meta.env.BASE_URL + 'data/wanhua.json')).json();
+  await district.ready;
+  {
+    const [x0, z0, x1, z1] = district.ix.bbox;
+    WORLD_B.minx = x0;
+    WORLD_B.minz = z0;
+    WORLD_B.maxx = x1;
+    WORLD_B.maxz = z1;
+    // landmark footprints replace the core's generic boxes there
+    const R = District.rects(district.ix);
+    data.buildings = data.buildings.filter((b: any) => {
+      const c = b.p.reduce((a: V2, q: V2) => [a[0] + q[0] / b.p.length, a[1] + q[1] / b.p.length], [0, 0]);
+      return !R.some(r => c[0] > r[0] && c[0] < r[2] && c[1] > r[1] && c[1] < r[3]);
+    });
+  }
   await prog(0.45, '建造街區…');
   buildMap(data);
+  Object.assign(WORLD, WORLD_B);
   await prog(0.65, '佈置出生點附近的室內與巷弄…');
   const sv = (() => {
     try {
@@ -3778,7 +4025,7 @@ async function boot() {
     }
   })();
   // ---- detailed blocks around spawn (剝皮寮 / 康定路 / 西門町 edge) ----
-  const homes = blds.filter(b => b.door && b.type === 'home' && sectorOf(b.c[0], b.c[1]) === 4);
+  const homes = blds.filter(b => b.door && b.type === 'home' && Math.abs(b.c[0]) < 167 && Math.abs(b.c[1]) < 167);
   const fx = {
     rnd,
     pip,
@@ -3989,10 +4236,14 @@ async function boot() {
     gmap = new GameMap({
       blds: blds as any,
       roads: roads as any,
-      bounds,
-      SX,
-      SZ,
+      bounds: WORLD,
+      sectors: SECTORS,
+      sectorOf,
       sectorName: SECTOR_LABEL,
+      district: {
+        ...district.ix,
+        more: async () => (await fetch(import.meta.env.BASE_URL + 'data/district/map.json')).json(),
+      },
       liberated: () => liberated,
       player: () => ({ x: player.pos.x, z: player.pos.z, rot: player.mesh ? player.mesh.rotation.y : 0 }),
       parks: (parks?.clusters || []) as V2[],
@@ -4119,7 +4370,7 @@ async function boot() {
       checkSectors(true);
       conts.forEach(updateVis);
     } else {
-      localStorage.removeItem(SAVE);
+      (localStorage.removeItem(SAVE), localStorage.removeItem('dt.tiles'));
       gmap?.reset();
       roadT.reset();
       player.inv = { ...ROLE.inv };
@@ -4244,6 +4495,9 @@ async function boot() {
   camera.lookAt(player.pos);
   addEventListener('beforeunload', save);
   (window as any).__game = {
+    district,
+    sectorOf,
+    SECTORS,
     arcadeAudit: () => arcadeAudit(bldAt),
     roadT,
     traffic,
@@ -4314,7 +4568,7 @@ async function boot() {
     callSupport,
     rocCheck,
     liberate: (n: number) => {
-      for (let i = 0; i < SX * SZ && liberated.size < n; i++)
+      for (let i = 0; i < NSEC && liberated.size < n; i++)
         if (!liberated.has(i)) {
           for (const q of sols)
             if (q.sector === i) {

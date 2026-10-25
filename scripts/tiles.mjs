@@ -2,6 +2,22 @@
 import fs from 'fs';
 const T = 200;
 const d = JSON.parse(fs.readFileSync('public/data/wanhua.json', 'utf8'));
+// v21: whole-district roads (written by scripts/district.mjs); keep only the parts outside the core bbox
+if (fs.existsSync('/tmp/osm/district-roads.json')) {
+  const xs = d.roads.flatMap(r => r.p.map(p => p[0])),
+    zs = d.roads.flatMap(r => r.p.map(p => p[1]));
+  const [x0, x1, z0, z1] = [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)];
+  const inC = (x, z) => x > x0 && x < x1 && z > z0 && z < z1;
+  for (const r of JSON.parse(fs.readFileSync('/tmp/osm/district-roads.json', 'utf8'))) {
+    let run = null;
+    for (let i = 0; i < r.p.length - 1; i++) {
+      const out = !inC((r.p[i][0] + r.p[i + 1][0]) / 2, (r.p[i][1] + r.p[i + 1][1]) / 2);
+      if (out) (run ||= { t: r.t, n: r.n, p: [r.p[i]] }).p.push(r.p[i + 1]);
+      else if (run) (d.roads.push(run), (run = null));
+    }
+    if (run) d.roads.push(run);
+  }
+}
 const W = {
   trunk: 18,
   primary: 16,

@@ -142,5 +142,5 @@ const info = await p.evaluate(() => {
   };
 });
 console.log(JSON.stringify(info));
-check(info.sols === 64, '64 PLA soldiers spawned');
+check(info.sols >= 64 && info.sols <= 64 + 36, '64 core PLA soldiers + bounded district garrisons (' + info.sols + ')');
 await finish();
