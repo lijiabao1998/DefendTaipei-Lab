@@ -2,6 +2,7 @@ import { buildEvacZone, playEvac, cine } from './evac';
 import * as THREE from 'three';
 import { buildFacade } from './facade';
 import { buildParks } from './park';
+import { makeShack, setShackNight } from './rooftin';
 let facade: ReturnType<typeof buildFacade> | null = null;
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { ITEMS, LOOT } from './items';
@@ -221,7 +222,9 @@ function buildMap(data: any) {
     // rooftop additions 頂樓加蓋 + water tanks
     if (A > 40 && rnd() < 0.55 || A > 30 && hh(3) < (lv <= 3 ? 0.6 : 0)) {
       const sx = (b.maxx - b.minx) * 0.4, sz = (b.maxz - b.minz) * 0.4;
-      const tin = new THREE.Mesh(new THREE.BoxGeometry(sx, 2.6, sz), tinMats[(() => { const q = hh(7); return q < 0.94 ? Math.floor(q / 0.94 * 6) : 6 + Math.floor((q - 0.94) / 0.03); })()]); tin.position.set(cx, h + 1.3, cz); if (pip([cx, cz], pts)) { tin.castShadow = true; b.roof.add(tin); }
+      { let sd = Math.floor(hh(7) * 1e6) + 1; const pr = () => (sd = (sd * 16807) % 2147483647) / 2147483647; const bw = b.maxx - b.minx, bd = b.maxz - b.minz; const cover = 0.45 + pr() * 0.5;
+        for (let k = 0; k < 5; k++) { const f = cover * (1 - k * 0.12); const sw = Math.max(3, bw * f), sdp = Math.max(3, bd * f); const ox = (pr() - 0.5) * (bw - sw) * 0.8, oz = (pr() - 0.5) * (bd - sdp) * 0.8; const qx = cx + ox, qz = cz + oz;
+          if ([[-1, -1], [1, -1], [1, 1], [-1, 1]].every(([a2, c2]) => pip([qx + a2 * (sw / 2 + 0.4), qz + c2 * (sdp / 2 + 0.4)], pts))) { const sh = makeShack(sw, sdp, pr); sh.position.set(qx, h, qz); b.roof.add(sh); break; } } }
     }
     const tq = rnd(); if (tq < 0.5 || hh(4) < (lv <= 3 ? 0.5 : 0)) { const st = lv <= 3 ? 1.6 : 0; const t = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 1.4, 10), tankMat); const tp: V2 = tq < 0.5 ? [cx + (rnd() - 0.5) * 2, cz + (rnd() - 0.5) * 2] : [cx + (hh(5) - 0.5) * 2, cz + (hh(6) - 0.5) * 2]; if (pip(tp, pts)) { t.position.set(tp[0], h + 0.7 + st, tp[1]); t.castShadow = true; b.roof.add(t); if (st) for (const [ox, oz] of [[-0.45, -0.45], [0.45, -0.45], [0.45, 0.45], [-0.45, 0.45]]) { const lg = new THREE.Mesh(new THREE.BoxGeometry(0.07, st, 0.07), tinMat); lg.position.set(tp[0] + ox, h + st / 2, tp[1] + oz); b.roof.add(lg); } } }
     group.add(b.roof);
@@ -258,7 +261,7 @@ function buildLamps() {
   for (let i = 0; i < 8; i++) { const l = new THREE.PointLight(0xffc070, 0, 22, 1.6); scene.add(l); lampPool.push(l); }
 }
 let lampT = 0;
-function updateLamps(night: number, dt: number) {
+function updateLamps(night: number, dt: number) { setShackNight(night);
   lampHeadMat.emissiveIntensity = night * 2.5; lampT -= dt; if (lampT > 0) return; lampT = 0.5;
   const near = lamps.map(l => [l, (l[0] - player.pos.x) ** 2 + (l[1] - player.pos.z) ** 2] as const).sort((a, b) => a[1] - b[1]).slice(0, lampPool.length);
   lampPool.forEach((L, i) => { const e = near[i]; if (!e) { L.intensity = 0; return; } const [x, z, a] = e[0]; L.position.set(x + Math.sin(a) * 1.1, 4.7, z + Math.cos(a) * 1.1); L.intensity = night * 40; });
