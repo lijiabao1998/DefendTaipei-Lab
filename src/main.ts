@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { buildFacade } from './facade';
+import { buildParks } from './park';
 let facade: ReturnType<typeof buildFacade> | null = null;
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { ITEMS, LOOT } from './items';
@@ -43,7 +44,7 @@ addEventListener('resize', resize); resize();
 const CAM_OFF = new THREE.Vector3(40, 56, 40);
 const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x4a4030, 0.9); scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffe8c0, 2.2); sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 200 }); sun.shadow.bias = -0.0005;
+sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 200 }); sun.shadow.bias = -0.0002; sun.shadow.normalBias = 0.04;
 scene.add(sun, sun.target);
 const flash = new THREE.SpotLight(0xfff2cc, 0, 26, 0.5, 0.5, 1.2); scene.add(flash, flash.target);
 
@@ -76,16 +77,16 @@ const wallMatsT = wallTexs.map(t => new THREE.MeshStandardMaterial({ map: t, rou
 const roofMat = new THREE.MeshStandardMaterial({ color: 0x8c8a82, roughness: 1, side: THREE.DoubleSide });
 const tinMat = new THREE.MeshStandardMaterial({ color: 0x7f9fb0, roughness: 0.6, metalness: 0.3 });
 /* 鐵皮加蓋 variants: faded blue corrugated, rusted brown, grey-white, with rust streaks */
-const tinMats = [['#5f86a6', '#46667e'], ['#8a5634', '#5e3820'], ['#a8aaa6', '#7e807c'], ['#4f7a5a', '#3a5a42']].map(([b, l]) => new THREE.MeshStandardMaterial({ roughness: 0.65, metalness: 0.25, map: canvasTex(64, 64, c => { c.fillStyle = b; c.fillRect(0, 0, 64, 64); c.fillStyle = l; for (let i = 0; i < 64; i += 4) c.fillRect(i, 0, 1.5, 64); for (let i = 0; i < 10; i++) { const x = Math.random() * 64; const g = c.createLinearGradient(0, 0, 0, 64); g.addColorStop(0, 'rgba(120,60,25,.7)'); g.addColorStop(1, 'rgba(120,60,25,0)'); c.fillStyle = g; c.fillRect(x, 0, 2 + Math.random() * 4, 20 + Math.random() * 44); } }) }));
+const tinMats = [['#6f8f86', '#566f68'], ['#5f8a86', '#46696a'], ['#9a4a3a', '#743528'], ['#8a5040', '#683a2e'], ['#7e948a', '#62766e'], ['#a85a46', '#80402f'], ['#6a8ea6', '#4e6e82'], ['#a8aaa6', '#7e807c']].map(([b, l]) => new THREE.MeshStandardMaterial({ roughness: 0.65, metalness: 0.25, map: canvasTex(64, 64, c => { c.fillStyle = b; c.fillRect(0, 0, 64, 64); c.fillStyle = l; for (let i = 0; i < 64; i += 4) c.fillRect(i, 0, 1.5, 64); for (let i = 0; i < 10; i++) { const x = Math.random() * 64; const g = c.createLinearGradient(0, 0, 0, 64); g.addColorStop(0, 'rgba(120,60,25,.7)'); g.addColorStop(1, 'rgba(120,60,25,0)'); c.fillStyle = g; c.fillRect(x, 0, 2 + Math.random() * 4, 20 + Math.random() * 44); } }) }));
 const tankMat = new THREE.MeshStandardMaterial({ color: 0xd8d8d0, roughness: 0.5, metalness: 0.4 });
 const floorMat = new THREE.MeshStandardMaterial({ map: canvasTex(64, 64, c => { c.fillStyle = '#b9ad98'; c.fillRect(0, 0, 64, 64); c.strokeStyle = '#8f8572'; c.strokeRect(0, 0, 32, 32); c.strokeRect(32, 32, 32, 32); c.strokeRect(0, 32, 32, 32); c.strokeRect(32, 0, 32, 32); }), side: THREE.DoubleSide });
 const roadTex = canvasTex(256, 256, c => { c.fillStyle = '#3c3e41'; c.fillRect(0, 0, 256, 256); for (let i = 0; i < 2500; i++) { c.fillStyle = `rgba(${Math.random() < 0.5 ? '255,255,255' : '0,0,0'},${Math.random() * 0.07})`; c.fillRect(Math.random() * 256, Math.random() * 256, 2, 2); }
   for (let i = 0; i < 5; i++) { c.fillStyle = `rgba(${20 + Math.random() * 30},${20 + Math.random() * 30},${25 + Math.random() * 30},.6)`; c.fillRect(Math.random() * 220, Math.random() * 220, 20 + Math.random() * 60, 15 + Math.random() * 40); } // asphalt patches
-  c.strokeStyle = 'rgba(15,15,15,.75)'; c.lineWidth = 1.2; for (let i = 0; i < 14; i++) { let x = Math.random() * 256, y = Math.random() * 256; c.beginPath(); c.moveTo(x, y); for (let k = 0; k < 8; k++) { x += (Math.random() - 0.5) * 30; y += (Math.random() - 0.5) * 30; c.lineTo(x, y); } c.stroke(); } // cracks
-  for (let i = 0; i < 6; i++) { const g = c.createRadialGradient(0, 0, 0, 0, 0, 20); g.addColorStop(0, 'rgba(10,10,12,.45)'); g.addColorStop(1, 'rgba(10,10,12,0)'); c.save(); c.translate(Math.random() * 256, Math.random() * 256); c.scale(1, 0.6); c.fillStyle = g; c.fillRect(-20, -20, 40, 40); c.restore(); } }); // oil stains
+  c.strokeStyle = 'rgba(25,25,25,.22)'; c.lineWidth = 0.7; for (let i = 0; i < 5; i++) { let x = Math.random() * 256, y = Math.random() * 256; c.beginPath(); c.moveTo(x, y); for (let k = 0; k < 4; k++) { x += (Math.random() - 0.5) * 14; y += (Math.random() - 0.5) * 14; c.lineTo(x, y); } c.stroke(); } // hairline cracks
+  for (let i = 0; i < 6; i++) { const g = c.createRadialGradient(0, 0, 0, 0, 0, 20); g.addColorStop(0, 'rgba(10,10,12,.16)'); g.addColorStop(1, 'rgba(10,10,12,0)'); c.save(); c.translate(Math.random() * 256, Math.random() * 256); c.scale(1, 0.6); c.fillStyle = g; c.fillRect(-20, -20, 40, 40); c.restore(); } }); // oil stains
 const groundTex = canvasTex(256, 256, c => { c.fillStyle = '#55565a'; c.fillRect(0, 0, 256, 256); for (let i = 0; i < 3000; i++) { c.fillStyle = `rgba(${Math.random() < 0.5 ? '255,255,255' : '0,0,0'},${Math.random() * 0.06})`; c.fillRect(Math.random() * 256, Math.random() * 256, 2, 2); }
   for (let i = 0; i < 7; i++) { c.fillStyle = `rgba(${95 + Math.random() * 30},${95 + Math.random() * 25},${90 + Math.random() * 20},.55)`; c.fillRect(Math.random() * 230, Math.random() * 230, 20 + Math.random() * 70, 15 + Math.random() * 50); } // poured-cement patches
-  c.strokeStyle = 'rgba(20,20,20,.6)'; c.lineWidth = 1; for (let i = 0; i < 10; i++) { let x = Math.random() * 256, y = Math.random() * 256; c.beginPath(); c.moveTo(x, y); for (let k = 0; k < 7; k++) { x += (Math.random() - 0.5) * 30; y += (Math.random() - 0.5) * 30; c.lineTo(x, y); } c.stroke(); } });
+  c.strokeStyle = 'rgba(20,20,20,.2)'; c.lineWidth = 0.7; for (let i = 0; i < 10; i++) { let x = Math.random() * 256, y = Math.random() * 256; c.beginPath(); c.moveTo(x, y); for (let k = 0; k < 7; k++) { x += (Math.random() - 0.5) * 30; y += (Math.random() - 0.5) * 30; c.lineTo(x, y); } c.stroke(); } });
 
 // ---------- world state ----------
 const blds: Bld[] = []; const segs: Seg[] = []; const conts: Cont[] = []; const doors: Door[] = [];
@@ -93,6 +94,7 @@ const roads: { p: V2[]; t: string; n: string }[] = [];
 const CELL = 8; const grid = new Map<string, Seg[]>();
 const gk = (x: number, z: number) => `${Math.floor(x / CELL)},${Math.floor(z / CELL)}`;
 let nav: Nav | null = null;
+function roadDist(x: number, z: number) { let best = 1e9; for (const r of roads) { const hw = (ROADW[r.t.replace('_link', '')] ?? 3) / 2; for (let i = 0; i < r.p.length - 1; i++) { const [ax, az] = r.p[i], [bx, bz] = r.p[i + 1]; const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1; const t = clamp(((x - ax) * dx + (z - az) * dz) / l2, 0, 1); const d = Math.hypot(ax + dx * t - x, az + dz * t - z) - hw; if (d < best) best = d; } } return best; }
 function addSeg(s: Seg, low = false) { if (low) s.low = true; segs.push(s); nav?.markSeg(s.a, s.b, 1); const x0 = Math.min(s.a[0], s.b[0]), x1 = Math.max(s.a[0], s.b[0]), z0 = Math.min(s.a[1], s.b[1]), z1 = Math.max(s.a[1], s.b[1]); for (let x = Math.floor(x0 / CELL); x <= Math.floor(x1 / CELL); x++) for (let z = Math.floor(z0 / CELL); z <= Math.floor(z1 / CELL); z++) { const k = x + ',' + z; (grid.get(k) || grid.set(k, []).get(k)!).push(s); } }
 function removeSeg(s: Seg) { nav?.markSeg(s.a, s.b, -1); grid.forEach(a => { const i = a.indexOf(s); if (i >= 0) a.splice(i, 1); }); }
 function nearSegs(x: number, z: number) { const out = new Set<Seg>(); const cx = Math.floor(x / CELL), cz = Math.floor(z / CELL); for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) { const a = grid.get((cx + i) + ',' + (cz + j)); if (a) a.forEach(s => out.add(s)); } return out; }
@@ -153,7 +155,7 @@ function buildMap(data: any) {
   Object.assign(bounds, { minx: minx + 10, maxx: maxx - 10, minz: minz + 10, maxz: maxz - 10 });
   const W = maxx - minx, H = maxz - minz;
   groundTex.repeat.set(W / 8, H / 8);
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(W + 200, H + 200), new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1 }));
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(W + 200, H + 200), groundMat);
   ground.rotation.x = -Math.PI / 2; ground.position.set((minx + maxx) / 2, 0, (minz + maxz) / 2); ground.receiveShadow = true; scene.add(ground);
   // roads
   const RW: Record<string, number> = ROADW; const _unused = { primary: 16, secondary: 12, tertiary: 9, residential: 6, unclassified: 6, living_street: 5, service: 4, pedestrian: 6, footway: 2.5 };
@@ -163,12 +165,12 @@ function buildMap(data: any) {
     for (let i = 0; i < r.p.length - 1; i++) {
       const [ax, az] = r.p[i], [bx, bz] = r.p[i + 1]; const len = Math.hypot(bx - ax, bz - az); if (len < 0.1) continue;
       const g = new THREE.PlaneGeometry(len + w * 0.5, w); g.rotateX(-Math.PI / 2); g.rotateY(-Math.atan2(bz - az, bx - ax)); g.translate((ax + bx) / 2, 0.02 + w * 0.0005, (az + bz) / 2); rg.push(g);
-      if (w >= 9) { const l = new THREE.PlaneGeometry(len * 0.6, 0.25); l.rotateX(-Math.PI / 2); l.rotateY(-Math.atan2(bz - az, bx - ax)); l.translate((ax + bx) / 2, 0.04, (az + bz) / 2); lg.push(l); }
+      if (w >= 12) { const l = new THREE.PlaneGeometry(len + 0.05, 0.15); /* continuous yellow centre line, main roads only */ l.rotateX(-Math.PI / 2); l.rotateY(-Math.atan2(bz - az, bx - ax)); l.translate((ax + bx) / 2, 0.04, (az + bz) / 2); lg.push(l); }
     }
   }
   roadTex.repeat.set(1, 1);
   const roadMesh = new THREE.Mesh(mergeGeometries(rg), roadMat); roadMesh.receiveShadow = true; scene.add(roadMesh);
-  if (lg.length) scene.add(new THREE.Mesh(mergeGeometries(lg), new THREE.MeshBasicMaterial({ color: 0xd8c070 })));
+  if (lg.length) scene.add(new THREE.Mesh(mergeGeometries(lg), new THREE.MeshStandardMaterial({ color: 0xd8b040, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -2 })));
   // buildings
   const pillarG: THREE.BufferGeometry[] = [];
   data.buildings.forEach((ob: any, id: number) => {
@@ -200,7 +202,8 @@ function buildMap(data: any) {
         let nx = -uz, nz = ux; if (pip([mid[0] + nx * 0.6, mid[1] + nz * 0.6], pts)) { nx = -nx; nz = -nz; }
         const door: Door = { b, p: mid, a: d1, c: d2, barricaded: false }; b.door = door; doors.push(door);
         // arcade 騎樓 pillars + sign
-        if (h > 6 && rnd() < 0.6) for (let s = 1.5; s < dl - 1; s += 3.5) { const g = new THREE.BoxGeometry(0.45, 3.2, 0.45); g.translate(a[0] + ux * s + nx * 2.4, 1.6, a[1] + uz * s + nz * 2.4); pillarG.push(g); }
+        if (h > 6 && rnd() < 0.6 && roadDist(mid[0] + nx * 3.2, mid[1] + nz * 3.2) < (ROADW.residential / 2 + 2.5)) { /* 騎樓: only on street-facing facades, a pillar row 3m out under an arcade ceiling */ let any = false; for (let s = 1.5; s < dl - 1; s += 3.5) { const px = a[0] + ux * s + nx * 3.0, pz = a[1] + uz * s + nz * 3.0; if (bldAt(px, pz) || roadDist(px, pz) < 1.5) continue; any = true; const g = new THREE.BoxGeometry(0.45, 3.2, 0.45); g.translate(px, 1.6, pz); pillarG.push(g); }
+          if (any) { const g = new THREE.BoxGeometry(dl, 0.3, 3.2); g.rotateY(-Math.atan2(uz, ux)); g.translate(mid[0] + nx * 1.6, 3.35, mid[1] + nz * 1.6); pillarG.push(g); } }
         if (h > 6 && rnd() < 0.6 || type !== 'home') {
           const tex = type !== 'home' ? signTex[type] : pick(shopSignTex);
           const sg = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(dl * 0.8, 5), 1.1), new THREE.MeshStandardMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.25, side: THREE.DoubleSide }));
@@ -217,7 +220,7 @@ function buildMap(data: any) {
     // rooftop additions 頂樓加蓋 + water tanks
     if (A > 40 && rnd() < 0.55 || A > 30 && hh(3) < (lv <= 3 ? 0.6 : 0)) {
       const sx = (b.maxx - b.minx) * 0.4, sz = (b.maxz - b.minz) * 0.4;
-      const tin = new THREE.Mesh(new THREE.BoxGeometry(sx, 2.6, sz), tinMats[Math.floor(hh(7) * 4)]); tin.position.set(cx, h + 1.3, cz); if (pip([cx, cz], pts)) { tin.castShadow = true; b.roof.add(tin); }
+      const tin = new THREE.Mesh(new THREE.BoxGeometry(sx, 2.6, sz), tinMats[(() => { const q = hh(7); return q < 0.94 ? Math.floor(q / 0.94 * 6) : 6 + Math.floor((q - 0.94) / 0.03); })()]); tin.position.set(cx, h + 1.3, cz); if (pip([cx, cz], pts)) { tin.castShadow = true; b.roof.add(tin); }
     }
     const tq = rnd(); if (tq < 0.5 || hh(4) < (lv <= 3 ? 0.5 : 0)) { const st = lv <= 3 ? 1.6 : 0; const t = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 1.4, 10), tankMat); const tp: V2 = tq < 0.5 ? [cx + (rnd() - 0.5) * 2, cz + (rnd() - 0.5) * 2] : [cx + (hh(5) - 0.5) * 2, cz + (hh(6) - 0.5) * 2]; if (pip(tp, pts)) { t.position.set(tp[0], h + 0.7 + st, tp[1]); t.castShadow = true; b.roof.add(t); if (st) for (const [ox, oz] of [[-0.45, -0.45], [0.45, -0.45], [0.45, 0.45], [-0.45, 0.45]]) { const lg = new THREE.Mesh(new THREE.BoxGeometry(0.07, st, 0.07), tinMat); lg.position.set(tp[0] + ox, h + st / 2, tp[1] + oz); b.roof.add(lg); } } }
     group.add(b.roof);
@@ -285,9 +288,56 @@ function spawnSoldiers(dead: Set<number>) {
 }
 
 // ---------- time / noise / log ----------
+const groundMat = new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1 });
+let lastHp = 100; let parks: any = null;
+// ---------- weather: rain (visual drops, wet ground, optional sound) + rain buckets ----------
+const WX = { rainNext: 15 * 60, rainUntil: 0, wet: 0, amt: 0 };
+const NR = 2500; const rainPos = new Float32Array(NR * 6); const rainG = new THREE.BufferGeometry(); rainG.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+const rainMesh = new THREE.LineSegments(rainG, new THREE.LineBasicMaterial({ color: 0xaabbcc, transparent: true, opacity: 0, depthWrite: false })); rainMesh.frustumCulled = false;
+for (let i = 0; i < NR; i++) { const x = (Math.random() - 0.5) * 70, y = Math.random() * 30, z = (Math.random() - 0.5) * 70; rainPos.set([x, y, z, x + 0.05, y + 0.7, z + 0.05], i * 6); }
+let rainAudio: { g: GainNode } | null = null;
+function startRainAudio() { try { const ac = new AudioContext(); const buf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate); const d = buf.getChannelData(0); let last = 0; for (let i = 0; i < d.length; i++) { last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02; d[i] = last * 3.5 + (Math.random() * 2 - 1) * 0.04; } const src = ac.createBufferSource(); src.buffer = buf; src.loop = true; const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1800; const g = ac.createGain(); g.gain.value = 0; src.connect(f).connect(g).connect(ac.destination); src.start(); rainAudio = { g }; } catch { /* audio optional */ } }
+const raining = () => gameMin < WX.rainUntil;
+const bucketMat = new THREE.MeshStandardMaterial({ color: 0x2a6ab8, roughness: 0.5 }); const waterTopMat = new THREE.MeshStandardMaterial({ color: 0x6a8aa0, roughness: 0.1, metalness: 0.3 });
+function makeBucket(id: string, p: V2, items: Record<string, number> = {}) { const c = makeCont(id, p, 'crate', undefined, items); (c.mesh.parent || scene).remove(c.mesh);
+  const m = new THREE.Group(); const body = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.24, 0.48, 14, 1, true), bucketMat); body.position.y = 0.24; const bot = new THREE.Mesh(new THREE.CircleGeometry(0.24, 14).rotateX(-Math.PI / 2), bucketMat); bot.position.y = 0.01; const top = new THREE.Mesh(new THREE.CircleGeometry(0.28, 14).rotateX(-Math.PI / 2), waterTopMat); top.name = 'w'; m.add(body, bot, top); bucketMat.side = THREE.DoubleSide;
+  m.position.set(p[0], 0, p[1]); m.traverse(o => o.castShadow = true); scene.add(m); c.mesh = m as any; c.label = '雨水桶'; (c as any).rain = 0; return c; }
+function updateWeather(dt: number, gm: number) {
+  if (gameMin >= WX.rainNext && !raining()) { WX.rainUntil = gameMin + 60 * (1.5 + rnd() * 4); WX.rainNext = WX.rainUntil + 60 * (8 + rnd() * 28); log('🌧 開始下雨了。外面的水桶會接到雨水。', '#9fd0ff'); }
+  const r = raining(); WX.amt += ((r ? 1 : 0) - WX.amt) * Math.min(1, dt * 0.5); WX.wet = clamp(WX.wet + (r ? gm * 1.5 : -gm * 0.25), 0, 1);
+  if (r) for (const c of conts) if (c.label === '雨水桶') { (c as any).rain += gm; if ((c as any).rain >= 0.75) { (c as any).rain = 0; if ((c.items.rainwater || 0) < 6) c.items.rainwater = (c.items.rainwater || 0) + 1; } }
+  for (const c of conts) if (c.label === '雨水桶') { const w = (c.mesh as any).getObjectByName?.('w'); if (w) { w.position.y = 0.04 + 0.4 * Math.min(1, (c.items.rainwater || 0) / 6); w.visible = !!c.items.rainwater; } }
+  (rainMesh.material as THREE.LineBasicMaterial).opacity = WX.amt * 0.45; rainMesh.visible = WX.amt > 0.02;
+  if (rainMesh.visible) { rainMesh.position.set(player.pos.x, 0, player.pos.z); const fall = dt * 22; for (let i = 0; i < NR; i++) { const o = i * 6; rainPos[o + 1] -= fall; rainPos[o + 4] -= fall; if (rainPos[o + 1] < 0) { rainPos[o + 1] += 30; rainPos[o + 4] += 30; } } rainG.attributes.position.needsUpdate = true; }
+  const wet = WX.wet; roadMat.roughness = 0.95 - wet * 0.65; roadMat.metalness = wet * 0.25; roadMat.color.setScalar(1 - wet * 0.35); groundMat.roughness = 1 - wet * 0.55; groundMat.color.setScalar(1 - wet * 0.3);
+  decay?.setWet(WX.wet); if (rainAudio) rainAudio.g.gain.value = WX.amt * 0.12;
+}
+// ---------- airdrop ----------
+let smoke: THREE.Points | null = null; let dropCont: Cont | null = null;
+function airdrop(at?: V2) { let p: V2 | null = at || null; for (let k = 0; !p && k < 200; k++) { const a = rnd() * Math.PI * 2, d = 45 + rnd() * 30; const q: V2 = [player.pos.x + Math.cos(a) * d, player.pos.z + Math.sin(a) * d]; if (!bldAt(q[0], q[1]) && !bldAt(q[0] + 1.5, q[1]) && !bldAt(q[0], q[1] + 1.5)) p = q; } if (!p) return;
+  (UT as any).ad = p; dropCont = makeCont('airdrop', p, 'crate', undefined, { medkit: 2, ration: 4, water: 4, bandage: 3, pistol: 1, a9: 24, can: 3 }); dropCont.label = '空投物資箱'; dropCont.mesh.scale.set(1.6, 2.4, 1.6); dropCont.mesh.position.y = 0.48;
+  const N = 160; const g = new THREE.BufferGeometry(); const pp = new Float32Array(N * 3); for (let i = 0; i < N; i++) pp.set([p[0] + (Math.random() - 0.5), Math.random() * 14, p[1] + (Math.random() - 0.5)], i * 3); g.setAttribute('position', new THREE.BufferAttribute(pp, 3));
+  smoke = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xff3a2a, size: 1.6, transparent: true, opacity: 0.55, depthWrite: false })); smoke.frustumCulled = false; scene.add(smoke);
+  // PLA contests the drop: nearest active patrols head there
+  const cand = sols.filter(s => s.state !== 'dead' && !s.post && (!s.night || isNight())).sort((a, b) => Math.hypot(a.pos.x - p![0], a.pos.z - p![1]) - Math.hypot(b.pos.x - p![0], b.pos.z - p![1])).slice(0, 4);
+  cand.forEach((s, i) => { if (Math.hypot(s.pos.x - p![0], s.pos.z - p![1]) > 60) { const a = i * 1.6; s.pos.set(p![0] + Math.cos(a) * 32, 0, p![1] + Math.sin(a) * 32); } s.state = 'investigate'; s.target = [p![0] + (rnd() - 0.5) * 4, p![1] + (rnd() - 0.5) * 4]; s.timer = 900; });
+  slowDown('空投落地');
+}
+function updateSmoke(dt: number) { if (!smoke) return; const a = smoke.geometry.attributes.position as THREE.BufferAttribute; const pp = a.array as Float32Array; const p = (UT as any).ad as V2;
+  for (let i = 0; i < pp.length; i += 3) { pp[i + 1] += dt * 2.2; pp[i] += dt * 0.8; if (pp[i + 1] > 16) { pp[i] = p[0] + (Math.random() - 0.5); pp[i + 1] = 0.5; pp[i + 2] = p[1] + (Math.random() - 0.5); } } a.needsUpdate = true;
+  if (dropCont && !Object.keys(dropCont.items).length) { scene.remove(smoke); smoke = null; } }
+// ---------- PLA flashlights during curfew ----------
+const plaFlash: THREE.SpotLight[] = [];
 let gameMin = 8 * 60; // minutes since day 1 00:00
-const isNight = () => { const h = (gameMin / 60) % 24; return h < 6 || h >= 19; };
-function noise(x: number, z: number, r: number) { for (const s of sols) if (s.state !== 'dead' && s.state !== 'combat' && (!s.night || isNight()) && s.mesh.visible) { if (Math.hypot(s.pos.x - x, s.pos.z - z) < r) { s.state = 'investigate'; s.target = [x + (rnd() - 0.5) * 3, z + (rnd() - 0.5) * 3]; s.timer = 20; } } }
+const isNight = () => { const h = (gameMin / 60) % 24; return h < 6 || h >= 20; }; // 宵禁 20:00–06:00
+// ---------- time system (PZ-style): day length + fast-forward ----------
+let DAYH = 1; const MPS = () => 1440 / (DAYH * 3600); // game minutes per real second
+let speed = 1; const SPEEDS = [1, 3, 20];
+function dangerNear() { return sols.some(s => s.state !== 'dead' && s.mesh.visible && (s.state === 'combat' || (s.state === 'investigate' && s.pos.distanceTo(player.pos) < 40) || s.pos.distanceTo(player.pos) < 18)); }
+function renderSpeed() { const el = document.getElementById('speed'); if (!el) return; el.querySelectorAll('button').forEach(b => b.classList.toggle('on', +(b as HTMLElement).dataset.s! === (player.sleeping ? 20 : speed))); (el.querySelector('.st') as HTMLElement).textContent = player.sleeping ? '💤 睡眠快轉' : speed > 1 ? `⏩ ×${speed}` : '▶ ×1'; }
+function setSpeed(v: number) { if (v > 1 && dangerNear()) { log('附近有敵情，無法快轉', '#f99'); v = 1; } speed = v; renderSpeed(); }
+function slowDown(why: string) { if (speed > 1) { speed = 1; log(`⏸ 時間恢復正常：${why}`, '#ffb060'); renderSpeed(); } if (player.sleeping) { player.sleeping = false; log(`你被驚醒了！（${why}）`, '#f66'); renderSpeed(); } }
+function noise(x: number, z: number, r: number) { if (started && r >= 10) { const d = Math.hypot(player.pos.x - x, player.pos.z - z); if (d > 1.5 && d < r + 10) slowDown('附近有聲響'); } for (const s of sols) if (s.state !== 'dead' && s.state !== 'combat' && (!s.night || isNight()) && s.mesh.visible) { if (Math.hypot(s.pos.x - x, s.pos.z - z) < r) { s.state = 'investigate'; s.target = [x + (rnd() - 0.5) * 3, z + (rnd() - 0.5) * 3]; s.timer = 20; } } }
 function log(msg: string, col = '#e8e2d0') { const d = document.createElement('div'); d.textContent = msg; d.style.color = col; $('log').prepend(d); setTimeout(() => d.style.opacity = '0', 7000); setTimeout(() => d.remove(), 8200); while ($('log').children.length > 8) $('log').lastChild!.remove(); }
 
 // ---------- effects ----------
@@ -297,7 +347,7 @@ function tracer(a: THREE.Vector3, b: THREE.Vector3) { const g = new THREE.Buffer
 
 // ---------- input ----------
 const keys: Record<string, boolean> = {}; let mouse = new THREE.Vector2(); let clicking = false;
-addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'Tab') { e.preventDefault(); toggleInv(); } if (!started) return; if (e.code === 'KeyC') { player.sneak = !player.sneak; log(player.sneak ? '進入潛行' : '解除潛行'); } if (e.code === 'KeyE') interact(); if (e.code === 'KeyI') toggleInv(); if (e.code === 'KeyB') barricade(); if (e.code === 'KeyZ') sleep(); if (e.code === 'KeyF') { player.light = !player.light; } if (e.code === 'Space') { e.preventDefault(); tryVault(); } if (e.code === 'KeyQ') shove(); if (e.code === 'Escape') closePanel(); });
+addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'Tab') { e.preventDefault(); toggleInv(); } if (!started) return; if (e.code === 'KeyC') { player.sneak = !player.sneak; log(player.sneak ? '進入潛行' : '解除潛行'); } if (e.code === 'KeyE') interact(); if (e.code === 'KeyI') toggleInv(); if (e.code === 'KeyB') barricade(); if (e.code === 'KeyZ') sleep(); if (e.code === 'Digit1') setSpeed(1); if (e.code === 'Digit2') setSpeed(3); if (e.code === 'Digit3') setSpeed(20); if (e.code === 'KeyF') { player.light = !player.light; } if (e.code === 'Space') { e.preventDefault(); tryVault(); } if (e.code === 'KeyQ') shove(); if (e.code === 'Escape') closePanel(); });
 addEventListener('keyup', e => keys[e.code] = false);
 addEventListener('mousemove', e => { mouse.set(e.clientX / innerWidth * 2 - 1, -e.clientY / innerHeight * 2 + 1); });
 renderer.domElement.addEventListener('mousedown', e => { if (e.button === 0) clicking = true; });
@@ -315,7 +365,8 @@ function useItem(k: string) {
   else if (d.kind === 'food' || d.kind === 'drink' || d.kind === 'med') {
     player.hunger = clamp(player.hunger + (d.hunger || 0), 0, 100); player.thirst = clamp(player.thirst + (d.thirst || 0), 0, 100); player.fatigue = clamp(player.fatigue + (d.fatigue || 0), 0, 100); player.hp = clamp(player.hp + (d.hp || 0), 0, 100); if (d.stopBleed && player.bleed) { player.bleed = false; log('止血了', '#9f9'); }
     log(`使用了 ${d.name}`); if (--player.inv[k] <= 0) delete player.inv[k];
-  } else log(k === 'plank' || k === 'hammer' ? '靠近門口按 B 封門（需要木板與鐵鎚）' : '子彈會在開槍時自動使用');
+  } else if (k === 'bucket') { if (bldAt(player.pos.x, player.pos.z)) { log('水桶要放在戶外（沒有屋頂遮的地方）才接得到雨', '#f99'); return; } makeBucket('pb' + Date.now(), [player.pos.x + 0.6, player.pos.z]); if (--player.inv[k] <= 0) delete player.inv[k]; log('放下了水桶，下雨時會慢慢裝滿雨水', '#9fd0ff'); }
+  else log(k === 'plank' || k === 'hammer' ? '靠近門口按 B 封門（需要木板與鐵鎚）' : '子彈會在開槍時自動使用');
   renderPanel();
 }
 let curCont: Cont | null = null;
@@ -359,7 +410,7 @@ function sleep() {
   if (!bldAt(player.pos.x, player.pos.z)) { log('只能在室內睡覺', '#f99'); return; }
   if (sols.some(s => s.state === 'combat')) { log('有敵人在追你，睡不著', '#f99'); return; }
   if (player.fatigue < 20) { log('你還不累'); return; }
-  player.sleeping = true; log('你閉上眼睛…', '#aaf');
+  if (dangerNear()) { log('附近有佔領軍，現在睡太危險', '#f99'); return; } player.sleeping = true; log('你閉上眼睛…（時間快轉 ×20）', '#aaf'); renderSpeed();
 }
 
 // ---------- combat ----------
@@ -421,6 +472,12 @@ const STORY: { t: number; id: string; who: string; msg: string; fx?: () => void 
   { t: 2 * 1440 + 14 * 60, id: 'd', who: '📱 台電簡訊', msg: '【停電通知】因「軍事管制」，萬華區即日起停止供電，復電時間未定。' },
   { t: POWER_OFF, id: 'P', who: '⚡ 斷電', msg: '整條街一瞬間暗了下來。冰箱停了，裡面的食物撐不了多久。', fx: () => { UT.power = false; } },
   { t: 3 * 1440 + 10 * 60, id: 'e', who: '📻 收音機（電池）', msg: '…自來水事業處人員已撤離，加壓站停擺，高樓層將最先停水…' },
+  { t: 1440 + 7 * 60, id: 'r1', who: '📻 地下電台「自由之聲」', msg: '…這裡是自由之聲。國軍與志願者仍在新店溪南岸堅守，請萬華的鄉親保持冷靜、儲水、避開大馬路…' },
+  { t: 2 * 1440 + 21 * 60, id: 'r2', who: '📻 地下電台「自由之聲」', msg: '…停電了？別慌。收音機用電池還能撐。宵禁時佔領軍會帶手電筒巡邏，看到光束就躲進騎樓…' },
+  { t: 3 * 1440 + 13 * 60, id: 'r3', who: '📻 地下電台「自由之聲」', msg: '…注意！今天 15:00 前後會有一批物資空投到萬華，紅色煙霧就是信號。佔領軍也會去搶，動作要快！' },
+  { t: 3 * 1440 + 15 * 60, id: 'AD', who: '🪂 空投', msg: '遠處升起一道紅色煙霧——物資箱落地了！佔領軍的巡邏隊正往那邊移動。', fx: () => airdrop() },
+  { t: 4 * 1440 + 20 * 60, id: 'r4', who: '📻 地下電台「自由之聲」', msg: '…停水第一天。把水桶、臉盆放到頂樓或戶外，下雨就能接水。雨水記得煮過再喝…' },
+  { t: 6 * 1440 + 12 * 60, id: 'r5', who: '📻 地下電台「自由之聲」', msg: '…西門町一帶已有三個街區被奪回！每一區的勝利，都讓他們更害怕…' },
   { t: WATER_OFF, id: 'W', who: '🚱 停水', msg: '水龍頭只流出幾滴黃水就停了。從現在起，每一瓶水都很珍貴。', fx: () => { UT.water = false; } },
 ];
 function phone(who: string, msg: string) { const el = $('phone'); el.innerHTML = `<b>${who}</b><br>${msg}`; el.classList.add('on'); clearTimeout((phone as any).t); (phone as any).t = setTimeout(() => el.classList.remove('on'), 9000); log(`${who}：${msg}`, '#9fd0ff'); }
@@ -429,9 +486,9 @@ const PERISH = ['bento', 'rice', 'oden', 'soymilk', 'milktea', 'danbing', 'chick
 function updateStory(gm: number) {
   for (const e of STORY) if (gameMin >= e.t && !UT.ev[e.id]) { UT.ev[e.id] = 1; e.fx?.(); if (gameMin - e.t < 120) phone(e.who, e.msg); }
   if (gameMin >= POWER_OFF) UT.power = false; if (gameMin >= WATER_OFF) UT.water = false;
-  if (!UT.power) { spoilT += gm; if (spoilT > 60) { spoilT = 0; for (const c of conts) if (/冷藏|櫃台|攤/.test(c.label)) for (const k of PERISH) if (c.items[k] && rnd() < 0.15) { c.items[k]--; if (!c.items[k]) delete c.items[k]; c.items.rotten = (c.items.rotten || 0) + 1; } } }
+  if (!UT.power) { spoilT += gm; if (spoilT > 6) { spoilT = 0; for (const c of conts) if (/冷藏|櫃台|攤/.test(c.label)) for (const k of PERISH) if (c.items[k] && rnd() < 0.15) { c.items[k]--; if (!c.items[k]) delete c.items[k]; c.items.rotten = (c.items.rotten || 0) + 1; } } }
 }
-function save() { if (!started || dead) return; localStorage.setItem(SAVE, JSON.stringify({ g: player.gender, p: [player.pos.x, player.pos.z], hp: player.hp, hu: player.hunger, th: player.thirst, fa: player.fatigue, bl: player.bleed, inv: player.inv, eq: player.equip, k: player.kills, t: gameMin, ut: UT, conts: conts.map(c => [c.id, c.items, c.p]), dead: sols.filter(s => s.state === 'dead').map(s => s.id), bar: doors.map((d, i) => d.barricaded ? i : -1).filter(i => i >= 0) })); }
+function save() { if (!started || dead) return; localStorage.setItem(SAVE, JSON.stringify({ g: player.gender, p: [player.pos.x, player.pos.z], hp: player.hp, hu: player.hunger, th: player.thirst, fa: player.fatigue, bl: player.bleed, inv: player.inv, eq: player.equip, k: player.kills, t: gameMin, dl: DAYH, wx: WX, ut: UT, conts: conts.map(c => [c.id, c.items, c.p]), dead: sols.filter(s => s.state === 'dead').map(s => s.id), bar: doors.map((d, i) => d.barricaded ? i : -1).filter(i => i >= 0) })); }
 
 // ---------- main loop ----------
 let started = false, dead = false; const clock = new THREE.Clock(); let acc = 0, saveT = 0, streetT = 0;
@@ -440,11 +497,15 @@ function update(dt: number) {
   if (dead && player.rig) animate(player.rig, 'death', 0, dt);
   for (const s of sols) if (s.state === 'dead' && s.rig.deadT < 1) animate(s.rig, 'death', 0, dt);
   if (!started || dead) return;
-  const tscale = player.sleeping ? 40 : 1;
-  gameMin += dt * tscale; // 1 real sec = 1 game minute
-  const gm = dt * tscale / 60; // game hours
+  if (speed > 1 && dangerNear()) slowDown('佔領軍接近');
+  if (player.sleeping && dangerNear()) slowDown('佔領軍接近');
+  if (player.hp < lastHp - 2) slowDown('你受傷了'); lastHp = player.hp;
+  const tscale = player.sleeping ? 20 : speed;
+  gameMin += dt * tscale * MPS(); // day length chosen at new game (1h/2h/4h real per in-game day)
+  const gm = dt * tscale * MPS() / 60; // game hours
+  updateWeather(dt, gm);
   updateStory(gm); player.hunger -= gm * 2.2; player.thirst -= gm * 3.2; player.fatigue += player.sleeping ? -gm * 14 : gm * 2.6;
-  if (player.sleeping && player.fatigue <= 0) { player.sleeping = false; log('你醒了', '#aaf'); }
+  if (player.sleeping && player.fatigue <= 0) { player.sleeping = false; log('你醒了', '#aaf'); renderSpeed(); }
   if (player.sleeping && sols.some(s => s.state === 'combat')) { player.sleeping = false; log('你被驚醒了！', '#f66'); }
   player.hunger = clamp(player.hunger, 0, 100); player.thirst = clamp(player.thirst, 0, 100); player.fatigue = clamp(player.fatigue, 0, 100);
   if (player.hunger <= 0 || player.thirst <= 0) player.hp -= gm * 8;
@@ -533,7 +594,11 @@ function update(dt: number) {
   sun.intensity = 0.15 + dayF * 2.2; hemi.intensity = 0.25 + dayF * 0.75; sun.color.setHSL(0.09, 0.6, 0.55 + dayF * 0.3);
   const ang = (hr - 6) / 13 * Math.PI; sun.position.set(player.pos.x + Math.cos(ang) * 60, 20 + Math.sin(Math.max(ang, 0.3)) * 60, player.pos.z + 30); sun.target.position.copy(player.pos);
   if (!dayF) sun.position.set(player.pos.x - 30, 70, player.pos.z + 20);
-  const fogC = new THREE.Color(0x0c1220).lerp(new THREE.Color(0xa7b0b5), dayF); (scene.fog as THREE.Fog).color.copy(fogC); renderer.setClearColor(fogC);
+  updateSmoke(dt);
+  if (!plaFlash.length) for (let i = 0; i < 4; i++) { const L = new THREE.SpotLight(0xfff0d0, 0, 24, 0.32, 0.5, 1.2); scene.add(L, L.target); plaFlash.push(L); }
+  { const nightNow = isNight(); const ns = nightNow ? sols.filter(s => s.state !== 'dead' && s.mesh.visible).map(s => [s, s.pos.distanceToSquared(player.pos)] as const).sort((a, b) => a[1] - b[1]).slice(0, 4) : [];
+    plaFlash.forEach((L, i) => { const e = ns[i]; if (!e || e[1] > 1600) { L.intensity = 0; return; } const s = e[0]; L.position.set(s.pos.x, 1.5, s.pos.z); L.target.position.set(s.pos.x + Math.cos(s.dir) * 8, 0, s.pos.z + Math.sin(s.dir) * 8); L.intensity = 60; }); }
+  const fogC = new THREE.Color(0x0c1220).lerp(new THREE.Color(0xa7b0b5), dayF).lerp(new THREE.Color(0x5a6068).multiplyScalar(0.3 + dayF * 0.7), WX.amt * 0.5); sun.intensity *= 1 - WX.amt * 0.55; (scene.fog as THREE.Fog).color.copy(fogC); renderer.setClearColor(fogC);
   hemi.color.setHSL(0.6, 0.5, 0.35 + dayF * 0.45);
   const PW = UT.power ? 1 : 0; if ((updateLamps as any).pw !== PW) { (updateLamps as any).pw = PW; setPower(!!PW); } updateLamps((1 - dayF) * PW, dt); decay?.update(dt, (1 - dayF) * PW, player.pos.x, player.pos.z); facade?.update(1 - dayF, PW); alley?.update(dt, (1 - dayF) * PW, player.pos.x, player.pos.z, PW); roadMat.roughness = 0.95 - (1 - dayF) * 0.55; roadMat.metalness = (1 - dayF) * 0.35;
   flash.intensity = player.light ? 60 : 0; flash.position.set(player.pos.x, 1.6, player.pos.z); flash.target.position.copy(aimPt);
@@ -551,7 +616,7 @@ function drawHud(inside: Bld | null) {
   const m: string[] = []; if (player.hunger < 25) m.push('飢餓'); if (player.thirst < 25) m.push('口渴'); if (player.fatigue > 75) m.push('疲憊'); if (player.bleed) m.push('流血'); if (player.hp < 30) m.push('重傷'); if (player.sneak) m.push('潛行中'); if (player.sleeping) m.push('睡眠中'); if (sols.some(s => s.state === 'combat' && s.mesh.visible)) m.push('被追捕');
   $('stats').innerHTML = bar('生命', player.hp, '#c33') + bar('飽足', player.hunger, '#c9842a') + bar('水分', player.thirst, '#3a8ad6') + bar('精神', 100 - player.fatigue, '#8a6ad6') + `<div class="moodles">${m.map(x => `<span>${x}</span>`).join('')}</div>`;
   const day = Math.floor(gameMin / 1440) + 1, h = Math.floor(gameMin / 60) % 24, mi = Math.floor(gameMin) % 60;
-  $('clock').textContent = `第 ${day} 天 ${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')} ${isNight() ? '🌙 宵禁' : '☀'}`;
+  $('clock').textContent = `第 ${day} 天 ${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')} ${isNight() ? '🌙 宵禁' : '☀'}${raining() ? ' 🌧' : ''}`;
   const alive = sols.filter(s => s.state !== 'dead').length;
   $('objective').textContent = `已奪回街區 ${liberated.size} / ${SX * SZ}｜殘存佔領軍 ${alive}`;
   const eq = player.equip ? ITEMS[player.equip] : null; $('equip').innerHTML = `武器：<b>${eq ? eq.name : '徒手'}</b>${eq && eq.kind === 'gun' ? `　彈藥 ${player.inv[eq.ammo!] || 0}` : ''}　負重 ${weight().toFixed(1)}kg${player.light ? '　🔦' : ''}`;
@@ -595,10 +660,12 @@ async function boot() {
   decay = buildDecay({ scene, rnd, pip, bldAt, addSeg: (q, low) => addSeg(q, low), merge: mergeGeometries, roads, blds, RW: ROADW, center: start.c, R: 140, doors: doors.map(d => d.p) });
   checkpoints = decay.checkpoints;
   alley = buildAlley({ poles: decay.polePos, scene, rnd, pip, bldAt, addSeg: (q, low) => addSeg(q, low), merge: mergeGeometries, roads, blds, RW: ROADW, center: start.c, R: 85, doors: doors.map(d => d.p) });
-  facade = buildFacade({ scene, pip, bldAt, merge: mergeGeometries, roads, blds, RW: ROADW, center: start.c, R: 110 }); console.log('facade', JSON.stringify(facade.stats));
+  facade = buildFacade({ scene, pip, bldAt, merge: mergeGeometries, roads, blds, RW: ROADW, center: start.c, R: 110 }); console.log('facade', JSON.stringify(facade.stats)); parks = buildParks({ scene, bldAt, merge: mergeGeometries, addSeg: (q, low) => addSeg(q, low), roadDist, center: start.c, R: 110 }); console.log('parks', JSON.stringify(parks));
   // navigation grid (built after all collision geometry exists)
   nav = new Nav(start.c[0] - 170, start.c[1] - 170, start.c[0] + 170, start.c[1] + 170, 0.5); for (const q of segs) nav.markSeg(q.a, q.b, 1);
   spawnSoldiers(new Set(sv?.dead || []));
+  scene.add(rainMesh);
+  { let n = 0; for (let k = 0; k < 400 && n < 3; k++) { const a = k * 0.7, d = 4 + k * 0.08; const q: V2 = [start.c[0] + Math.cos(a) * d, start.c[1] + Math.sin(a) * d]; if (!bldAt(q[0], q[1]) && !bldAt(q[0] + 0.6, q[1]) && !bldAt(q[0], q[1] + 0.6)) { makeBucket('rb' + n++, q); } } }
   const sp = start.door!.p; const ip: V2 = [sp[0] + (start.c[0] - sp[0]) * 0.25, sp[1] + (start.c[1] - sp[1]) * 0.25];
   player.pos.set(ip[0], 0, ip[1]);
   if (!sv) { makeCont('start', [ip[0] + 0.4, ip[1] + 0.4], 'home', start, { knife: 1, water: 1, plank: 2, hammer: 1, bandage: 1, rice: 1 }); }
@@ -609,19 +676,21 @@ async function boot() {
   const go = (load: boolean, gender = 'm') => {
     if (load && sv) gender = sv.g || 'm';
     player.gender = gender; player.rig = spawnRig(HERO[gender]); player.mesh = player.rig.root;
-    if (load && sv) { player.pos.set(sv.p[0], 0, sv.p[1]);  Object.assign(player, { hp: sv.hp, hunger: sv.hu, thirst: sv.th, fatigue: sv.fa, bleed: sv.bl, inv: sv.inv, equip: sv.eq, kills: sv.k }); gameMin = sv.t; if (sv.ut) Object.assign(UT, sv.ut);
-      const map = new Map<string, any>(sv.conts.map((c: any) => [c[0], c])); for (const c of conts) { const s = map.get(c.id); if (s) c.items = s[1]; map.delete(c.id); } map.forEach(c => makeCont(c[0], c[2], 'crate', undefined, c[1])); (sv.bar || []).forEach((i: number) => doors[i] && setBarricade(doors[i])); checkSectors(true); conts.forEach(updateVis); }
+    if (load && sv) { player.pos.set(sv.p[0], 0, sv.p[1]);  Object.assign(player, { hp: sv.hp, hunger: sv.hu, thirst: sv.th, fatigue: sv.fa, bleed: sv.bl, inv: sv.inv, equip: sv.eq, kills: sv.k }); gameMin = sv.t; DAYH = sv.dl || 1; if (sv.wx) Object.assign(WX, sv.wx); if (sv.ut) Object.assign(UT, sv.ut);
+      const map = new Map<string, any>(sv.conts.map((c: any) => [c[0], c])); for (const c of conts) { const s = map.get(c.id); if (s) c.items = s[1]; map.delete(c.id); } map.forEach(c => String(c[0]).startsWith('pb') ? makeBucket(c[0], c[2], c[1]) : makeCont(c[0], c[2], 'crate', undefined, c[1])); (sv.bar || []).forEach((i: number) => doors[i] && setBarricade(doors[i])); checkSectors(true); conts.forEach(updateVis); }
     else { localStorage.removeItem(SAVE); }
-    $('title').style.display = 'none'; started = true; log('十月某日清晨，解放軍登陸後三天，台北淪陷。萬華的電燈還亮著，水龍頭還有水——但能撐多久？', '#ffd76a'); log('提示：先搜刮身邊的櫥櫃（E），按 Tab 開背包裝備菜刀。', '#ccc');
+    $('title').style.display = 'none'; started = true; lastHp = player.hp; startRainAudio(); { const sp = document.createElement('div'); sp.id = 'speed'; sp.innerHTML = '<span class="st"></span>' + SPEEDS.map((v, i) => `<button data-s="${v}" title="按 ${i + 1}">${v === 1 ? '▶' : v === 3 ? '⏩' : '⏭'} ×${v}</button>`).join('') + `<small>一天 = ${DAYH} 小時</small>`; sp.querySelectorAll('button').forEach(b => (b as HTMLElement).onclick = () => setSpeed(+(b as HTMLElement).dataset.s!)); $('topright').appendChild(sp); renderSpeed(); } log('十月某日清晨，解放軍登陸後三天，台北淪陷。萬華的電燈還亮著，水龍頭還有水——但能撐多久？', '#ffd76a'); log('提示：先搜刮身邊的櫥櫃（E），按 Tab 開背包裝備菜刀。', '#ccc');
   };
   if (sv) { const b = document.createElement('button'); b.textContent = '繼續遊戲'; b.onclick = () => go(true); btns.appendChild(b); }
   const sel = document.createElement('div'); sel.id = 'charsel';
   sel.innerHTML = `<div class="ch" data-g="m"><div class="pv m"></div><b>阿明</b><small>男・32 歲・前外送員<br>熟悉萬華每條巷子</small></div><div class="ch" data-g="f"><div class="pv f"></div><b>小雯</b><small>女・27 歲・護理師<br>懂得包紮與急救</small></div>`;
   sel.querySelectorAll('.ch').forEach(el => (el as HTMLElement).onclick = () => { const g = (el as HTMLElement).dataset.g!; go(false, g); if (g === 'f') { player.inv.bandage = (player.inv.bandage || 0) + 2; } else { player.inv.coffee = 1; } });
-  const h = document.createElement('div'); h.className = 'selh'; h.textContent = sv ? '或建立新的倖存者：' : '選擇你的倖存者：'; btns.appendChild(h); btns.appendChild(sel);
+  const dl = document.createElement('div'); dl.id = 'daylen'; dl.innerHTML = '<span>新遊戲・一天長度（現實時間）：</span>' + [1, 2, 4].map(x => `<button data-h="${x}" class="${x === 1 ? 'on' : ''}">${x} 小時${x === 1 ? '（預設）' : ''}</button>`).join('');
+  dl.querySelectorAll('button').forEach(b => (b as HTMLElement).onclick = () => { DAYH = +(b as HTMLElement).dataset.h!; dl.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); });
+  const h = document.createElement('div'); h.className = 'selh'; h.textContent = sv ? '或建立新的倖存者：' : '選擇你的倖存者：'; btns.appendChild(h); btns.appendChild(dl); btns.appendChild(sel);
   camera.position.copy(player.pos).add(CAM_OFF); camera.lookAt(player.pos);
   addEventListener('beforeunload', save);
-  (window as any).__game = { player, sols, blds, conts, nav, started: () => started, go, vehicles, decay: () => decay, alley: () => alley, facade: () => facade, camera, CAM_OFF, setTime: (m: number) => { gameMin = m; }, UT, start: () => start!.c, scene, gm: () => gameMin, tp: (x: number, z: number) => player.pos.set(x, 0, z) };
+  (window as any).__game = { player, sols, blds, conts, nav, started: () => started, go, vehicles, decay: () => decay, alley: () => alley, facade: () => facade, setSpeed, speed: () => speed, WX, airdrop, makeBucket, noise, dayh: () => DAYH, parks: () => parks, simRain: (h: number) => { for (let i = 0; i < h * 20; i++) updateWeather(0.05, 0.05); }, camera, CAM_OFF, setTime: (m: number) => { gameMin = m; }, UT, start: () => start!.c, scene, gm: () => gameMin, tp: (x: number, z: number) => player.pos.set(x, 0, z) };
 }
 boot().catch(e => { console.error(e); $('loadmsg').textContent = '載入失敗：' + e; });
 loop();

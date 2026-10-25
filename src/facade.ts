@@ -51,7 +51,7 @@ export function buildFacade(c: FCtx) {
   def('shard', M([new THREE.ShapeGeometry(new THREE.Shape([new THREE.Vector2(-0.4, -0.6), new THREE.Vector2(0.4, -0.6), new THREE.Vector2(0.2, -0.2), new THREE.Vector2(-0.1, 0.1)])).translate(0, 0, 0.034), new THREE.ShapeGeometry(new THREE.Shape([new THREE.Vector2(0.4, 0.6), new THREE.Vector2(0.2, 0.6), new THREE.Vector2(0.4, 0.1)])).translate(0, 0, 0.034)]), glassMat);
   const RUST = [0x5a3220, 0x6e3c22, 0x7a4a2a, 0x3a3a36, 0xd0d0c8, 0x8a8a84, 0x3d5a46];
   const LIT = [0xffd9a0, 0xfff0d8, 0xe8f4ff, 0xffc890]; const CUR = [0xe8dcc0, 0xd890a0, 0x7aa0c8, 0xc8c8a0, 0x9a6a5a, 0xf0f0f0];
-  const AWC = [0x3a7a5a, 0x8a9aa0, 0x2a6aa8, 0xb8b8b0, 0x6a4a30];
+  const AWC = [0x6f8f86, 0x5f8a86, 0x7e948a, 0x6a8a80, 0x9a4a3a, 0x8a5040, 0xa85a46, 0x6f8f86, 0x9a4a3a, 0x8a9aa0]; // 灰綠/青 + 鐵紅為主
   let nWin = 0; const litW: { x: number; y: number; z: number }[] = [];
   for (const b of c.blds) { if (!b.wins || !near(b.c[0], b.c[1], R)) continue;
     const style = rnd(); const aluC = style < 0.6 ? 0xb8bcc0 : style < 0.85 ? 0x6a5a48 : 0x3a3a3a; // 銀色/茶色鋁窗/黑框

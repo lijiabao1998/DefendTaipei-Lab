@@ -35,6 +35,8 @@ export const ITEMS: Record<string, ItemDef> = {
   a556: { name: '5.8mm 子彈', w: 0.012, kind: 'ammo' },
   plank: { name: '木板', w: 1.0, kind: 'tool' },
   hammer: { name: '鐵鎚', w: 0.8, kind: 'tool' },
+  bucket: { name: '水桶', w: 1.0, kind: 'tool', desc: '在戶外「使用」放下，下雨時會接雨水（停水後的救命水源）' },
+  rainwater: { name: '雨水（寶特瓶裝）', w: 0.6, kind: 'drink', thirst: 30, desc: '接來的雨水，沒煮過，但總比沒有好' },
 };
 export const LOOT: Record<string, [string, number, number][]> = {
   store: [['noodle',5,3],['rice',4,3],['water',6,3],['sport',3,2],['tea',3,2],['coffee',3,2],['can',3,2],['bento',2,1],['pill',1,1],['snack',3,2]],
@@ -53,6 +55,6 @@ export const LOOT: Record<string, [string, number, number][]> = {
   kitchen: [['can',3,2],['noodle',3,3],['water',3,2],['knife',3,1],['soymilk',1,1],['egg',2,3]],
   wardrobe: [['bandage',2,1],['bat',2,1],['plank',3,2],['hammer',2,1],['tissue',2,1]],
   tapw: [['water',1,1]],
-  hardware: [['hammer',4,1],['pipe',3,1],['plank',4,2],['knife',2,1],['bat',1,1],['bandage',1,1]],
+  hardware: [['bucket',3,1],['hammer',4,1],['pipe',3,1],['plank',4,2],['knife',2,1],['bat',1,1],['bandage',1,1]],
   altar: [['pineapple',4,3],['can',2,1],['tea',2,2]],
 };

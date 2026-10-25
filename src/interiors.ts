@@ -202,11 +202,11 @@ export function nightMarket(pts: V2[], width: number, ctx: Ctx, idBase: string) 
   for (let i = 0; i < pts.length - 1 && k < 14; i++) {
     const [ax, az] = pts[i], [bx, bz] = pts[i + 1]; const L = Math.hypot(bx - ax, bz - az); const ux = (bx - ax) / L, uz = (bz - az) / L; const nx = -uz, nz = ux;
     for (let s = 2; s < L - 2 && k < 14; s += 3.2) for (const side of [-1, 1]) {
-      const off = width / 2 - 1.2; const x = ax + ux * s + nx * off * side, z = az + uz * s + nz * off * side; if (ctx.bldAt(x, z) || ctx.bldAt(x + nx * side, z + nz * side)) continue;
+      const off = width / 2 + 1.0; const x = ax + ux * s + nx * off * side, z = az + uz * s + nz * off * side; if (ctx.bldAt(x, z) || ctx.bldAt(x + nx * side * 0.6, z + nz * side * 0.6) || ctx.bldAt(x + ux, z + uz) || ctx.bldAt(x - ux, z - uz)) continue; /* on the sidewalk / 騎樓 edge, not in the road */
       const g = new THREE.Group(); const [nm, col] = names[k % names.length];
-      box(g, 1.8, 0.85, 0.9, M(0xbfc4c8, { metalness: 0.6, roughness: 0.4 }), 0, 0, 0, true);
+      box(g, 1.6, 0.85, 0.8, M(0xbfc4c8, { metalness: 0.6, roughness: 0.4 }), 0, 0, 0, true);
       for (const px of [-0.9, 0.9]) for (const pz of [-0.5, 0.5]) box(g, 0.04, 2.3, 0.04, M(0x888888), px, 0, pz);
-      const canopy = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.05, 1.4), new THREE.MeshStandardMaterial({ map: stripe })); canopy.position.y = 2.3; canopy.castShadow = true; g.add(canopy);
+      const canopy = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.05, 1.2), new THREE.MeshStandardMaterial({ map: stripe })); canopy.position.y = 2.3; canopy.castShadow = true; g.add(canopy);
       plane(g, 1.6, 0.4, M(0xffffff, { map: textTex('stall' + nm, [nm], col, '#fff', 256, 64, 44), emissive: 0xffffff, emissiveMap: textTex('stall' + nm, [nm], col, '#fff', 256, 64, 44), emissiveIntensity: 0.5 }), 0, 2.05, 0.71);
       const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), emiss(0xffd890, 3)); bulb.position.set(0, 2.15, 0); g.add(bulb);
       stool(g, -0.5, 0.9); stool(g, 0.5, 0.9);

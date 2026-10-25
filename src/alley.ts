@@ -71,7 +71,7 @@ export function buildAlley(c: ACtx) {
     V.push({ g: place(B(cols * 0.26 + 0.1, rows * 0.38 + 0.1, 0.02, 0, rows * 0.19 - 0.2, 0), x, y0, z, ry), col: 0x6a6e6a }); };
   // merged static sets
   const V: { g: THREE.BufferGeometry; col: number }[] = []; const vadd = (g: THREE.BufferGeometry, col: number) => V.push({ g, col });
-  const SIGN: THREE.BufferGeometry[] = [], AWN: THREE.BufferGeometry[] = [], SHUT: THREE.BufferGeometry[] = [], TUBE: THREE.BufferGeometry[] = [], SHOP: THREE.BufferGeometry[] = [], CAB: THREE.BufferGeometry[] = [], GRATE: THREE.BufferGeometry[] = [];
+  const SIGN: THREE.BufferGeometry[] = [], AWN: THREE.BufferGeometry[] = [], AWN2: THREE.BufferGeometry[] = [], AWN3: THREE.BufferGeometry[] = [], SHUT: THREE.BufferGeometry[] = [], TUBE: THREE.BufferGeometry[] = [], SHOP: THREE.BufferGeometry[] = [], CAB: THREE.BufferGeometry[] = [], GRATE: THREE.BufferGeometry[] = [];
   const neon: { p: THREE.Vector3; col: number }[] = [], fluo: THREE.Vector3[] = [];
   const place = (g: THREE.BufferGeometry, x: number, y: number, z: number, ry: number, rx = 0, rz = 0) => g.rotateZ(rz).rotateX(rx).rotateY(ry).translate(x, y, z);
   const near = (x: number, z: number, r = R) => Math.hypot(x - center[0], z - center[1]) < r;
@@ -97,7 +97,7 @@ export function buildAlley(c: ACtx) {
         const [tx, tz] = P(E, mid, 0.9); TUBE.push(place(B(1.2, 0.04, 0.05), tx, 2.62, tz, E.fy)); fluo.push(new THREE.Vector3(tx, 2.5, tz));
       } else { const g = new THREE.PlaneGeometry(w - 0.1, 2.9).translate(0, 1.45, 0); SHUT.push(place(g, sx, 0, sz, E.fy)); }
       // metal awning
-      if (rnd() < 0.85) { const dep = Math.min(E.open - 0.6, 1.0 + rnd() * 0.8); const g = B(w + 0.1, 0.03, dep, 0, 0, dep / 2); g.rotateX(0.18 + rnd() * 0.1); AWN.push(place(g, ...P(E, mid, 0.02).flatMap((v, i) => i === 0 ? [v, 2.95 + rnd() * 0.25] : [v]) as [number, number, number], E.fy, 0, (rnd() - 0.5) * 0.05)); }
+      if (rnd() < 0.85) { const dep = Math.min(E.open - 0.6, 1.0 + rnd() * 0.8); const g = B(w + 0.1, 0.03, dep, 0, 0, dep / 2); g.rotateX(0.18 + rnd() * 0.1); { const hq = Math.abs(Math.sin(sx * 12.9898 + sz * 78.233) * 43758.5453) % 1; (hq < 0.55 ? AWN : hq < 0.95 ? AWN2 : AWN3).push(place(g, ...P(E, mid, 0.02).flatMap((v, i) => i === 0 ? [v, 2.95 + rnd() * 0.25] : [v]) as [number, number, number], E.fy, 0, (rnd() - 0.5) * 0.05)); } }
       // 春聯 / 福 by doors
       if (rnd() < 0.25) { for (const s of [-1, 1]) { const [px, pz] = P(E, mid + s * (w / 2 - 0.15), 0.07); SIGN.push(place(uvBox(B(0.02, 1.1, 0.22), cell(20), [0, 1, 4, 5]), px, 1.4, pz, E.fy + Math.PI / 2)); } const [fx, fz] = P(E, mid, 0.07); SIGN.push(place(uvBox(B(0.42, 0.42, 0.02), cell(5), [4, 5]), fx, 2.1, fz, E.fy, 0, Math.PI / 4)); }
     }
@@ -139,12 +139,14 @@ export function buildAlley(c: ACtx) {
   segs.sort((p, q) => Math.hypot((p.a[0] + p.b[0]) / 2 - center[0], (p.a[1] + p.b[1]) / 2 - center[1]) - Math.hypot((q.a[0] + q.b[0]) / 2 - center[0], (q.a[1] + q.b[1]) / 2 - center[1]));
   const fires: THREE.Vector3[] = []; let carts = 0, arch = false; let archP: number[] | null = null;
   for (const s of segs) { const nx = -s.uz, nz = s.ux; const ang = Math.atan2(s.ux, s.uz);
-    if (carts < 3) { const t = 0.3 + rnd() * 0.4; const x = s.a[0] + (s.b[0] - s.a[0]) * t + nx * (s.w / 2 - 0.9), z = s.a[1] + (s.b[1] - s.a[1]) * t + nz * (s.w / 2 - 0.9); if (freeAt(x, z) && freeAt(x + s.ux, z + s.uz)) { const juice = carts % 2 === 0; carts++;
+    if (carts < 3) { const t = 0.3 + rnd() * 0.4; let x = 0, z = 0, ok = false, so = 1; /* stalls stand on the sidewalk / inside the 騎樓, never in the carriageway */
+      for (const sd of [1, -1]) for (const o of [0.9, 1.5, 2.2, 3.0]) { if (ok) break; const ox = s.a[0] + (s.b[0] - s.a[0]) * t + nx * sd * (s.w / 2 + o), oz = s.a[1] + (s.b[1] - s.a[1]) * t + nz * sd * (s.w / 2 + o); if (freeAt(ox, oz) && freeAt(ox + s.ux * 0.9, oz + s.uz * 0.9) && freeAt(ox - s.ux * 0.9, oz - s.uz * 0.9) && freeAt(ox + nx * sd * 0.9, oz + nz * sd * 0.9)) { x = ox; z = oz; ok = true; so = sd; } }
+      if (ok) { const juice = carts % 2 === 0; carts++; for (const k of [-0.5, 0.5]) I.add('stool', x + s.ux * k + nx * so * 0.75, 0, z + s.uz * k + nz * so * 0.75, 0, [0x2a5aa8, 0xc83a30][Math.floor(rnd() * 2)]);
       vadd(place(B(1.6, 0.85, 0.75, 0, 0.6, 0), x, 0, z, ang + Math.PI / 2), juice ? 0xd8d8d0 : 0xb8b0a0); for (const k of [-0.6, 0.6]) vadd(place(Cy(0.16, 0.16, 0.06, 0, 10).rotateZ(Math.PI / 2).translate(k, 0.16, 0.3), x, 0, z, ang + Math.PI / 2), 0x1a1a1a);
       vadd(place(B(1.6, 0.5, 0.05, 0, 1.3, 0.35), x, 0, z, ang + Math.PI / 2), 0xb0d8e8); SIGN.push(place(uvBox(B(1.4, 0.35, 0.04, 0, 1.75, 0), cell(juice ? 19 : 18), [4, 5]), x, 0, z, ang + Math.PI / 2)); neon.push({ p: new THREE.Vector3(x, 2, z), col: juice ? 0x80ff90 : 0xfff0d0 });
       if (juice) for (let k = 0; k < 18; k++) vadd(place(new THREE.SphereGeometry(0.06 + rnd() * 0.04, 6, 5).translate((k % 6 - 2.5) * 0.24, 1.1, (Math.floor(k / 6) - 1) * 0.18), x, 0, z, ang + Math.PI / 2), [0xff8a10, 0xf0d020, 0x40a030, 0xd02040, 0xffd080][k % 5]);
       else { vadd(place(Cy(0.28, 0.3, 0.38, 1.2, 14).translate(-0.35, 0, 0), x, 0, z, ang + Math.PI / 2), 0xb8b8b8); vadd(place(Cy(0.28, 0.3, 0.38, 1.2, 14).translate(0.4, 0, 0), x, 0, z, ang + Math.PI / 2), 0xb8b8b8); }
-      const um = new THREE.ConeGeometry(1.3, 0.4, 10).translate(0, 2.4, 0); vadd(place(um, x, 0, z, 0), juice ? 0xe83a2a : 0x2a6ac8); vadd(place(Cy(0.02, 0.02, 2.3, 1.15, 5), x, 0, z, 0), 0x888888);
+      const um = new THREE.ConeGeometry(1.0, 0.35, 10).translate(0, 2.3, 0); vadd(place(um, x, 0, z, 0), juice ? 0xe83a2a : 0x2a6ac8); vadd(place(Cy(0.02, 0.02, 2.3, 1.15, 5), x, 0, z, 0), 0x888888);
       for (let k = 0; k < 3; k++) I.add('stool', x + nx * -1 + s.ux * (k - 1) * 0.6, 0, z + nz * -1 + s.uz * (k - 1) * 0.6, rnd() * 6, rnd() < 0.5 ? 0xd81c1c : 0x1c4ad8);
       const hl = 0.8, hw = 0.4; const cs: V2[] = [[-hl, -hw], [hl, -hw], [hl, hw], [-hl, hw]].map(([p, q]) => [x + p * s.ux + q * nx, z + p * s.uz + q * nz] as V2); for (let k = 0; k < 4; k++) c.addSeg({ a: cs[k], b: cs[(k + 1) % 4] }); } }
     if (fires.length < 2 && rnd() < 0.4) { const x = s.a[0] + (s.b[0] - s.a[0]) * 0.6 + nx * (s.w / 2 - 0.6), z = s.a[1] + (s.b[1] - s.a[1]) * 0.6 + nz * (s.w / 2 - 0.6); if (freeAt(x, z)) {
@@ -162,7 +164,7 @@ export function buildAlley(c: ACtx) {
   const add = (g: THREE.BufferGeometry[], m: THREE.Material, shadow = true) => { if (!g.length) return; const me = new THREE.Mesh(M(g), m); me.castShadow = shadow; me.receiveShadow = true; c.scene.add(me); };
   const tex = atlas(); const signMat = new THREE.MeshStandardMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.3, roughness: 0.5 }); add(SIGN, signMat);
   const shutT = corrugated('#9aa0a2', '#6a6e70'); shutT.repeat.set(1, 6); add(SHUT, new THREE.MeshStandardMaterial({ map: shutT, roughness: 0.6, metalness: 0.4, side: THREE.DoubleSide }), false);
-  const awT = corrugated('#7a8a8c', '#56605e', false); awT.repeat.set(4, 1); add(AWN, new THREE.MeshStandardMaterial({ map: awT, roughness: 0.55, metalness: 0.5, side: THREE.DoubleSide }));
+  for (const [arr, b0, l0] of [[AWN, '#6f8f86', '#4e6a62'], [AWN2, '#9a4a3a', '#6e3226'], [AWN3, '#8a9a9c', '#5e6a6c']] as [THREE.BufferGeometry[], string, string][]) { const t = corrugated(b0, l0, false); t.repeat.set(4, 1); add(arr, new THREE.MeshStandardMaterial({ map: t, roughness: 0.6, metalness: 0.35, side: THREE.DoubleSide })); } // 鐵皮雨遮：灰綠為主、褪色鐵紅次之、少數鍍鋅灰
   const tubeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xe0f4ff, emissiveIntensity: 0.4 }); add(TUBE, tubeMat, false);
   const shopMat = new THREE.MeshStandardMaterial({ color: 0x3a3226, emissive: 0xffd8a0, emissiveIntensity: 0.15, roughness: 0.9 }); add(SHOP, shopMat, false);
   add(CAB, new THREE.MeshStandardMaterial({ color: 0x8a8070, roughness: 0.9 }), false);

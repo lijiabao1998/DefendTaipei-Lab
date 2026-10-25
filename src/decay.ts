@@ -134,20 +134,20 @@ export function buildDecay(c: DCtx) {
       else if (r0 < 0.5 && s.w >= 6) { const cx = x0 + nx * (s.w / 2 - 1.3) * sd, cz = z0 + nz * (s.w / 2 - 1.3) * sd; if (freeAt(cx, cz, 2.4)) burntCar(cx, cz, Math.atan2(s.uz, s.ux) + (rnd() - 0.5) * 0.5); }
       else if (r0 < 0.56) { if (freeAt(ex, ez, 1.2)) sandbagRow(ex - nx * sd * 0.6, ez - nz * sd * 0.6, Math.atan2(s.uz, s.ux) + (rnd() - 0.5) * 0.4, 2 + rnd() * 2, 2 + Math.floor(rnd() * 2)); }
       else if (r0 < 0.6 && s.w <= 7) { const cx = x0, cz = z0; if (freeAt(cx, cz, 1)) { rnd() < 0.5 ? aframe(cx + nx * 1.2, cz + nz * 1.2, Math.atan2(nz, nx)) : jersey(cx + nx * 1.4 * sd, cz + nz * 1.4 * sd, Math.atan2(nz, nx) + (rnd() - 0.5) * 0.4); } }
-      if (rnd() < 0.55) { const px = x0 + nx * (rnd() - 0.5) * s.w * 0.8, pz = z0 + nz * (rnd() - 0.5) * s.w * 0.8; HOLE.push(place(blobShape(0.3 + rnd() * 0.6), px, 0.035, pz)); if (rnd() < 0.6) PUD.push(place(blobShape(0.5 + rnd() * 1.4), px + (rnd() - 0.5), 0.045, pz + (rnd() - 0.5))); }
+      if (rnd() < 0.3) { const px = x0 + nx * (rnd() - 0.5) * s.w * 0.8, pz = z0 + nz * (rnd() - 0.5) * s.w * 0.8; HOLE.push(place(blobShape(0.2 + rnd() * 0.3), px, 0.035, pz)); if (rnd() < 0.6) PUD.push(place(blobShape(0.5 + rnd() * 1.4), px + (rnd() - 0.5), 0.045, pz + (rnd() - 0.5))); }
       if (rnd() < 0.15) PUD.push(place(blobShape(1 + rnd() * 1.6), x0 + nx * (s.w / 2 - 0.8) * sd, 0.045, z0 + nz * (s.w / 2 - 0.8) * sd)); } }
   // ---------- build meshes ----------
-  const meshes: THREE.Mesh[] = []; const add = (g: THREE.BufferGeometry[], m: THREE.Material, shadow = true) => { if (!g.length) return null; for (const x of g) for (const k of Object.keys(x.attributes)) if (!['position', 'normal', 'uv', 'color'].includes(k)) x.deleteAttribute(k); const me = new THREE.Mesh(c.merge(g.map(x => x.index ? x.toNonIndexed() : x)), m); me.castShadow = shadow; me.receiveShadow = true; c.scene.add(me); meshes.push(me); return me; };
+  let pudMat: THREE.MeshStandardMaterial | null = null; const meshes: THREE.Mesh[] = []; const add = (g: THREE.BufferGeometry[], m: THREE.Material, shadow = true) => { if (!g.length) return null; for (const x of g) for (const k of Object.keys(x.attributes)) if (!['position', 'normal', 'uv', 'color'].includes(k)) x.deleteAttribute(k); const me = new THREE.Mesh(c.merge(g.map(x => x.index ? x.toNonIndexed() : x)), m); me.castShadow = shadow; me.receiveShadow = true; c.scene.add(me); meshes.push(me); return me; };
   for (const g of PUD.concat(HOLE)) { g.deleteAttribute('uv'); g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2)); }
   add(V, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0.05 }));
-  add(WIRE, new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.7 }));
+  add(WIRE, new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.7 }), false); // overhead cables: no shadow scribbles on the asphalt
   const atlas = signAtlas(); const signMat = new THREE.MeshStandardMaterial({ map: atlas, emissive: 0xffffff, emissiveMap: atlas, emissiveIntensity: 0.12, roughness: 0.7, side: THREE.DoubleSide }); add(SIGN, signMat);
-  add(HOLE, new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2 }), false);
-  add(PUD, new THREE.MeshStandardMaterial({ color: 0x1e2a36, roughness: 0.06, metalness: 0.8, transparent: true, opacity: 0.82, polygonOffset: true, polygonOffsetFactor: -4 }), false);
+  add(HOLE, new THREE.MeshStandardMaterial({ color: 0x34343a, roughness: 1, transparent: true, opacity: 0.6, polygonOffset: true, polygonOffsetFactor: -2 }), false);
+  add(PUD, pudMat = new THREE.MeshStandardMaterial({ color: 0x46525c, roughness: 0.06, metalness: 0.6, transparent: true, opacity: 0.12, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }), false);
   // AC drips (pooled points near player)
   const ND = 48; const dg = new THREE.BufferGeometry(); const dp = new Float32Array(ND * 3); dg.setAttribute('position', new THREE.BufferAttribute(dp, 3)); const drops = new THREE.Points(dg, new THREE.PointsMaterial({ color: 0xa8c8e0, size: 0.06, transparent: true, opacity: 0.8 })); drops.frustumCulled = false; c.scene.add(drops);
   const dsrc: THREE.Vector3[] = []; const dv = new Float32Array(ND); let dt0 = 0;
-  return {
+  return { setWet: (w: number) => { if (pudMat) pudMat.opacity = 0.1 + w * 0.7; },
     checkpoints, polePos: allPoles.map(p => [p.x, p.z] as [number, number]), poles: allPoles.length, acs: acs.length,
     update(dt: number, night: number, px: number, pz: number) {
       signMat.emissiveIntensity = 0.12 + night * 0.85;

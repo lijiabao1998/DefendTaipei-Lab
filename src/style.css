@@ -24,3 +24,9 @@
 .selh{margin-top:10px;color:#ccb}
 
 #phone{position:absolute;right:16px;top:70px;width:300px;padding:10px 12px;background:rgba(18,22,30,.92);border:1px solid #3a4a6a;border-radius:14px;color:#e8eef8;font-size:13px;line-height:1.5;box-shadow:0 6px 20px #000a;transform:translateX(360px);transition:transform .5s;pointer-events:none;z-index:5}#phone.on{transform:none}#phone b{color:#ffd76a}
+#speed{margin-top:6px;display:flex;gap:4px;align-items:center;justify-content:flex-end;flex-wrap:wrap;pointer-events:auto}
+#speed button{background:#2a2c2e;color:#ddd;border:1px solid #555;border-radius:4px;padding:2px 7px;font-size:12px;cursor:pointer}
+#speed button.on{background:#c9971c;color:#111;border-color:#ffd76a}
+#speed .st{font-size:12px;color:#ffd76a;margin-right:4px}#speed small{width:100%;color:#999;font-size:11px}
+#daylen{margin:8px 0;display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap}
+#daylen button{background:#222;color:#ddd;border:1px solid #666;border-radius:5px;padding:5px 12px;cursor:pointer}#daylen button.on{background:#a8221e;color:#fff;border-color:#ffd76a}
