@@ -56,3 +56,17 @@ body.mobile #equip{right:8px!important;bottom:calc(8px + env(safe-area-inset-bot
 body.mobile #phone{max-width:60vw;font-size:11px}
 body.mobile #title h1{font-size:40px;letter-spacing:6px}body.mobile #title p{font-size:13px;padding:0 14px}body.mobile #title{overflow:auto}
 body.mobile #phone{width:62vw;top:auto;bottom:175px;right:8px}
+#fpv{display:none;position:fixed;inset:0;z-index:8;pointer-events:none}
+body.fpvon #fpv{display:block}body.fpvon #hud,body.fpvon #joy{display:none!important}
+body.fpvon canvas:not(#fpv canvas){image-rendering:pixelated;filter:saturate(1.35) contrast(1.15) sepia(.12) blur(.4px)}
+#fpv canvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;mix-blend-mode:screen}
+#fpv::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0 1px,transparent 1px 3px),radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.65));box-shadow:inset 3px 0 0 rgba(255,0,60,.25),inset -3px 0 0 rgba(0,220,255,.25)}
+#fpv .osd span{position:absolute;font:bold 15px/1.3 monospace;color:#fff;text-shadow:1.5px 0 rgba(255,0,60,.7),-1.5px 0 rgba(0,220,255,.7),0 0 3px #000;z-index:2}
+#fpv .tl{left:4%;top:5%}#fpv .tr{right:4%;top:5%;text-align:right}#fpv .bl{left:4%;bottom:8%}#fpv .br{right:4%;bottom:8%;text-align:right}#fpv .tc{left:50%;top:5%;transform:translateX(-50%);color:#f55!important}
+#fpv .osd b{color:#f44}
+#fpv .fch{position:absolute;left:50%;top:50%;width:34px;height:34px;margin:-17px;border:2px solid rgba(255,255,255,.75);border-radius:50%;z-index:2}
+#fpv .fch::after{content:"";position:absolute;left:50%;top:50%;width:4px;height:4px;margin:-2px;background:#fff}
+.fstick{position:absolute;bottom:calc(30px + env(safe-area-inset-bottom));width:130px;height:130px;border-radius:50%;background:rgba(20,22,24,.35);border:2px solid rgba(255,255,255,.4);pointer-events:auto;touch-action:none;z-index:3}
+.fstick.l{left:18px}.fstick.r{right:18px}.fknob{position:absolute;left:37px;top:37px;width:56px;height:56px;border-radius:50%;background:rgba(120,200,255,.7)}
+body.mobile #fpv .osd { font-size: 11px; }
+body.mobile #fpv .osd.tc { top: 64px; }

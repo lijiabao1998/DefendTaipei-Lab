@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { buildFacade } from './facade';
 import { buildParks } from './park';
 import { ArmorSystem, type ArmorKind } from './armor';
+import { FPV, Recon, boom } from './drone';
 import { makeShack, setShackNight } from './rooftin';
 let facade: ReturnType<typeof buildFacade> | null = null;
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -152,10 +153,26 @@ function plaDrop(id: number) { const t = solType(id), it: Record<string, number>
   if (t === 2) { if (R() < 0.3) add('qjy88'); add('belt88', R() < 0.6 ? 1 : 0); add('a556', 10 + Math.floor(R() * 40)); }
   if (t === 3) { if (R() < 0.55) add('qsz92'); add('mag92', 1 + (R() < 0.3 ? 1 : 0)); }
   if (t === 4) { if (R() < 0.4) add(pk([['qcw05', 2], ['qbs09', 1]])); add(R() < 0.5 ? 'mag05' : 'a12', R() < 0.5 ? 1 : 4); }
-  if (R() < 0.18) add('grenade'); if (R() < 0.08) add('helmet'); if (R() < 0.04) add('vest'); if (R() < 0.45) add('ration'); if (R() < 0.25) add('bandage');
+  if (R() < (t === 4 ? 0.15 : 0.03)) add('fpv'); if (R() < 0.1) add('dmotor', 1 + Math.floor(R() * 2)); if (R() < 0.18) add('grenade'); if (R() < 0.08) add('helmet'); if (R() < 0.04) add('vest'); if (R() < 0.45) add('ration'); if (R() < 0.25) add('bandage');
   return it; }
 function dropGun(c: Cont, p: THREE.Vector3, it: Record<string, number>) { const g = Object.keys(it).find(k => ITEMS[k].kind === 'gun') || Object.keys(it).find(k => ITEMS[k].mag); if (!g) return;
   const L = ITEMS[g].kind === 'gun' ? (g === 'qsz92' ? 0.45 : g === 'qjy88' ? 1.5 : 1.15) : 0.5; const m = new THREE.Mesh(new THREE.PlaneGeometry(L * 1.7, L * 1.7), iconMat(g)); m.rotation.x = -Math.PI / 2; m.rotation.z = Math.random() * 6.28; m.position.set(p.x + 0.7, 0.04, p.z + 0.3); scene.add(m); (c as any).gunMesh = m; }
+// ---------- FPV kamikaze drones + PLA recon drones ----------
+let fpv: FPV | null = null, recon: Recon | null = null; const shells: { t: number; p: V2 }[] = [];
+let lastBlast: unknown = null;
+function blast(p: THREE.Vector3, fromAbove: boolean) { lastBlast = { x: p.x, y: p.y, z: p.z, fromAbove }; boom(scene, p, 1); noise(p.x, p.z, 45);
+  for (const s of sols) if (s.state !== 'dead' && Math.hypot(s.pos.x - p.x, s.pos.z - p.z) < 6) damageSol(s, 220, true);
+  if (armor) armor.hit(p.x, p.z, fromAbove ? 160 : 55, true);
+  const dp = Math.hypot(player.pos.x - p.x, player.pos.z - p.z); if (dp < 6) { player.hp -= 45 * (1 - dp / 6); player.rig.hurtT = 0.35; } }
+function launchFPV() { fpv = fpv || new FPV({ scene, renderer, player: () => player.pos, mobile: MOBILE, wind: () => (raining() ? 2.2 : 0.8),
+    blocked: (x, z, y) => { const b = bldAt(x, z); if (b && y < b.h + 0.5) return true; return !!armor && armor.list.some(a => Math.hypot(a.g.position.x - x, a.g.position.z - z) < 2.6 && y < 3.2); },
+    los: (a, b) => los(a, b), jammers: () => checkpoints.filter((_, i) => i % 2 === 0 && !liberated.has(sectorOf(checkpoints[i][0], checkpoints[i][1]))), explode: blast, log });
+  if (!MOBILE) renderer.domElement.requestPointerLock?.();
+  fpv.launch(why => { if (document.pointerLockElement) document.exitPointerLock(); log('📡 ' + why, '#9cf'); }); }
+function setupRecon(c: V2) { const cs: V2[] = checkpoints.slice(0, 2).map(q => [q[0], q[1]] as V2); while (cs.length < 2) cs.push([c[0] + 60 * (cs.length ? 1 : -1), c[1] + 40]);
+  recon = new Recon(scene, { player: () => player.pos, log, hidden: () => { const P = player.pos; return !!bldAt(P.x, P.z) || [[1.6, 0], [-1.6, 0], [0, 1.6], [0, -1.6]].some(([dx, dz]) => bldAt(P.x + dx, P.z + dz)); },
+    spotted: (p) => { log('⚠ 解放軍偵察無人機發現你！砲擊與巡邏隊正趕來——快躲進騎樓或室內！', '#f66'); slowDown('被無人機發現'); for (let i = 0; i < 4; i++) shells.push({ t: 6 + i * 1.3, p: [p[0] + (Math.random() - 0.5) * 14, p[1] + (Math.random() - 0.5) * 14] }); sols.filter(s => s.state !== 'dead' && !s.post).sort((a, b) => Math.hypot(a.pos.x - p[0], a.pos.z - p[1]) - Math.hypot(b.pos.x - p[0], b.pos.z - p[1])).slice(0, 3).forEach(s => { s.state = 'investigate'; s.target = p; s.timer = 300; }); } }, cs); }
+function updateShells(dt: number) { for (let i = shells.length - 1; i >= 0; i--) { const s = shells[i]; s.t -= dt; if (s.t > 0) continue; shells.splice(i, 1); const p = new THREE.Vector3(s.p[0], 0.5, s.p[1]); boom(scene, p, 1.4); noise(p.x, p.z, 60); const dp = Math.hypot(player.pos.x - p.x, player.pos.z - p.z); if (dp < 7 && !bldAt(player.pos.x, player.pos.z)) { player.hp -= 55 * (1 - dp / 7); player.rig.hurtT = 0.4; if (!player.bleed) { player.bleed = true; log('被砲彈破片擊中，流血了！', '#f66'); } } } }
 // ---------- PLA armour on main roads ----------
 let armor: ArmorSystem | null = null;
 function setupArmor(c: V2) { armor = new ArmorSystem(scene, { canSee: (ax, az, bx, bz) => !bldAt(bx, bz) && los([ax, az], [bx, bz]), hurt: (dmg) => { if (player.sleeping) player.sleeping = false; player.rig.hurtT = 0.35; player.rig.hurtSide = 1; player.stun = 0.25; player.hp -= dmg; if (!player.bleed && Math.random() < 0.35) { player.bleed = true; log('你被機槍擊中，流血了！', '#f66'); } },
@@ -409,7 +426,7 @@ function updateInformant(dt: number) { if (!infRig) return; const P = player.pos
     if (INF.saw && trapSols.every(s => s.state === 'dead')) { INF.esc = 1; log('伏兵全滅。叛徒線人逃回街區躲了起來……', '#ffd27a'); INF.hid = freeNear([infPos[0] + 30, infPos[1] - 20]); infPos = INF.hid; infRig.root.position.set(infPos[0], 0, infPos[1]); } }
 }
 function airdrop(at?: V2) { let p: V2 | null = at || null; for (let k = 0; !p && k < 200; k++) { const a = rnd() * Math.PI * 2, d = 45 + rnd() * 30; const q: V2 = [player.pos.x + Math.cos(a) * d, player.pos.z + Math.sin(a) * d]; if (!bldAt(q[0], q[1]) && !bldAt(q[0] + 1.5, q[1]) && !bldAt(q[0], q[1] + 1.5)) p = q; } if (!p) return;
-  (UT as any).ad = p; dropCont = makeCont('airdrop', p, 'crate', undefined, { medkit: 2, ration: 4, water: 4, bandage: 3, pistol: 1, a9: 24, can: 3 }); dropCont.label = '空投物資箱'; dropCont.mesh.scale.set(1.6, 2.4, 1.6); dropCont.mesh.position.y = 0.48;
+  (UT as any).ad = p; dropCont = makeCont('airdrop', p, 'crate', undefined, { medkit: 2, ration: 4, water: 4, bandage: 3, pistol: 1, a9: 24, can: 3, fpv: 1 }); dropCont.label = '空投物資箱'; dropCont.mesh.scale.set(1.6, 2.4, 1.6); dropCont.mesh.position.y = 0.48;
   const N = 160; const g = new THREE.BufferGeometry(); const pp = new Float32Array(N * 3); for (let i = 0; i < N; i++) pp.set([p[0] + (Math.random() - 0.5), Math.random() * 14, p[1] + (Math.random() - 0.5)], i * 3); g.setAttribute('position', new THREE.BufferAttribute(pp, 3));
   smoke = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xff3a2a, size: 1.6, transparent: true, opacity: 0.55, depthWrite: false })); smoke.frustumCulled = false; scene.add(smoke);
   // PLA contests the drop: nearest active patrols head there
@@ -452,7 +469,7 @@ const keys: Record<string, boolean> = {}; let mouse = new THREE.Vector2(); let c
 addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'Tab') { e.preventDefault(); toggleInv(); } if (!started) return; if (e.code === 'KeyC') { player.sneak = !player.sneak; log(player.sneak ? '進入潛行' : '解除潛行'); } if (e.code === 'KeyE') interact(); if (e.code === 'KeyI') toggleInv(); if (e.code === 'KeyB') barricade(); if (e.code === 'KeyZ') sleep(); if (e.code === 'Digit1') setSpeed(1); if (e.code === 'Digit2') setSpeed(3); if (e.code === 'Digit3') setSpeed(20); if (e.code === 'KeyF') { player.light = !player.light; } if (e.code === 'Space') { e.preventDefault(); tryVault(); } if (e.code === 'KeyQ') shove(); if (e.code === 'Escape') closePanel(); });
 addEventListener('keyup', e => keys[e.code] = false);
 addEventListener('mousemove', e => { mouse.set(e.clientX / innerWidth * 2 - 1, -e.clientY / innerHeight * 2 + 1); });
-renderer.domElement.addEventListener('mousedown', e => { if (e.button === 0) clicking = true; });
+renderer.domElement.addEventListener('mousedown', e => { if (e.button === 0 && !fpv?.active) clicking = true; });
 addEventListener('mouseup', () => clicking = false);
 addEventListener('wheel', e => { zoom = clamp(zoom * (e.deltaY > 0 ? 0.9 : 1.1), 0.5, 2.2); resize(); });
 const ray = new THREE.Raycaster(); const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -1.0); const aimPt = new THREE.Vector3();
@@ -464,6 +481,8 @@ function addItem(k: string, n = 1) { player.inv[k] = (player.inv[k] || 0) + n; }
 function useItem(k: string) {
   const d = ITEMS[k]; if (!player.inv[k]) return;
   if (d.kind === 'melee' || d.kind === 'gun') { player.equip = player.equip === k ? '' : k; log(player.equip ? `裝備了 ${d.name}` : '收起武器'); }
+  else if (k === 'fpv') { if (bldAt(player.pos.x, player.pos.z)) { log('在室內無法起飛，先到戶外', '#f99'); return; } if (--player.inv[k] <= 0) delete player.inv[k]; closePanel(); launchFPV(); }
+  else if (k === 'frame') { const need: Record<string, number> = { frame: 1, dmotor: 4, lipo: 1, vtx: 1, grenade: 1 }; const miss = Object.entries(need).filter(([q, n]) => (player.inv[q] || 0) < n).map(([q, n]) => `${ITEMS[q].name}×${n - (player.inv[q] || 0)}`); if (miss.length) { log('還缺：' + miss.join('、'), '#f99'); return; } for (const [q, n] of Object.entries(need)) { player.inv[q] -= n; if (player.inv[q] <= 0) delete player.inv[q]; } addItem('fpv', 1); log('組好了一架 FPV 自殺無人機！', '#9f9'); }
   else if (d.mag && d.ammo) { player.inv[d.ammo] = (player.inv[d.ammo] || 0) + d.mag; if (--player.inv[k] <= 0) delete player.inv[k]; log(`退出 ${d.mag} 發 ${ITEMS[d.ammo].name}`); }
   else if (d.kind === 'food' || d.kind === 'drink' || d.kind === 'med') {
     player.hunger = clamp(player.hunger + (d.hunger || 0), 0, 100); player.thirst = clamp(player.thirst + (d.thirst || 0), 0, 100); player.fatigue = clamp(player.fatigue + (d.fatigue || 0), 0, 100); player.hp = clamp(player.hp + (d.hp || 0), 0, 100); if (d.stopBleed && player.bleed) { player.bleed = false; log('止血了', '#9f9'); }
@@ -627,10 +646,10 @@ function update(dt: number) {
   if (player.bleed) player.hp -= dt * 0.6;
   if (player.hunger > 50 && player.thirst > 50 && !player.bleed) player.hp = Math.min(100, player.hp + gm * 6);
   if (player.hp <= 0) return die();
-  vehicles.update(dt); if (armor && started) armor.update(dt);
+  vehicles.update(dt); if (armor && started) armor.update(dt); if (recon && started) recon.update(dt, performance.now() / 1000); updateShells(dt);
   player.cd -= dt;
   // movement
-  if (!player.sleeping) {
+  if (!player.sleeping && !fpv?.active) {
     const f = new THREE.Vector3(-1, 0, -1).normalize(), r = new THREE.Vector3(1, 0, -1).normalize(); const mv = new THREE.Vector3();
     if (keys.KeyW) mv.add(f); if (keys.KeyS) mv.sub(f); if (keys.KeyD) mv.add(r); if (keys.KeyA) mv.sub(r);
     const jm = Math.min(1, Math.hypot(joy.x, joy.y)); if (jm > 0.12) { mv.addScaledVector(f, -joy.y).addScaledVector(r, joy.x); }
@@ -748,7 +767,7 @@ function die() {
   const t = $('title'); t.style.display = 'flex'; const day = Math.floor(gameMin / 1440) + 1;
   t.innerHTML = `<h1 style="color:#c33">你陣亡了</h1><h2>這就是你的結局。</h2><p>你在淪陷的台北撐過了 ${day} 天，擊倒 ${player.kills} 名佔領軍，奪回了 ${liberated.size} 個街區。</p><button onclick="location.reload()">重新開始（新的倖存者）</button>`;
 }
-function loop() { const dt = Math.min(clock.getDelta(), 0.05); if (cine.on) { requestAnimationFrame(loop); return; } update(dt); renderer.render(scene, camera); requestAnimationFrame(loop); }
+function loop() { const dt = Math.min(clock.getDelta(), 0.05); if (cine.on) { requestAnimationFrame(loop); return; } update(dt); if (fpv?.active) { fpv.update(dt); renderer.render(scene, fpv.active ? fpv.cam : camera); } else renderer.render(scene, camera); requestAnimationFrame(loop); }
 
 // ---------- boot ----------
 async function boot() {
@@ -776,7 +795,7 @@ async function boot() {
   if (bestR) nightMarket(bestR.p, bestR.t === 'tertiary' ? 9 : 6, fx, 'nm');
   setupArmor(start!.c as V2);
   decay = buildDecay({ scene, rnd, pip, bldAt, addSeg: (q, low) => addSeg(q, low), merge: mergeGeometries, roads, blds, RW: ROADW, center: start.c, R: 140, doors: doors.map(d => d.p) });
-  checkpoints = decay.checkpoints;
+  checkpoints = decay.checkpoints; setupRecon(start!.c as V2);
   alley = buildAlley({ poles: decay.polePos, scene, rnd, pip, bldAt, addSeg: (q, low) => addSeg(q, low), merge: mergeGeometries, roads, blds, RW: ROADW, center: start.c, R: 85, doors: doors.map(d => d.p) });
   facade = buildFacade({ scene, pip, bldAt, merge: mergeGeometries, roads, blds, RW: ROADW, center: start.c, R: 110 }); console.log('facade', JSON.stringify(facade.stats)); parks = buildParks({ scene, bldAt, merge: mergeGeometries, addSeg: (q, low) => addSeg(q, low), roadDist, center: start.c, R: 110 }); console.log('parks', JSON.stringify(parks));
   // navigation grid (built after all collision geometry exists)
@@ -810,7 +829,7 @@ async function boot() {
   const h = document.createElement('div'); h.className = 'selh'; h.textContent = sv ? '或建立新的倖存者：' : '選擇你的倖存者：'; btns.appendChild(h); btns.appendChild(dl); btns.appendChild(sel);
   camera.position.copy(player.pos).add(CAM_OFF); camera.lookAt(player.pos);
   addEventListener('beforeunload', save);
-  (window as any).__game = { player, sols, blds, conts, nav, started: () => started, go, vehicles, decay: () => decay, alley: () => alley, facade: () => facade, setSpeed, speed: () => speed, WX, airdrop, makeBucket, noise, dayh: () => DAYH, evac: () => evac && evac.pos, evacOpen, doEvac, INF: () => INF, RV: () => RV, infPos: () => infPos, elderPos: () => elderPos, npcInteract, verifyInf, setMin: (m: number) => { gameMin = m; }, parks: () => parks, simRain: (h: number) => { for (let i = 0; i < h * 20; i++) updateWeather(0.05, 0.05); }, camera, CAM_OFF, setTime: (m: number) => { gameMin = m; }, UT, start: () => start!.c, scene, gm: () => gameMin, tp: (x: number, z: number) => player.pos.set(x, 0, z), damageSol, toggleInv, addItem, armor: () => armor };
+  (window as any).__game = { player, sols, blds, conts, nav, started: () => started, go, vehicles, decay: () => decay, alley: () => alley, facade: () => facade, setSpeed, speed: () => speed, WX, airdrop, makeBucket, noise, dayh: () => DAYH, evac: () => evac && evac.pos, evacOpen, doEvac, INF: () => INF, RV: () => RV, infPos: () => infPos, elderPos: () => elderPos, npcInteract, verifyInf, setMin: (m: number) => { gameMin = m; }, parks: () => parks, simRain: (h: number) => { for (let i = 0; i < h * 20; i++) updateWeather(0.05, 0.05); }, camera, CAM_OFF, setTime: (m: number) => { gameMin = m; }, UT, start: () => start!.c, scene, gm: () => gameMin, tp: (x: number, z: number) => player.pos.set(x, 0, z), damageSol, toggleInv, addItem, armor: () => armor, fpv: () => fpv, recon: () => recon, lastBlast: () => lastBlast, shells, launchFPV, blast, sim: (n: number, dt = 0.05) => { for (let i = 0; i < n; i++) { update(dt); if (fpv?.active) fpv.update(dt); } }, roadPt: () => { let best: V2 = [player.pos.x, player.pos.z], bd = 1e9; for (const r of roads) if (/primary|secondary|tertiary/.test(r.t)) for (const q of r.p) { const d = Math.hypot(q[0] - player.pos.x, q[1] - player.pos.z); if (d < bd && d > 8 && !bldAt(q[0], q[1])) { bd = d; best = q; } } return best; }, checkpoints: () => checkpoints };
 }
 boot().catch(e => { console.error(e); $('loadmsg').textContent = '載入失敗：' + e; });
 loop();

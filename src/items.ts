@@ -52,6 +52,11 @@ export const ITEMS: Record<string, ItemDef> = {
   grenade: { name: '制式手榴彈', w: 0.6, kind: 'tool', desc: '解放軍制式破片手榴彈（投擲功能尚未開放）' },
   helmet: { name: '解放軍凱夫拉頭盔', w: 1.4, kind: 'tool', desc: '可防破片（防護功能尚未開放）' },
   vest: { name: '解放軍防彈背心', w: 4.5, kind: 'tool', desc: '插板式防彈背心（防護功能尚未開放）' },
+  fpv: { name: 'FPV 自殺無人機', w: 1.1, kind: 'tool', desc: '一次性。使用：起飛進入第一人稱操控，撞擊即引爆；從上方撞擊裝甲車頂可擊毀' },
+  frame: { name: '碳纖維機架（5 吋）', w: 0.2, kind: 'tool', desc: '使用：組裝 FPV（需 4 顆無刷馬達＋鋰電池＋圖傳模組＋手榴彈）' },
+  dmotor: { name: '無刷馬達', w: 0.04, kind: 'tool', desc: 'FPV 零件，需要 4 顆' },
+  lipo: { name: '4S 鋰電池', w: 0.2, kind: 'tool', desc: 'FPV 零件，續航約 2–3 分鐘' },
+  vtx: { name: '類比圖傳＋鏡頭', w: 0.03, kind: 'tool', desc: 'FPV 零件（5.8GHz 類比圖傳）' },
   plank: { name: '木板', w: 1.0, kind: 'tool' },
   hammer: { name: '鐵鎚', w: 0.8, kind: 'tool' },
   radio: { name: '手搖收音機', w: 0.5, kind: 'tool', desc: '可向地下電台「自由之聲」查證情報（消耗）' },
@@ -61,7 +66,7 @@ export const ITEMS: Record<string, ItemDef> = {
 export const LOOT: Record<string, [string, number, number][]> = {
   store: [['noodle',5,3],['rice',4,3],['water',6,3],['sport',3,2],['tea',3,2],['coffee',3,2],['can',3,2],['bento',2,1],['pill',1,1],['snack',3,2]],
   pharmacy: [['bandage',6,3],['medkit',2,1],['pill',5,3],['water',2,2],['tissue',2,1]],
-  home: [['can',3,2],['noodle',3,2],['water',3,2],['tea',1,1],['knife',2,1],['bat',1,1],['bandage',2,1],['plank',2,2],['hammer',1,1],['pipe',1,1],['coffee',1,1],['tissue',2,1],['pineapple',1,2]],
+  home: [['can',3,2],['noodle',3,2],['water',3,2],['tea',1,1],['knife',2,1],['bat',1,1],['bandage',2,1],['plank',2,2],['hammer',1,1],['pipe',1,1],['coffee',1,1],['tissue',2,1],['pineapple',1,2],['dmotor',1,3],['lipo',1,1],['vtx',1,1],['frame',1,1]],
   police: [['pistol',3,1],['a9',5,12],['bandage',2,2],['bat',1,1]],
   // detailed fixtures
   fridge: [['water',5,4],['tea',5,4],['sport',4,3],['milktea',3,2],['coffee',3,3],['soymilk',2,2]],
