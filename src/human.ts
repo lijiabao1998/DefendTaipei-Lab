@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 export type AnimState = 'idle' | 'walk' | 'run' | 'sneak' | 'melee' | 'aim' | 'shoot' | 'loot' | 'hurt' | 'death' | 'sleep' | 'carry';
-export type RigOpts = { gender: 'm' | 'f'; skin?: number; hair: number; top: number; bottom: number; shoes: number; soldier?: boolean; jacket?: number; pack?: number };
+export type RigOpts = { gender: 'm' | 'f'; skin?: number; hair: number; top: number; bottom: number; shoes: number; soldier?: boolean; jacket?: number; pack?: number; outfit?: string };
 type J = THREE.Object3D;
 export type Rig = {
   root: THREE.Group; body: THREE.Group; hips: J; spine: J; chest: J; neck: J; head: J; tail?: J;
@@ -14,7 +14,7 @@ export type Rig = {
   legT: number; legS: number; legH: number;
 };
 const SKIN = 0xf1eee8;
-const matS = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.42, metalness: 0.02 }); // mannequin skin (satin)
+const matS = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.4, metalness: 0, clearcoat: 0.35, clearcoatRoughness: 0.55, sheen: 0.5, sheenRoughness: 0.6, sheenColor: new THREE.Color(0xffe6dc) }); // smooth matte mannequin head/skin with a soft sheen
 const matC = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88 }); // cloth / gear
 // ---- per-joint geometry accumulation, merged to one mesh per joint/material ----
 class Parts {
@@ -93,7 +93,7 @@ export function makeRig(o: RigOpts): Rig {
     if (S) cl(hand, sph(0.04), 0x252520, [0, -0.04, 0.005], undefined, [0.85, 1.2, 1]); else sk(hand, sph(0.04), [0, -0.04, 0.005], undefined, [0.82, 1.25, 1]);
     return [sh, la, hand] as const;
   };
-  const [uaL, laL] = mkArm(1); const [uaR, laR, handR] = mkArm(-1); // +x is the character's left
+  const [uaL, laL, handL] = mkArm(1); const [uaR, laR, handR] = mkArm(-1); // +x is the character's left
   // legs
   const mkLeg = (sd: number) => {
     const th = jt(hips, sd * (f ? 0.088 : 0.085), -0.03, 0);
@@ -105,6 +105,44 @@ export function makeRig(o: RigOpts): Rig {
     return [th, sh, ft] as const;
   };
   const [thL, shL, ftL] = mkLeg(1); const [thR, shR, ftR] = mkLeg(-1);
+  // ---- profession outfits: detail only through clothing ----
+  const O = o.outfit; const seam = 0x1c1a18;
+  const ring = (j: J, r: number, y: number, c: number, sz = [1, 1, 0.66] as [number, number, number]) => cl(j, new THREE.TorusGeometry(r, 0.006, 4, 20), c, [0, y, 0], [Math.PI / 2, 0, 0], sz);
+  const skirt = (c: number, len: number, pleats: boolean) => { cl(hips, lathe([[0.15, 0.08], [0.17, 0.0], [0.2, -0.12], [0.23, -len]], 18), c, undefined, undefined, [1, 1, 0.75]); if (pleats) for (let i = 0; i < 14; i++) { const a = i / 14 * Math.PI * 2; cl(hips, box(0.012, len * 0.85, 0.02), new THREE.Color(c).multiplyScalar(0.72).getHex(), [Math.sin(a) * 0.2, -len * 0.5, Math.cos(a) * 0.2 * 0.75], [Math.cos(a) * -0.18, a, 0]); } };
+  const collar = (c: number) => { for (const sd of [-1, 1]) cl(chest, box(0.07, 0.012, 0.06), c, [sd * 0.045, 0.085, 0.07], [0.5, sd * 0.5, sd * 0.3]); };
+  const badge = (y = -0.05, x = 0.08) => { cl(chest, box(0.05, 0.07, 0.006), 0xf4f4f0, [x, y, 0.135]); cl(chest, box(0.04, 0.02, 0.007), 0x3a6aa8, [x, y + 0.02, 0.136]); };
+  if (O === 'office') {
+    collar(0xf4f4f6); cl(chest, box(0.035, 0.03, 0.02), f ? 0xf4f4f6 : 0x7a1e2a, [0, 0.06, 0.1]); if (!f) cl(chest, box(0.04, 0.24, 0.012), 0x7a1e2a, [0, -0.07, 0.122], [0.08, 0, 0]); // tie
+    cl(chest, new THREE.TorusGeometry(0.09, 0.004, 3, 16, Math.PI), 0x2a5aa8, [0, 0.02, 0.06], [-0.4, 0, Math.PI]); badge(-0.12, 0); // lanyard + badge
+    for (const y of [-0.12, -0.2]) cl(chest, sph(0.008), 0x111111, [0.02, y, 0.128]); // jacket buttons
+    ring(hips, 0.15, 0.1, seam); if (f) skirt(o.bottom, 0.3, false);
+    cl(handL, box(0.08, 0.28, 0.36), 0x3a2a1e, [0, -0.2, 0]); cl(handL, box(0.02, 0.04, 0.12), 0x1a1a1a, [0, -0.05, 0]); // briefcase
+    for (const ft of [ftL, ftR]) cl(ft, box(0.098, 0.025, 0.24), 0x111111, [0, -0.05, 0.05]); }
+  if (O === 'student') {
+    collar(0xffffff); cl(chest, box(0.05, 0.012, 0.005), 0x2a4a9a, [0.08, -0.03, 0.13]); // embroidered name/student no.
+    if (f) { skirt(o.bottom, 0.34, true); cl(chest, box(0.03, 0.06, 0.01), 0x2a3a6a, [0, 0.05, 0.11]); } else ring(hips, 0.15, 0.1, 0x111111);
+    cl(chest, box(0.06, 0.6, 0.012), 0x2a2a2a, [0, -0.1, 0.1], [0, 0, 0.75]); cl(hips, box(0.3, 0.24, 0.09), o.pack ?? 0x2a3a6a, [-0.2, 0.02, 0.02], [0, Math.PI / 2, 0]); // shoulder school bag
+    for (const sh of [shL, shR]) cl(sh, cyl(0.045, 0.043, 0.1, 10), 0xffffff, [0, -LS + 0.1, 0]); // white socks
+  }
+  if (O === 'courier') {
+    cl(head, new THREE.SphereGeometry(0.128, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), 0x2f6a4c, [0, 0.1, -0.01], [-0.15, 0, 0]); cl(head, box(0.2, 0.012, 0.08), 0x2a2e30, [0, 0.175, 0.1], [-0.25, 0, 0]); cl(head, box(0.26, 0.03, 0.01), 0xffe680, [0, 0.17, 0.0], [0, 0, 0]); // half helmet + visor
+    cl(chest, box(0.42, 0.42, 0.28), 0x3a3f8a, [0, -0.1, -0.26]); cl(chest, box(0.425, 0.07, 0.285), 0xffe680, [0, 0.03, -0.26]); cl(chest, box(0.2, 0.08, 0.005), 0xffe680, [0, -0.14, -0.402]); for (const x of [-0.1, 0.1]) cl(chest, box(0.04, 0.34, 0.015), 0x222222, [x, -0.12, 0.112], [-0.1, 0, 0]); // thermal backpack (fictional 飽飽送)
+    ring(spine, 0.15, 0.0, seam); for (const x of [-0.1, 0.1]) cl(chest, box(0.012, 0.3, 0.005), 0xd8d8d8, [x, -0.15, 0.124]); // reflective strips
+    cl(chest, box(0.008, 0.3, 0.008), 0x222222, [0.01, -0.12, 0.125]); // zipper
+  }
+  if (O === 'nurse') {
+    cl(chest, box(0.1, 0.012, 0.03), new THREE.Color(o.top).multiplyScalar(0.7).getHex(), [-0.03, 0.06, 0.1], [0, 0, 0.7]); cl(chest, box(0.1, 0.012, 0.03), new THREE.Color(o.top).multiplyScalar(0.7).getHex(), [0.03, 0.06, 0.1], [0, 0, -0.7]); // V-neck
+    cl(chest, box(0.08, 0.06, 0.01), new THREE.Color(o.top).multiplyScalar(0.85).getHex(), [-0.08, -0.12, 0.125]); cl(chest, box(0.006, 0.05, 0.006), 0x2a2a2a, [-0.06, -0.09, 0.128]); badge(-0.05, 0.08); // pocket + pen + ID
+    cl(neck, box(0.13, 0.05, 0.02), 0x8ac8e0, [0, 0.0, 0.06]); for (const sd of [-1, 1]) cl(neck, box(0.004, 0.004, 0.08), 0xf4f4f4, [sd * 0.06, 0.02, 0.02]); // face mask hanging at the neck
+    for (const sh of [shL, shR]) ring(sh, 0.044, -LS + 0.16, new THREE.Color(o.bottom).multiplyScalar(0.7).getHex(), [1, 1, 1]); for (const ft of [ftL, ftR]) cl(ft, box(0.1, 0.035, 0.25), 0xf4f4f4, [0, -0.055, 0.05]); // nurse shoes
+  }
+  if (O === 'tech') {
+    cl(spine, lathe(torsoPts.map(([r, y]) => [r + 0.03, y] as [number, number]).slice(0, 6), 16, 0.5, Math.PI * 2 - 1), 0x8a7a4a, undefined, undefined, [1, 1, 0.7]); // work vest
+    for (const x of [-0.08, 0.08]) for (const y of [0.15, 0.25]) cl(spine, box(0.07, 0.06, 0.02), 0x6a5a34, [x, y, 0.12]);
+    cl(hips, cyl(0.17, 0.17, 0.05, 16), 0x4a3420, [0, 0.11, 0], undefined, [1, 1, 0.72]); for (const a of [-1.1, 1.1, 2.4]) cl(hips, box(0.07, 0.1, 0.05), 0x5a4028, [Math.sin(a) * 0.17, 0.05, Math.cos(a) * 0.13]); cl(hips, cyl(0.012, 0.012, 0.18, 6), 0x7a5a3a, [-0.17, 0.08, 0.06]); cl(hips, box(0.09, 0.03, 0.03), 0x555555, [-0.17, 0.09, 0.06]); // tool belt + hammer
+    for (const sh of [shL, shR]) cl(sh, cyl(0.06, 0.058, 0.3, 12), 0x2a4a8a, [0, -LS + 0.31, 0]); for (const ft of [ftL, ftR]) cl(ft, box(0.11, 0.05, 0.27), 0x2a4a8a, [0, -0.045, 0.045]); // rubber boots
+    cl(head, new THREE.SphereGeometry(0.11, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.42), 0x3a5a7a, [0, 0.105, -0.01]); cl(head, box(0.15, 0.012, 0.09), 0x3a5a7a, [0, 0.135, 0.1], [-0.15, 0, 0]); // cap
+  }
   P.build(true);
   const weapon = new THREE.Group(); handR.add(weapon);
   return { root, body, hips, spine, chest, neck, head, tail, uaL, laL, uaR, laR, thL, shL, thR, shR, ftL, ftR, handR, weapon, phase: Math.random() * 6, meleeT: 0, shootT: 0, hurtT: 0, deadT: 0, lootT: 0, vaultT: 0, shoveT: 0,
