@@ -30,3 +30,13 @@
 #speed .st{font-size:12px;color:#ffd76a;margin-right:4px}#speed small{width:100%;color:#999;font-size:11px}
 #daylen{margin:8px 0;display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap}
 #daylen button{background:#222;color:#ddd;border:1px solid #666;border-radius:5px;padding:5px 12px;cursor:pointer}#daylen button.on{background:#a8221e;color:#fff;border-color:#ffd76a}
+#cinecap{position:fixed;left:0;right:0;bottom:12%;text-align:center;color:#fff;font-size:22px;text-shadow:0 2px 6px #000;z-index:60;pointer-events:none;letter-spacing:2px}
+#cinefade{position:fixed;inset:0;background:#000;opacity:0;z-index:59;pointer-events:none}
+#evacend{position:fixed;inset:0;background:radial-gradient(#0c1c2c,#000);color:#e8e2d0;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:70;animation:fin 1.5s;text-align:center}
+#evacend h1{font-size:30px;color:#7fd0ff;margin:0 0 6px}#evacend h2{font-size:16px;color:#9ab;margin:0 0 20px;font-weight:normal}
+#evacend table{margin:10px auto 24px;border-collapse:collapse}#evacend td{padding:4px 16px;border-bottom:1px solid #234}
+#evacend button{margin:6px;padding:10px 22px;font-size:16px;background:#1d4a66;color:#fff;border:1px solid #7fd0ff;cursor:pointer}
+@keyframes fin{from{opacity:0}to{opacity:1}}
+#dlg{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);width:min(560px,90vw);background:rgba(14,16,20,.94);border:1px solid #a88a4a;color:#e8e2d0;padding:14px 18px;z-index:40;font-size:15px;line-height:1.6}
+#dlg b{color:#ffd27a}#dlg button{margin:4px 8px 0 0;padding:6px 14px;background:#2a2a2a;color:#e8e2d0;border:1px solid #777;cursor:pointer}
+body.cine #app > :not(canvas),body.cine > :not(#app):not(#cinecap):not(#cinefade):not(#evacend):not(script){visibility:hidden}

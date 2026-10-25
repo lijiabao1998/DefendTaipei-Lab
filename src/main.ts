@@ -1,3 +1,4 @@
+import { buildEvacZone, playEvac, cine } from './evac';
 import * as THREE from 'three';
 import { buildFacade } from './facade';
 import { buildParks } from './park';
@@ -314,6 +315,68 @@ function updateWeather(dt: number, gm: number) {
 }
 // ---------- airdrop ----------
 let smoke: THREE.Points | null = null; let dropCont: Cont | null = null;
+
+// ---------- 線人 informant + boat route ----------
+type InfState = { fake: boolean; anc: number; spot: number; talked: number; rvT: number; scouted: number; saw: number; verified: number; trap: number; esc: number; hid: V2 | null; caught: number; elder: number; done: number };
+let INF: InfState = { fake: false, anc: 0, spot: 0, talked: 0, rvT: 0, scouted: 0, saw: 0, verified: 0, trap: 0, esc: 0, hid: null, caught: 0, elder: 0, done: 0 };
+let infRig: Rig | null = null, elderRig: Rig | null = null; let infPos: V2 = [0, 0], elderPos: V2 = [0, 0]; let RV: { p: V2; n: string }[] = []; let trapT = 0, trapSols: Sol[] = []; const infFx: THREE.Object3D[] = [];
+const ANC = ['龍山寺廟口', '柑仔店後巷', '鄰里公園'];
+function freeNear(p: V2, r = 3): V2 { for (let k = 0; k < 300; k++) { const a = k * 2.4, d = (k * 0.15) % r + 0.5; const q: V2 = [p[0] + Math.cos(a) * d, p[1] + Math.sin(a) * d]; if (!bldAt(q[0], q[1]) && !bldAt(q[0] + 0.8, q[1]) && !bldAt(q[0], q[1] + 0.8)) return q; } return p; }
+function setupInformant(st: V2, first: boolean) {
+  if (first) INF = { ...INF, fake: Math.random() < 0.3, anc: Math.floor(Math.random() * 3), spot: Math.floor(Math.random() * 3) };
+  const z0 = st[1]; RV = [['淡水河岸', -220, -70], ['碼頭（大稻埕式）', -70, 70], ['萬華河堤缺口', 70, 220]].map(([n, a, b]) => { let best: V2 | null = null; for (const r of roads) for (const q of r.p) if (q[1] - z0 > (a as number) && q[1] - z0 < (b as number) && q[0] > bounds.minx + 8 && !bldAt(q[0], q[1]) && (!best || q[0] < best[0])) best = q; return { n: n as string, p: freeNear(best || [bounds.minx + 20, z0]) }; });
+  const near = roads.flatMap(r => r.p).filter(q => Math.hypot(q[0] - st[0], q[1] - st[1]) > 25 && Math.hypot(q[0] - st[0], q[1] - st[1]) < 90);
+  const pk = parks?.clusters?.[0] as V2 | undefined;
+  const base: V2 = INF.anc === 2 && pk ? pk : near.length ? near[Math.floor(hh2i(INF.anc * 7 + 3) * near.length)] : [st[0] + 20, st[1]];
+  infPos = INF.hid || freeNear(base); elderPos = freeNear([st[0] + 9, st[1] - 6]);
+  infRig = spawnRig({ gender: 'm', hair: 0x1a1a1a, top: 0x4a4038, bottom: 0x2a2a30, shoes: 0x202020, jacket: 0x3a3428 }); infRig.root.position.set(infPos[0], 0, infPos[1]);
+  elderRig = spawnRig({ gender: 'm', hair: 0xcccccc, top: 0xe8e2d4, bottom: 0x3a4050, shoes: 0x6a5a40 }); elderRig.root.position.set(elderPos[0], 0, elderPos[1]);
+  if (INF.caught || INF.done) infRig.root.visible = false;
+}
+const hh2i = (n: number) => { const x = Math.sin(n * 91.7 + 13.1) * 43758.5; return x - Math.floor(x); };
+const hhmm = (m: number) => `第 ${Math.floor(m / 1440) + 1} 天 ${String(Math.floor(m % 1440 / 60)).padStart(2, '0')}:00`;
+function dlg(title: string, text: string, btns: [string, () => void][]) { let d = document.getElementById('dlg'); if (!d) { d = document.createElement('div'); d.id = 'dlg'; document.body.appendChild(d); } d.innerHTML = `<b>${title}</b><p>${text}</p><div></div>`; const bx = d.lastElementChild!; for (const [l, f] of btns.concat([['離開', () => {}]])) { const b = document.createElement('button'); b.textContent = l; b.onclick = () => { d!.remove(); f(); }; bx.appendChild(b); } }
+function rvLine() { const r = RV[INF.spot]; const sec = sectorNames[sectorOf(r.p[0], r.p[1])] || '萬華';
+  return INF.fake ? `${hhmm(INF.rvT)}，${r.n}。走「萬華中正一路」最快，過了第三個紅綠燈就到。<b>一個人來，武器全部留下</b>，帶槍的船不載。別跟任何人說。`
+    : `${hhmm(INF.rvT)}，${r.n}（${sec}一帶）。從西園路尾走環河南路，過了水門沿堤防往下，鐵板下面就是。船只等十分鐘，水和藥帶在身上，刀也帶著。`; }
+function talkInformant() {
+  if (INF.hid && !INF.caught) { INF.caught = 1; infRig!.root.visible = false; const reveal = Math.random() < 0.5; addItem('a556', 20);
+    if (reveal) { INF.fake = false; INF.spot = (INF.spot + 1) % 3; INF.rvT = nextNight(); INF.trap = 0; INF.esc = 0; INF.scouted = 0; dlg('抓到叛徒線人', `他跪地求饒：「我說、我說！真的船在 ${RV[INF.spot].n}，${hhmm(INF.rvT)}！」`, []); }
+    else { const sec = Math.min(SX * SZ - 1, sectorOf(infPos[0], infPos[1])); for (const s of sols) if (s.sector === sec && s.state !== 'dead' && Math.random() < 0.5) { s.state = 'dead'; s.hp = 0; s.mesh.visible = false; s.cone.visible = false; } liberated.add(sec); dlg('抓到叛徒線人', `他供出了 ${sectorNames[sec]} 的佔領軍前哨位置。地下抵抗網連夜突襲——<b>${sectorNames[sec]} 已奪回！</b>`, []); }
+    return; }
+  if (INF.done) return;
+  if (!INF.talked) { INF.talked = 1; INF.rvT = nextNight(); }
+  const opts: [string, () => void][] = []; if (!INF.verified) opts.push(['用收音機向「自由之聲」查證', verifyInf]);
+  dlg('🕶 線人（' + ANC[INF.anc] + '）', '「噓——聽說你想離開台北？有艘橡皮艇今晚走淡水河出海。」<br>' + rvLine(), opts);
+}
+function nextNight() { const d = Math.floor(gameMin / 1440) * 1440; let t = d + 22 * 60; if (gameMin > t - 60) t += 1440; return t; }
+function verifyInf() { const cost = player.inv.radio ? ['radio'] : ['water', 'can', 'ration', 'noodle', 'cupnoodle', 'rice'].filter(k => player.inv[k]).slice(0, 2);
+  if (!player.inv.radio && cost.length < 2) { log('需要收音機，或兩份食物／水交換頻道時段', '#f99'); return; }
+  for (const k of cost) { if (--player.inv[k] <= 0) delete player.inv[k]; } INF.verified = 1; if (INF.fake) INF.saw = 1;
+  phone('📻 自由之聲（加密頻道）', INF.fake ? '我們沒有派人在那裡接應。那個人是佔領軍的線民——別去，或者……讓他們嚐嚐自己的陷阱。' : '確認：那艘船是我們的人。準時到，祝你平安。'); }
+function talkElder() { INF.elder = 1; dlg('👴 廟口阿伯', INF.fake ? '「那個戴鴨舌帽的少年仔？講話不是萬華腔，連華西街在哪都說不清楚，還一直問誰家有槍……你自己卡注意。」' : '「那個人喔，以前在華西街幫人顧攤，嘴巴緊。他講的話可以信。」', []); }
+function npcInteract() { const P = player.pos; if (infRig?.root.visible && Math.hypot(P.x - infPos[0], P.z - infPos[1]) < 2.4) { talkInformant(); return true; } if (elderRig && Math.hypot(P.x - elderPos[0], P.z - elderPos[1]) < 2.4) { talkElder(); return true; } return false; }
+function npcPrompt() { const P = player.pos; if (infRig?.root.visible && Math.hypot(P.x - infPos[0], P.z - infPos[1]) < 2.4) return INF.hid ? '[E] 抓住叛徒線人' : '[E] 和線人交談'; if (elderRig && Math.hypot(P.x - elderPos[0], P.z - elderPos[1]) < 2.4) return '[E] 和廟口阿伯聊天'; return ''; }
+function infMark(p: V2, col: number, txt: string) { const r = new THREE.Mesh(new THREE.RingGeometry(5, 6, 32), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.6, side: THREE.DoubleSide })); r.rotation.x = -Math.PI / 2; r.position.set(p[0], 0.07, p[1]); scene.add(r); infFx.push(r); log(txt, '#ffb0a0'); }
+function springTrap(aware: boolean) { const p = RV[INF.spot].p; INF.trap = 1; trapT = aware ? 0 : 3;
+  const cand = sols.filter(s => s.state !== 'dead' && !s.post).sort((a, b) => Math.hypot(a.pos.x - p[0], a.pos.z - p[1]) - Math.hypot(b.pos.x - p[0], b.pos.z - p[1])).slice(0, 4);
+  trapSols = cand; cand.forEach((s, i) => { const a = i * 1.57 + 0.4; s.pos.set(p[0] + Math.cos(a) * 16, 0, p[1] + Math.sin(a) * 16); s.mesh.visible = true; if (aware) { s.state = 'patrol'; s.post = [s.pos.x, s.pos.z]; s.route = [[s.pos.x, s.pos.z], [s.pos.x + 1, s.pos.z]]; } else { s.state = 'investigate'; s.target = [p[0], p[1]]; s.timer = 600; } });
+  const van = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 4.6), new THREE.MeshStandardMaterial({ color: 0x2a2e2a })); van.position.set(p[0] + 7, 1, p[1] + 3); van.castShadow = true; scene.add(van); infFx.push(van);
+  if (aware) { const c = makeCont('ambush', [p[0] + 7, p[1] + 6.5], 'crate', undefined, { rifle: 1, a556: 40, medkit: 1, ration: 2 }); c.label = '伏兵裝備箱'; log('你看穿了陷阱：伏兵還沒發現你。反伏擊，拿走他們的裝備！', '#ffd27a'); }
+  else { phone('⚠ 陷阱！', '岸邊四周的手電筒同時亮起——沒有船。快跑！鑽進巷子、騎樓，或者跳進河裡！'); slowDown('陷阱'); } }
+function updateInformant(dt: number) { if (!infRig) return; const P = player.pos;
+  for (const [rg, q] of [[infRig, infPos], [elderRig!, elderPos]] as const) { rg.root.rotation.y = Math.atan2(P.x - q[0], P.z - q[1]); animate(rg, 'idle', 0, dt); }
+  if (!INF.talked || INF.done) return; const r = RV[INF.spot]; const d = Math.hypot(P.x - r.p[0], P.z - r.p[1]);
+  if (!INF.scouted && d < 30 && gameMin < INF.rvT - 30) { INF.scouted = 1; if (INF.fake) { INF.saw = 1; const v = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 4.6), new THREE.MeshStandardMaterial({ color: 0x2a2e2a })); v.position.set(r.p[0] + 7, 1, r.p[1] + 3); scene.add(v); infFx.push(v); log('偵察：岸邊停著一台沒熄火的廂型車，泥地上沒有任何拖船痕跡……不對勁。', '#ffb0a0'); } else { const b = new THREE.Mesh(new THREE.CapsuleGeometry(0.6, 2.4, 3, 8), new THREE.MeshStandardMaterial({ color: 0x2a2a2a })); b.rotation.z = Math.PI / 2; b.position.set(r.p[0] - 3, 0.4, r.p[1]); scene.add(b); infFx.push(b); log('偵察：堤防下藏著一艘橡皮艇，泥地有新鮮的拖行痕跡。', '#a0ffb0'); } }
+  const win = gameMin >= INF.rvT && gameMin < INF.rvT + 180;
+  if (win && d < 6 && !INF.trap && !INF.esc) { if (INF.fake) springTrap(!!INF.saw); else { INF.done = 1; doEvac('boat'); return; } }
+  if (INF.trap && !INF.esc) { if (trapT > 0) { trapT -= dt; if (trapT <= 0) trapSols.forEach(s => { if (s.state !== 'dead') { s.state = 'combat'; s.alert = 1; } }); }
+    const river = P.x < bounds.minx + 3; if (!INF.saw && (d > 45 || river)) { INF.esc = 1; infMark(r.p, 0xff2020, river ? '你跳進冰冷的淡水河，順流漂離伏擊點。此處標記為危險區。' : '你甩掉了追兵。此處標記為危險區——佔領軍掌握了你的行蹤。');
+      if (river) P.x = bounds.minx + 6; sols.filter(s => s.state !== 'dead' && !s.post).slice(0, 4).forEach(s => { s.state = 'investigate'; s.target = [P.x, P.z]; s.timer = 600; });
+      INF.hid = freeNear([infPos[0] + 40 * (Math.random() - 0.5), infPos[1] + 40 * (Math.random() - 0.5)]); infPos = INF.hid; infRig.root.position.set(infPos[0], 0, infPos[1]);
+      phone('📻 自由之聲', `有人看到那個出賣你的線人躲在 ${sectorNames[sectorOf(infPos[0], infPos[1])]} 一帶。抓住他！`); }
+    if (INF.saw && trapSols.every(s => s.state === 'dead')) { INF.esc = 1; log('伏兵全滅。叛徒線人逃回街區躲了起來……', '#ffd27a'); INF.hid = freeNear([infPos[0] + 30, infPos[1] - 20]); infPos = INF.hid; infRig.root.position.set(infPos[0], 0, infPos[1]); } }
+}
 function airdrop(at?: V2) { let p: V2 | null = at || null; for (let k = 0; !p && k < 200; k++) { const a = rnd() * Math.PI * 2, d = 45 + rnd() * 30; const q: V2 = [player.pos.x + Math.cos(a) * d, player.pos.z + Math.sin(a) * d]; if (!bldAt(q[0], q[1]) && !bldAt(q[0] + 1.5, q[1]) && !bldAt(q[0], q[1] + 1.5)) p = q; } if (!p) return;
   (UT as any).ad = p; dropCont = makeCont('airdrop', p, 'crate', undefined, { medkit: 2, ration: 4, water: 4, bandage: 3, pistol: 1, a9: 24, can: 3 }); dropCont.label = '空投物資箱'; dropCont.mesh.scale.set(1.6, 2.4, 1.6); dropCont.mesh.position.y = 0.48;
   const N = 160; const g = new THREE.BufferGeometry(); const pp = new Float32Array(N * 3); for (let i = 0; i < N; i++) pp.set([p[0] + (Math.random() - 0.5), Math.random() * 14, p[1] + (Math.random() - 0.5)], i * 3); g.setAttribute('position', new THREE.BufferAttribute(pp, 3));
@@ -392,7 +455,7 @@ function contDist(c: Cont) { let x = c.p[0], z = c.p[1]; if (c.half && c.axis) {
 function nearestCont() { let best: Cont | null = null, bd = 1.5; for (const c of conts) { if (Math.abs(c.p[0] - player.pos.x) > 6 || Math.abs(c.p[1] - player.pos.z) > 6) continue; const d = contDist(c); if (d < bd) { bd = d; best = c; } } return best; }
 function updateVis(c: Cont) { if (!c.vis || !c.init) return; for (const v of c.vis) { const init = c.init[v.item] || 1; v.im.count = Math.ceil(v.max * clamp((c.items[v.item] || 0) / init, 0, 1)); } }
 function nearestDoor() { let best: Door | null = null, bd = 2.2; for (const d of doors) { const x = Math.hypot(d.p[0] - player.pos.x, d.p[1] - player.pos.z); if (x < bd) { bd = x; best = d; } } return best; }
-function interact() { const c = nearestCont(); const v = !c && vehicles.nearest(player.pos, 2.2); if (v) { log(v.kind === 'scooter' ? '這台機車沒鑰匙，載具系統下一版開放' : v.kind === 'truck' ? '佔領軍卡車，油箱上鎖（下一版可駕駛）' : '車門鎖住了（載具系統下一版開放）', '#ccc'); return; } if (c && /飲水機|流理台|廚房/.test(c.label)) { if (!UT.water) { log('水龍頭只流出幾滴…停水了。', '#e88'); } else if ((c as any).tapT === undefined || gameMin > (c as any).tapT) { (c as any).tapT = gameMin + 90; c.items.water = (c.items.water || 0) + 1; log('接了一瓶自來水。', '#9cf'); } } if (c) { curCont = c; panelOpen = true; $('panel').classList.remove('hidden'); renderPanel(); } }
+function interact() { if (npcInteract()) return; const c = nearestCont(); const v = !c && vehicles.nearest(player.pos, 2.2); if (v) { log(v.kind === 'scooter' ? '這台機車沒鑰匙，載具系統下一版開放' : v.kind === 'truck' ? '佔領軍卡車，油箱上鎖（下一版可駕駛）' : '車門鎖住了（載具系統下一版開放）', '#ccc'); return; } if (c && /飲水機|流理台|廚房/.test(c.label)) { if (!UT.water) { log('水龍頭只流出幾滴…停水了。', '#e88'); } else if ((c as any).tapT === undefined || gameMin > (c as any).tapT) { (c as any).tapT = gameMin + 90; c.items.water = (c.items.water || 0) + 1; log('接了一瓶自來水。', '#9cf'); } } if (c) { curCont = c; panelOpen = true; $('panel').classList.remove('hidden'); renderPanel(); } }
 const plankMat = new THREE.MeshStandardMaterial({ color: 0x9a7040 });
 function setBarricade(d: Door) {
   d.barricaded = true; d.seg = { a: d.a, b: d.c }; addSeg(d.seg);
@@ -465,6 +528,12 @@ const SAVE = 'defendtaipei-save-v1';
 // ---------- story: utilities timeline (有電有水 → 斷電 → 斷水) ----------
 const UT = { power: true, water: true, ev: {} as Record<string, 1> };
 const POWER_OFF = 2 * 1440 + 19 * 60, WATER_OFF = 4 * 1440 + 7 * 60; // 第3天 19:00 斷電・第5天 07:00 斷水
+const EV0 = 6 * 1440 + 6 * 60, EV1 = 7 * 1440 + 18 * 60; let evac: ReturnType<typeof buildEvacZone> | null = null;
+const evacOpen = () => !UT.ev.ex && gameMin >= EV0 && gameMin < EV1;
+function doEvac(mode: 'heli' | 'boat' = 'heli') {
+  if (cine.on) return; if (mode === 'heli') UT.ev.ex = 1; save(); closePanel(); setSpeed(1); started = false; const items = Object.values(player.inv).reduce((a, b) => a + b, 0); const day = Math.floor(gameMin / 1440) + 1; const hh2 = String(Math.floor(gameMin % 1440 / 60)).padStart(2, '0') + ':' + String(Math.floor(gameMin % 60)).padStart(2, '0');
+  playEvac(renderer, mode, () => { const d = document.createElement('div'); d.id = 'evacend'; d.innerHTML = `<h1>您已成功撤離至 福特號航空母艦（USS Gerald R. Ford, CVN-78）</h1><h2>另一個結局：你活了下來，把萬華的故事帶出去。（撤離路線：${mode === 'boat' ? '小艇・淡水河出海' : '直升機・河濱撤離區'}）</h2><table><tr><td>撤離路線</td><td>${mode === 'boat' ? '🚤 小艇（線人接應）' : '🚁 直升機'}</td></tr><tr><td>存活天數</td><td>${day} 天（第 ${day} 天 ${hh2}）</td></tr><tr><td>奪回街區</td><td>${liberated.size} / ${SX * SZ}</td></tr><tr><td>擊倒佔領軍</td><td>${player.kills}</td></tr><tr><td>攜帶物品</td><td>${items} 件</td></tr></table><div><button id=evcont>繼續留在萬華（奪回之路）</button><button id=evnew>新遊戲</button></div><p style="font-size:12px;color:#678;margin-top:18px">虛構作品・艦艇與直升機為通用低多邊形模型</p>`; document.body.appendChild(d); $('evcont').onclick = () => { d.remove(); started = true; log('你決定留下來，繼續奪回萬華。', '#ffd27a'); }; $('evnew').onclick = () => { localStorage.removeItem(SAVE); location.reload(); }; });
+}
 const STORY: { t: number; id: string; who: string; msg: string; fx?: () => void }[] = [
   { t: 8 * 60 + 5, id: 'a', who: '📱 國家級警報', msg: '萬華、中正一帶實施戒嚴，民眾非必要請勿外出。夜間 20:00 後宵禁。' },
   { t: 12 * 60, id: 'b', who: '📻 中廣（收音機）', msg: '…佔領當局宣稱「水電維持正常供應」，但多處變電所已遭接管…' },
@@ -478,6 +547,9 @@ const STORY: { t: number; id: string; who: string; msg: string; fx?: () => void 
   { t: 3 * 1440 + 15 * 60, id: 'AD', who: '🪂 空投', msg: '遠處升起一道紅色煙霧——物資箱落地了！佔領軍的巡邏隊正往那邊移動。', fx: () => airdrop() },
   { t: 4 * 1440 + 20 * 60, id: 'r4', who: '📻 地下電台「自由之聲」', msg: '…停水第一天。把水桶、臉盆放到頂樓或戶外，下雨就能接水。雨水記得煮過再喝…' },
   { t: 6 * 1440 + 12 * 60, id: 'r5', who: '📻 地下電台「自由之聲」', msg: '…西門町一帶已有三個街區被奪回！每一區的勝利，都讓他們更害怕…' },
+  { t: 5 * 1440 + 20 * 60, id: 'e0', who: '📻 地下電台「自由之聲」', msg: '…有消息說，盟軍正在河濱準備一條撤離通道。明早請守在收音機旁…' },
+  { t: EV0, id: 'e1', who: '📻 地下電台「自由之聲」', msg: '撤離窗口開啟！西側河濱撤離區（綠色 H、紅色信號彈）將有直升機接應，時限至第 8 天 18:00。想留下來奪回家園的人，我們也與你同在。', fx: () => slowDown('撤離廣播') },
+  { t: EV1, id: 'e2', who: '📻 地下電台「自由之聲」', msg: '撤離窗口已關閉。留下來的人——台北靠你們奪回。' },
   { t: WATER_OFF, id: 'W', who: '🚱 停水', msg: '水龍頭只流出幾滴黃水就停了。從現在起，每一瓶水都很珍貴。', fx: () => { UT.water = false; } },
 ];
 function phone(who: string, msg: string) { const el = $('phone'); el.innerHTML = `<b>${who}</b><br>${msg}`; el.classList.add('on'); clearTimeout((phone as any).t); (phone as any).t = setTimeout(() => el.classList.remove('on'), 9000); log(`${who}：${msg}`, '#9fd0ff'); }
@@ -488,7 +560,7 @@ function updateStory(gm: number) {
   if (gameMin >= POWER_OFF) UT.power = false; if (gameMin >= WATER_OFF) UT.water = false;
   if (!UT.power) { spoilT += gm; if (spoilT > 6) { spoilT = 0; for (const c of conts) if (/冷藏|櫃台|攤/.test(c.label)) for (const k of PERISH) if (c.items[k] && rnd() < 0.15) { c.items[k]--; if (!c.items[k]) delete c.items[k]; c.items.rotten = (c.items.rotten || 0) + 1; } } }
 }
-function save() { if (!started || dead) return; localStorage.setItem(SAVE, JSON.stringify({ g: player.gender, p: [player.pos.x, player.pos.z], hp: player.hp, hu: player.hunger, th: player.thirst, fa: player.fatigue, bl: player.bleed, inv: player.inv, eq: player.equip, k: player.kills, t: gameMin, dl: DAYH, wx: WX, ut: UT, conts: conts.map(c => [c.id, c.items, c.p]), dead: sols.filter(s => s.state === 'dead').map(s => s.id), bar: doors.map((d, i) => d.barricaded ? i : -1).filter(i => i >= 0) })); }
+function save() { if (!started || dead) return; localStorage.setItem(SAVE, JSON.stringify({ g: player.gender, p: [player.pos.x, player.pos.z], hp: player.hp, hu: player.hunger, th: player.thirst, fa: player.fatigue, bl: player.bleed, inv: player.inv, eq: player.equip, k: player.kills, t: gameMin, dl: DAYH, wx: WX, ex: UT.ev.ex || 0, inf: INF, ut: UT, conts: conts.map(c => [c.id, c.items, c.p]), dead: sols.filter(s => s.state === 'dead').map(s => s.id), bar: doors.map((d, i) => d.barricaded ? i : -1).filter(i => i >= 0) })); }
 
 // ---------- main loop ----------
 let started = false, dead = false; const clock = new THREE.Clock(); let acc = 0, saveT = 0, streetT = 0;
@@ -496,7 +568,10 @@ function update(dt: number) {
   for (let i = fx.length - 1; i >= 0; i--) { fx[i].t -= dt; if (fx[i].t <= 0) { scene.remove(fx[i].o); fx.splice(i, 1); } }
   if (dead && player.rig) animate(player.rig, 'death', 0, dt);
   for (const s of sols) if (s.state === 'dead' && s.rig.deadT < 1) animate(s.rig, 'death', 0, dt);
+  if (evac) evac.update(dt, evacOpen());
   if (!started || dead) return;
+  updateInformant(dt);
+  if (evac && evacOpen() && Math.hypot(player.pos.x - evac.pos[0], player.pos.z - evac.pos[1]) < 5) doEvac();
   if (speed > 1 && dangerNear()) slowDown('佔領軍接近');
   if (player.sleeping && dangerNear()) slowDown('佔領軍接近');
   if (player.hp < lastHp - 2) slowDown('你受傷了'); lastHp = player.hp;
@@ -618,10 +693,11 @@ function drawHud(inside: Bld | null) {
   const day = Math.floor(gameMin / 1440) + 1, h = Math.floor(gameMin / 60) % 24, mi = Math.floor(gameMin) % 60;
   $('clock').textContent = `第 ${day} 天 ${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')} ${isNight() ? '🌙 宵禁' : '☀'}${raining() ? ' 🌧' : ''}`;
   const alive = sols.filter(s => s.state !== 'dead').length;
-  $('objective').textContent = `已奪回街區 ${liberated.size} / ${SX * SZ}｜殘存佔領軍 ${alive}`;
+  $('objective').textContent = `已奪回街區 ${liberated.size} / ${SX * SZ}｜殘存佔領軍 ${alive}` + (evacOpen() ? `｜🚁 撤離窗口剩 ${Math.floor((EV1 - gameMin) / 60)} 小時 ${Math.floor((EV1 - gameMin) % 60)} 分` : '');
   const eq = player.equip ? ITEMS[player.equip] : null; $('equip').innerHTML = `武器：<b>${eq ? eq.name : '徒手'}</b>${eq && eq.kind === 'gun' ? `　彈藥 ${player.inv[eq.ammo!] || 0}` : ''}　負重 ${weight().toFixed(1)}kg${player.light ? '　🔦' : ''}`;
   const c = nearestCont(), d = nearestDoor(); const pr = $('prompt');
-  if (c && !panelOpen) { pr.style.display = 'block'; pr.textContent = `[E] 搜刮 ${c.label}${Object.keys(c.items).length ? '' : '（空）'}`; }
+  const np = npcPrompt(); if (np && !panelOpen) { pr.style.display = 'block'; pr.textContent = np; }
+  else if (c && !panelOpen) { pr.style.display = 'block'; pr.textContent = `[E] 搜刮 ${c.label}${Object.keys(c.items).length ? '' : '（空）'}`; }
   else if (!panelOpen && vehicles.nearest(player.pos, 2.2)) { pr.style.display = 'block'; pr.textContent = '[E] 查看載具'; }
   else if (d && !panelOpen) { pr.style.display = 'block'; pr.textContent = d.barricaded ? '[B] 拆除封門' : '[B] 封門（鐵鎚+木板）'; }
   else pr.style.display = 'none';
@@ -631,7 +707,7 @@ function die() {
   const t = $('title'); t.style.display = 'flex'; const day = Math.floor(gameMin / 1440) + 1;
   t.innerHTML = `<h1 style="color:#c33">你陣亡了</h1><h2>這就是你的結局。</h2><p>你在淪陷的台北撐過了 ${day} 天，擊倒 ${player.kills} 名佔領軍，奪回了 ${liberated.size} 個街區。</p><button onclick="location.reload()">重新開始（新的倖存者）</button>`;
 }
-function loop() { const dt = Math.min(clock.getDelta(), 0.05); update(dt); renderer.render(scene, camera); requestAnimationFrame(loop); }
+function loop() { const dt = Math.min(clock.getDelta(), 0.05); if (cine.on) { requestAnimationFrame(loop); return; } update(dt); renderer.render(scene, camera); requestAnimationFrame(loop); }
 
 // ---------- boot ----------
 async function boot() {
@@ -665,6 +741,8 @@ async function boot() {
   nav = new Nav(start.c[0] - 170, start.c[1] - 170, start.c[0] + 170, start.c[1] + 170, 0.5); for (const q of segs) nav.markSeg(q.a, q.b, 1);
   spawnSoldiers(new Set(sv?.dead || []));
   scene.add(rainMesh);
+  setupInformant(start.c as V2, !(sv && sv.inf));
+  { let best: V2 | null = null; for (const r of roads) for (const q of r.p) if (Math.abs(q[1] - start.c[1]) < 250 && q[0] > bounds.minx + 8 && !bldAt(q[0], q[1]) && !bldAt(q[0] + 6, q[1]) && !bldAt(q[0] - 6, q[1]) && (!best || q[0] < best[0])) best = q; if (best) evac = buildEvacZone(scene, best[0], best[1]); }
   { let n = 0; for (let k = 0; k < 400 && n < 3; k++) { const a = k * 0.7, d = 4 + k * 0.08; const q: V2 = [start.c[0] + Math.cos(a) * d, start.c[1] + Math.sin(a) * d]; if (!bldAt(q[0], q[1]) && !bldAt(q[0] + 0.6, q[1]) && !bldAt(q[0], q[1] + 0.6)) { makeBucket('rb' + n++, q); } } }
   const sp = start.door!.p; const ip: V2 = [sp[0] + (start.c[0] - sp[0]) * 0.25, sp[1] + (start.c[1] - sp[1]) * 0.25];
   player.pos.set(ip[0], 0, ip[1]);
@@ -676,7 +754,7 @@ async function boot() {
   const go = (load: boolean, gender = 'm') => {
     if (load && sv) gender = sv.g || 'm';
     player.gender = gender; player.rig = spawnRig(HERO[gender]); player.mesh = player.rig.root;
-    if (load && sv) { player.pos.set(sv.p[0], 0, sv.p[1]);  Object.assign(player, { hp: sv.hp, hunger: sv.hu, thirst: sv.th, fatigue: sv.fa, bleed: sv.bl, inv: sv.inv, equip: sv.eq, kills: sv.k }); gameMin = sv.t; DAYH = sv.dl || 1; if (sv.wx) Object.assign(WX, sv.wx); if (sv.ut) Object.assign(UT, sv.ut);
+    if (load && sv) { player.pos.set(sv.p[0], 0, sv.p[1]);  Object.assign(player, { hp: sv.hp, hunger: sv.hu, thirst: sv.th, fatigue: sv.fa, bleed: sv.bl, inv: sv.inv, equip: sv.eq, kills: sv.k }); gameMin = sv.t; DAYH = sv.dl || 1; if (sv.wx) Object.assign(WX, sv.wx); if (sv.ex) UT.ev.ex = 1; if (sv.inf) INF = sv.inf; if (sv.ut) Object.assign(UT, sv.ut);
       const map = new Map<string, any>(sv.conts.map((c: any) => [c[0], c])); for (const c of conts) { const s = map.get(c.id); if (s) c.items = s[1]; map.delete(c.id); } map.forEach(c => String(c[0]).startsWith('pb') ? makeBucket(c[0], c[2], c[1]) : makeCont(c[0], c[2], 'crate', undefined, c[1])); (sv.bar || []).forEach((i: number) => doors[i] && setBarricade(doors[i])); checkSectors(true); conts.forEach(updateVis); }
     else { localStorage.removeItem(SAVE); }
     $('title').style.display = 'none'; started = true; lastHp = player.hp; startRainAudio(); { const sp = document.createElement('div'); sp.id = 'speed'; sp.innerHTML = '<span class="st"></span>' + SPEEDS.map((v, i) => `<button data-s="${v}" title="按 ${i + 1}">${v === 1 ? '▶' : v === 3 ? '⏩' : '⏭'} ×${v}</button>`).join('') + `<small>一天 = ${DAYH} 小時</small>`; sp.querySelectorAll('button').forEach(b => (b as HTMLElement).onclick = () => setSpeed(+(b as HTMLElement).dataset.s!)); $('topright').appendChild(sp); renderSpeed(); } log('十月某日清晨，解放軍登陸後三天，台北淪陷。萬華的電燈還亮著，水龍頭還有水——但能撐多久？', '#ffd76a'); log('提示：先搜刮身邊的櫥櫃（E），按 Tab 開背包裝備菜刀。', '#ccc');
@@ -690,7 +768,7 @@ async function boot() {
   const h = document.createElement('div'); h.className = 'selh'; h.textContent = sv ? '或建立新的倖存者：' : '選擇你的倖存者：'; btns.appendChild(h); btns.appendChild(dl); btns.appendChild(sel);
   camera.position.copy(player.pos).add(CAM_OFF); camera.lookAt(player.pos);
   addEventListener('beforeunload', save);
-  (window as any).__game = { player, sols, blds, conts, nav, started: () => started, go, vehicles, decay: () => decay, alley: () => alley, facade: () => facade, setSpeed, speed: () => speed, WX, airdrop, makeBucket, noise, dayh: () => DAYH, parks: () => parks, simRain: (h: number) => { for (let i = 0; i < h * 20; i++) updateWeather(0.05, 0.05); }, camera, CAM_OFF, setTime: (m: number) => { gameMin = m; }, UT, start: () => start!.c, scene, gm: () => gameMin, tp: (x: number, z: number) => player.pos.set(x, 0, z) };
+  (window as any).__game = { player, sols, blds, conts, nav, started: () => started, go, vehicles, decay: () => decay, alley: () => alley, facade: () => facade, setSpeed, speed: () => speed, WX, airdrop, makeBucket, noise, dayh: () => DAYH, evac: () => evac && evac.pos, evacOpen, doEvac, INF: () => INF, RV: () => RV, infPos: () => infPos, elderPos: () => elderPos, npcInteract, verifyInf, setMin: (m: number) => { gameMin = m; }, parks: () => parks, simRain: (h: number) => { for (let i = 0; i < h * 20; i++) updateWeather(0.05, 0.05); }, camera, CAM_OFF, setTime: (m: number) => { gameMin = m; }, UT, start: () => start!.c, scene, gm: () => gameMin, tp: (x: number, z: number) => player.pos.set(x, 0, z) };
 }
 boot().catch(e => { console.error(e); $('loadmsg').textContent = '載入失敗：' + e; });
 loop();
