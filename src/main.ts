@@ -278,7 +278,7 @@ function buildMap(data: any) {
     for (let i = 0; i < r.p.length - 1; i++) {
       const [ax, az] = r.p[i], [bx, bz] = r.p[i + 1]; const len = Math.hypot(bx - ax, bz - az); if (len < 0.1) continue;
       const g = new THREE.PlaneGeometry(len + w * 0.5, w); g.rotateX(-Math.PI / 2); g.rotateY(-Math.atan2(bz - az, bx - ax)); g.translate((ax + bx) / 2, 0.02 + w * 0.0005, (az + bz) / 2); rg.push(g);
-      if (w >= 12) { const l = new THREE.PlaneGeometry(len + 0.05, 0.15); /* continuous yellow centre line, main roads only */ l.rotateX(-Math.PI / 2); l.rotateY(-Math.atan2(bz - az, bx - ax)); l.translate((ax + bx) / 2, 0.04, (az + bz) / 2); lg.push(l); }
+      /* v19.2: global centre line removed (drawn per OSM way it doubled up on dual carriageways = stray lines); markings live in roads.ts */
     }
   }
   roadTex.repeat.set(1, 1);
