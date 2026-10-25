@@ -68,6 +68,10 @@ export const ITEMS: Record<string, ItemDef> = {
   javm: { name: '標槍飛彈彈筒', w: 11, kind: 'ammo', cal: '127mm', roc: true },
   rocradio_b: { name: '損壞的國軍野戰無線電', w: 3, kind: 'tool', desc: '使用：用鋰電池＋圖傳模組零件修好（或 2 顆鋰電池）' },
   tmap: { name: '萬華街區地圖（手繪）', w: 0.05, kind: 'tool', desc: '使用：居民手繪的巷弄圖，揭露一個街區並標出佔領軍哨點' },
+  hose: { name: '塑膠管', w: 0.3, kind: 'tool', desc: '靠近有油的車按互動：抽出汽油' },
+  gas: { name: '汽油（公升）', w: 0.75, kind: 'tool', desc: '靠近車輛按互動加油。停電後加油站全停擺' },
+  patch: { name: '補胎片', w: 0.1, kind: 'tool', desc: '靠近車輛按互動：補輪胎' },
+  carbat: { name: '汽車電瓶', w: 6, kind: 'tool', desc: '靠近車輛按互動：換電瓶' },
   rocradio: { name: '國軍野戰無線電', w: 3, kind: 'tool', desc: '使用：呼叫國軍裝甲支援（冷卻中無法使用）。通話聲會引來巡邏！' },
   fpv: { name: 'FPV 自殺無人機', w: 1.1, kind: 'tool', desc: '一次性。使用：起飛進入第一人稱操控，撞擊即引爆；從上方撞擊裝甲車頂可擊毀' },
   frame: { name: '碳纖維機架（5 吋）', w: 0.2, kind: 'tool', desc: '使用：組裝 FPV（需 4 顆無刷馬達＋鋰電池＋圖傳模組＋手榴彈）' },
@@ -83,7 +87,7 @@ export const ITEMS: Record<string, ItemDef> = {
 export const LOOT: Record<string, [string, number, number][]> = {
   store: [['noodle',5,3],['rice',4,3],['water',6,3],['sport',3,2],['tea',3,2],['coffee',3,2],['can',3,2],['bento',2,1],['pill',1,1],['snack',3,2]],
   pharmacy: [['bandage',6,3],['medkit',2,1],['pill',5,3],['water',2,2],['tissue',2,1]],
-  home: [['tmap',1,1],['can',3,2],['noodle',3,2],['water',3,2],['tea',1,1],['knife',2,1],['bat',1,1],['bandage',2,1],['plank',2,2],['hammer',1,1],['pipe',1,1],['coffee',1,1],['tissue',2,1],['pineapple',1,2],['dmotor',1,3],['lipo',1,1],['vtx',1,1],['frame',1,1]],
+  home: [['tmap',1,1],['hose',1,1],['can',3,2],['noodle',3,2],['water',3,2],['tea',1,1],['knife',2,1],['bat',1,1],['bandage',2,1],['plank',2,2],['hammer',1,1],['pipe',1,1],['coffee',1,1],['tissue',2,1],['pineapple',1,2],['dmotor',1,3],['lipo',1,1],['vtx',1,1],['frame',1,1]],
   police: [['tmap',2,1],['pistol',3,1],['a9',5,12],['bandage',2,2],['bat',1,1]],
   // detailed fixtures
   fridge: [['water',5,4],['tea',5,4],['sport',4,3],['milktea',3,2],['coffee',3,3],['soymilk',2,2]],
@@ -97,6 +101,6 @@ export const LOOT: Record<string, [string, number, number][]> = {
   kitchen: [['can',3,2],['noodle',3,3],['water',3,2],['knife',3,1],['soymilk',1,1],['egg',2,3]],
   wardrobe: [['bandage',2,1],['bat',2,1],['plank',3,2],['hammer',2,1],['tissue',2,1]],
   tapw: [['water',1,1]],
-  hardware: [['bucket',3,1],['radio',2,1],['hammer',4,1],['pipe',3,1],['plank',4,2],['knife',2,1],['bat',1,1],['bandage',1,1]],
+  hardware: [['hose',3,1],['patch',3,2],['carbat',1,1],['bucket',3,1],['radio',2,1],['hammer',4,1],['pipe',3,1],['plank',4,2],['knife',2,1],['bat',1,1],['bandage',1,1]],
   altar: [['pineapple',4,3],['can',2,1],['tea',2,2]],
 };

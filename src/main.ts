@@ -5,6 +5,7 @@ import { buildFacade } from './facade';
 import { buildParks } from './park';
 import { ArmorSystem, type ArmorKind } from './armor';
 import { Recon, boom } from './drone';
+import { DriveSystem, type DKind } from './drive';
 import { ROLES, roleById, type Role } from './roles';
 import type { FPV } from './fpv';
 import type { GameMap } from './map';
@@ -400,6 +401,20 @@ function spawnSoldiers(dead: Set<number>) {
 // ---------- time / noise / log ----------
 const groundMat = new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1 });
 let ROLE: Role = roleById('courier');
+function roadWAt(x: number, z: number) { let best = 1e9, w = 0; for (const r of roads) { const hw = (ROADW[r.t.replace('_link', '')] ?? 3); for (let i = 0; i < r.p.length - 1; i++) { const [ax, az] = r.p[i], [bx, bz] = r.p[i + 1]; const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1; const t = clamp(((x - ax) * dx + (z - az) * dz) / l2, 0, 1); const d = Math.hypot(ax + dx * t - x, az + dz * t - z); if (d < best) { best = d; w = hw; } } } return best < w / 2 + 1.5 ? w : 0; }
+const drive = new DriveSystem({ scene, bldAt: (x, z) => bldAt(x, z), noise: (x, z, r) => noise(x, z, r), log: (m, c) => log(m, c || '#ddd'), power: () => UT.power, armor: () => armor ? armor.list.map((a: any) => a.g.position) : [], skills: () => ROLE.skills, inv: () => player.inv, hurt: n => { player.hp -= n; }, roadW: roadWAt });
+function spawnDrivables(c: V2) { let sd = 977; const r = () => (sd = (sd * 16807) % 2147483647) / 2147483647; let n = 0, bus = 0, gb = 0, dock = 0;
+  const segs: [number, number, number, number, number][] = []; for (const rd of roads) { const w = ROADW[rd.t.replace('_link', '')] ?? 3; if (w < 4) continue; for (let i = 0; i < rd.p.length - 1; i++) { const [ax, az] = rd.p[i], [bx, bz] = rd.p[i + 1]; const mx = (ax + bx) / 2, mz = (az + bz) / 2; const d = Math.hypot(mx - c[0], mz - c[1]); if (d < 190 && Math.hypot(bx - ax, bz - az) > 8) segs.push([ax, az, bx, bz, w]); } }
+  segs.sort(() => r() - 0.5);
+  for (const [ax, az, bx, bz, w] of segs) { if (bus || w < 9) continue; const L = Math.hypot(bx - ax, bz - az); if (L < 16) continue; const ux = (bx - ax) / L, uz = (bz - az) / L; const x = (ax + bx) / 2 - uz * (w / 2 - 1.6), z = (az + bz) / 2 + ux * (w / 2 - 1.6); if (bldAt(x, z)) continue; const v = drive.spawn('bus', x, z, Math.atan2(ux, uz), r); if (drive.blocked(v, x, z, v.hd)) { scene.remove(v.g); drive.list.pop(); continue; } bus = 1; }
+  for (const [ax, az, bx, bz, w] of segs) { if (n > 46) break; const L = Math.hypot(bx - ax, bz - az); const ux = (bx - ax) / L, uz = (bz - az) / L, nx = -uz, nz = ux; const hd = Math.atan2(ux, uz);
+    const big = w >= 9; let kind: DKind = big ? (['taxi', 'sedan', 'sedan', 'van', 'kei', 'scooter', 'moto', 'delivery'] as DKind[])[Math.floor(r() * 8)] : (['scooter', 'scooter', 'escooter', 'moto', 'delivery', 'basket', 'kei'] as DKind[])[Math.floor(r() * 7)];
+    if (big && !bus && r() < 0.3) { kind = 'bus'; bus = 1; } else if (!gb && r() < 0.15) { kind = 'garbage'; gb = 1; }
+    const t = 0.25 + r() * 0.5, side = r() < 0.5 ? 1 : -1; const two = ['scooter', 'escooter', 'moto', 'delivery', 'basket'].includes(kind); const off = two ? w / 2 - 0.5 : w / 2 - 1.3;
+    if (big && dock < 1 && r() < 0.25) { dock++; for (let k = 0; k < 4; k++) { const x = ax + ux * (L * t + k * 0.9) + nx * (w / 2 + 0.6) * side, z = az + uz * (L * t + k * 0.9) + nz * (w / 2 + 0.6) * side; if (bldAt(x, z)) continue; const v = drive.spawn('ubike', x, z, hd + Math.PI / 2, r, { docked: true }); const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.9, 0.12), new THREE.MeshStandardMaterial({ color: 0x2a9a8a })); post.position.set(x + Math.sin(hd + Math.PI / 2) * 0.7, 0.45, z + Math.cos(hd + Math.PI / 2) * 0.7); scene.add(post); void v; n++; } continue; }
+    const x = ax + ux * L * t + nx * off * side, z = az + uz * L * t + nz * off * side; if (bldAt(x, z)) continue; const v = drive.spawn(kind, x, z, two ? hd + Math.PI / 2 * (r() < 0.7 ? 1 : 0) : hd + (r() < 0.5 ? Math.PI : 0), r);
+    if (drive.blocked(v, x, z, v.hd)) { scene.remove(v.g); drive.list.pop(); continue; } n++; }
+}
 let lastHp = 100; let parks: any = null; let gmap: GameMap | null = null;
 function mapIntelOutposts(lbl: string) { if (!gmap) return; checkpoints.forEach((c, i) => gmap!.intel('out' + i, c[0], c[1], 'out', lbl)); }
 // ---------- weather: rain (visual drops, wet ground, optional sound) + rain buckets ----------
@@ -581,7 +596,10 @@ function nearestCont() { let best: Cont | null = null, bd = 1.5; for (const c of
 function updateVis(c: Cont) { if (!c.vis || !c.init) return; for (const v of c.vis) { const init = c.init[v.item] || 1; v.im.count = Math.ceil(v.max * clamp((c.items[v.item] || 0) / init, 0, 1)); } }
 function nearestDoor() { let best: Door | null = null, bd = 2.2; for (const d of doors) { const x = Math.hypot(d.p[0] - player.pos.x, d.p[1] - player.pos.z); if (x < bd) { bd = x; best = d; } } return best; }
 function interact() { if (npcInteract()) return;
- const c = nearestCont(); const v = !c && vehicles.nearest(player.pos, 2.2); if (v) { log(v.kind === 'scooter' ? '這台機車沒鑰匙，載具系統下一版開放' : v.kind === 'truck' ? '佔領軍卡車，油箱上鎖（下一版可駕駛）' : '車門鎖住了（載具系統下一版開放）', '#ccc'); return; } if (c && /飲水機|流理台|廚房/.test(c.label)) { if (!UT.water) { log('水龍頭只流出幾滴…停水了。', '#e88'); } else if ((c as any).tapT === undefined || gameMin > (c as any).tapT) { (c as any).tapT = gameMin + 90; c.items.water = (c.items.water || 0) + 1; log('接了一瓶自來水。', '#9cf'); } } if (c) { curCont = c; panelOpen = true; $('panel').classList.remove('hidden'); renderPanel(); } }
+  if (drive.cur) { const v = drive.cur; const o = drive.exit()!; player.pos.copy(o); collide(player.pos, 0.35); player.mesh.visible = true; log(`下車（${v.s.name}）`, '#ccc'); return; }
+  { const v = drive.nearest(player.pos); if (v && !nearestCont()) { const rf = drive.refuel(v); if (rf) { log('⛽ ' + rf, '#9f9'); return; } const rp = drive.repair(v); if (rp) { log('🔧 ' + rp, '#9f9'); return; }
+    const m = drive.enter(v); if (!m) { player.mesh.visible = v.s.two; log(`${v.s.two ? '騎上' : '坐進'} ${v.s.name}｜${drive.status(v)}`, '#9f9'); return; }
+    if (player.inv.hose && !v.s.pedal && !v.s.elec && v.fuel > 1 && !/接線/.test(m)) { log(drive.siphon(v), '#fc8'); return; } log(m + '｜' + drive.status(v), '#ccc'); return; } } const c = nearestCont(); const v = !c && vehicles.nearest(player.pos, 2.2); if (v) { log(v.kind === 'truck' ? '佔領軍卡車，油箱上鎖' : '這台被鎖死了，零件也被拆光，找別台吧', '#ccc'); return; } if (c && /飲水機|流理台|廚房/.test(c.label)) { if (!UT.water) { log('水龍頭只流出幾滴…停水了。', '#e88'); } else if ((c as any).tapT === undefined || gameMin > (c as any).tapT) { (c as any).tapT = gameMin + 90; c.items.water = (c.items.water || 0) + 1; log('接了一瓶自來水。', '#9cf'); } } if (c) { curCont = c; panelOpen = true; $('panel').classList.remove('hidden'); renderPanel(); } }
 const plankMat = new THREE.MeshStandardMaterial({ color: 0x9a7040 });
 function setBarricade(d: Door) {
   d.barricaded = true; d.seg = { a: d.a, b: d.c }; addSeg(d.seg);
@@ -718,7 +736,11 @@ function update(dt: number) {
   vehicles.update(dt); if (armor && started && !PRO.hide) armor.update(dt); if (recon && started && !PRO.hide) recon.update(dt, performance.now() / 1000); if (roc && started && !PRO.hide) roc.update(dt); ROC.cd = Math.max(0, ROC.cd - dt); updateShells(dt);
   player.cd -= dt;
   // movement
-  if (!player.sleeping && !fpv?.active) {
+  if (drive.cur) { const f = new THREE.Vector3(-1, 0, -1).normalize(), r = new THREE.Vector3(1, 0, -1).normalize(); const mv = new THREE.Vector3(); if (keys.KeyW) mv.add(f); if (keys.KeyS) mv.sub(f); if (keys.KeyD) mv.add(r); if (keys.KeyA) mv.sub(r); if (mv.lengthSq()) mv.normalize();
+    const jm = Math.min(1, Math.hypot(joy.x, joy.y)); if (jm > 0.12) mv.addScaledVector(f, -joy.y).addScaledVector(r, joy.x);
+    drive.update(dt, mv, UT.power); const v = drive.cur; if (v) { player.pos.set(v.pos.x, 0, v.pos.z); player.mesh.position.set(v.pos.x, v.s.seatY - 0.45, v.pos.z); player.mesh.rotation.y = v.hd; player.moving = 0; player.vel.set(0, 0, 0); } }
+  else drive.update(dt, new THREE.Vector3(), UT.power);
+  if (!player.sleeping && !fpv?.active && !drive.cur) {
     const f = new THREE.Vector3(-1, 0, -1).normalize(), r = new THREE.Vector3(1, 0, -1).normalize(); const mv = new THREE.Vector3();
     if (keys.KeyW) mv.add(f); if (keys.KeyS) mv.sub(f); if (keys.KeyD) mv.add(r); if (keys.KeyA) mv.sub(r);
     const jm = Math.min(1, Math.hypot(joy.x, joy.y)); if (jm > 0.12) { mv.addScaledVector(f, -joy.y).addScaledVector(r, joy.x); }
@@ -740,7 +762,7 @@ function update(dt: number) {
     player.anim = panelOpen && curCont ? 'loot' : eqk === 'gun' && !running ? 'aim' : player.sneak ? 'sneak' : running && player.moving > 3.5 ? 'run' : player.moving > 0.15 ? 'walk' : 'idle';
   } else player.anim = 'sleep';
   setWeapon(player.rig, player.equip); animate(player.rig, player.anim, player.moving, dt);
-  player.mesh.position.copy(player.pos);
+  if (!drive.cur) player.mesh.position.copy(player.pos);
   // buildings cutaway
   const inside = bldAt(player.pos.x, player.pos.z);
   for (const b of blds) {
@@ -827,6 +849,8 @@ function drawHud(inside: Bld | null) {
   const c = nearestCont(), d = nearestDoor(); const pr = $('prompt');
   const np = npcPrompt(); if (np && !panelOpen) { pr.style.display = 'block'; pr.textContent = np; }
   else if (c && !panelOpen) { pr.style.display = 'block'; pr.textContent = `[E] 搜刮 ${c.label}${Object.keys(c.items).length ? '' : '（空）'}`; }
+  else if (!panelOpen && drive.cur) { pr.style.display = 'block'; pr.textContent = `[E] 下車｜${drive.status(drive.cur)}｜${Math.round(Math.abs(drive.cur.v) * 3.6)} km/h`; }
+  else if (!panelOpen && drive.nearest(player.pos)) { const v = drive.nearest(player.pos)!; pr.style.display = 'block'; pr.textContent = `[E] ${v.s.drive ? (v.s.two ? '騎' : '開') : '查看'} ${v.s.name}${v.key || !v.s.key ? '（鑰匙還在）' : ''}`; }
   else if (!panelOpen && vehicles.nearest(player.pos, 2.2)) { pr.style.display = 'block'; pr.textContent = '[E] 查看載具'; }
   else if (d && !panelOpen) { pr.style.display = 'block'; pr.textContent = d.barricaded ? '[B] 拆除封門' : '[B] 封門（鐵鎚+木板）'; }
   else pr.style.display = 'none';
@@ -894,7 +918,7 @@ async function boot() {
   // night market on the nearest named mid-size road
   let bestR: any = null, bd = 1e9; for (const r of roads) { if (!['tertiary', 'residential', 'pedestrian', 'unclassified'].includes(r.t) || r.p.length < 2) continue; const d = Math.min(...r.p.map(p => Math.hypot(p[0] - start!.c[0], p[1] - start!.c[1]))); if (d < bd && d > 15) { bd = d; bestR = r; } }
   if (bestR) nightMarket(bestR.p, bestR.t === 'tertiary' ? 9 : 6, fx, 'nm');
-  setupArmor(start!.c as V2);
+  setupArmor(start!.c as V2); spawnDrivables(start!.c as V2);
   decay = buildDecay({ scene, rnd, pip, bldAt, addSeg: (q, low) => addSeg(q, low), merge: mergeGeometries, roads, blds, RW: ROADW, center: start.c, R: 140, doors: doors.map(d => d.p) });
   checkpoints = decay.checkpoints; setupRecon(start!.c as V2); setupRoc();
   alley = buildAlley({ poles: decay.polePos, scene, rnd, pip, bldAt, addSeg: (q, low) => addSeg(q, low), merge: mergeGeometries, roads, blds, RW: ROADW, center: start.c, R: 85, doors: doors.map(d => d.p) });
@@ -925,7 +949,7 @@ async function boot() {
     const sc = start!.c as V2; let from: V2 = [player.pos.x, player.pos.z]; let home: Bld = start!;
     const hosp = nearestBy(b => /醫院/.test((b as any).nm), sc);
     if (r.spawn === 'hospital' && hosp) { const dorm = nearestBy(b => b.type === 'home' && b !== hosp && area(b) > 50, hosp.c as V2, 25, 160); if (dorm) { if (!dorm.detailed && furnish(dorm, 'home', fx)) dorm.detailed = 'home'; home = dorm; from = doorIn(dorm); } }
-    if (r.spawn === 'scooter') { const d = start!.door!.p; const nx = d[0] + (d[0] - sc[0]) * 0.6, nz = d[1] + (d[1] - sc[1]) * 0.6; if (!bldAt(nx, nz)) from = [nx, nz]; }
+    if (r.spawn === 'scooter') { const d = start!.door!.p; const nx = d[0] + (d[0] - sc[0]) * 0.6, nz = d[1] + (d[1] - sc[1]) * 0.6; if (!bldAt(nx, nz)) from = [nx, nz];  drive.spawn('delivery', from[0] + 1.2, from[1] + 0.6, 0, Math.random, { key: true, fuel: 4, tyre: 1, eng: 1, bat: 1 }); log('你的外送機車就停在門口，鑰匙在身上。', '#9cf'); }
     else { const bed = findBed(home); if (bed) from = [bed[0] + 0.9, bed[1]]; }
     player.pos.set(from[0], 0, from[1]);
     const dest = r.dest === 'hospital' && hosp ? hosp : r.dest === 'office' ? nearestBy(b => /商業大樓|大樓|銀行/.test((b as any).nm), from, 120) : r.dest === 'school' ? nearestBy(b => /文教|學/.test((b as any).nm) || area(b) > 900, from, 150) : r.dest === 'delivery' ? nearestBy(b => b.type === 'store' || b.type === 'market', from, 120) : nearestBy(b => area(b) > 200, from, 140, 260);
@@ -954,7 +978,7 @@ async function boot() {
   const h = document.createElement('div'); h.className = 'selh'; h.textContent = sv ? '或建立新的倖存者：' : '選擇你的倖存者：'; btns.appendChild(h); btns.appendChild(dl); btns.appendChild(gsw); btns.appendChild(sel);
   camera.position.copy(player.pos).add(CAM_OFF); camera.lookAt(player.pos);
   addEventListener('beforeunload', save);
-  (window as any).__game = { PRO, role: () => ROLE, endPrologue: () => endPrologue(), map: gmap, player, sols, blds, conts, nav, started: () => started, go, vehicles, decay: () => decay, alley: () => alley, facade: () => facade, setSpeed, speed: () => speed, WX, airdrop, makeBucket, noise, dayh: () => DAYH, evac: () => evac && evac.pos, evacOpen, doEvac, INF: () => INF, RV: () => RV, infPos: () => infPos, elderPos: () => elderPos, npcInteract, verifyInf, setMin: (m: number) => { gameMin = m; }, parks: () => parks, simRain: (h: number) => { for (let i = 0; i < h * 20; i++) updateWeather(0.05, 0.05); }, camera, CAM_OFF, setTime: (m: number) => { gameMin = m; }, UT, start: () => start!.c, scene, gm: () => gameMin, tp: (x: number, z: number) => player.pos.set(x, 0, z), damageSol, toggleInv, addItem, armor: () => armor, fpv: () => fpv, recon: () => recon, ROC, roc: () => roc, useItem, testAT: (k: string) => { const a = armor!.list.find(a => !a.dead)!; const dir = a.g.position.clone().sub(player.pos).setY(0).normalize(); fireAT(k, ITEMS[k], dir); return a.hp; }, callSupport, rocCheck, liberate: (n: number) => { for (let i = 0; i < SX * SZ && liberated.size < n; i++) if (!liberated.has(i)) { for (const q of sols) if (q.sector === i) { q.state = 'dead'; q.hp = 0; q.mesh.visible = false; } liberated.add(i); } rocCheck(false); }, lastBlast: () => lastBlast, shells, launchFPV, blast, sim: (n: number, dt = 0.05) => { for (let i = 0; i < n; i++) { update(dt); if (fpv?.active) fpv.update(dt); } }, roadPt: () => { let best: V2 = [player.pos.x, player.pos.z], bd = 1e9; for (const r of roads) if (/primary|secondary|tertiary/.test(r.t)) for (const q of r.p) { const d = Math.hypot(q[0] - player.pos.x, q[1] - player.pos.z); if (d < bd && d > 8 && !bldAt(q[0], q[1])) { bd = d; best = q; } } return best; }, checkpoints: () => checkpoints };
+  (window as any).__game = { drive, PRO, role: () => ROLE, endPrologue: () => endPrologue(), map: gmap, player, sols, blds, conts, nav, started: () => started, go, vehicles, decay: () => decay, alley: () => alley, facade: () => facade, setSpeed, speed: () => speed, WX, airdrop, makeBucket, noise, dayh: () => DAYH, evac: () => evac && evac.pos, evacOpen, doEvac, INF: () => INF, RV: () => RV, infPos: () => infPos, elderPos: () => elderPos, npcInteract, verifyInf, setMin: (m: number) => { gameMin = m; }, parks: () => parks, simRain: (h: number) => { for (let i = 0; i < h * 20; i++) updateWeather(0.05, 0.05); }, camera, CAM_OFF, setTime: (m: number) => { gameMin = m; }, UT, start: () => start!.c, scene, gm: () => gameMin, tp: (x: number, z: number) => player.pos.set(x, 0, z), damageSol, toggleInv, addItem, armor: () => armor, fpv: () => fpv, recon: () => recon, ROC, roc: () => roc, useItem, testAT: (k: string) => { const a = armor!.list.find(a => !a.dead)!; const dir = a.g.position.clone().sub(player.pos).setY(0).normalize(); fireAT(k, ITEMS[k], dir); return a.hp; }, callSupport, rocCheck, liberate: (n: number) => { for (let i = 0; i < SX * SZ && liberated.size < n; i++) if (!liberated.has(i)) { for (const q of sols) if (q.sector === i) { q.state = 'dead'; q.hp = 0; q.mesh.visible = false; } liberated.add(i); } rocCheck(false); }, lastBlast: () => lastBlast, shells, launchFPV, blast, sim: (n: number, dt = 0.05) => { for (let i = 0; i < n; i++) { update(dt); if (fpv?.active) fpv.update(dt); } }, roadPt: () => { let best: V2 = [player.pos.x, player.pos.z], bd = 1e9; for (const r of roads) if (/primary|secondary|tertiary/.test(r.t)) for (const q of r.p) { const d = Math.hypot(q[0] - player.pos.x, q[1] - player.pos.z); if (d < bd && d > 8 && !bldAt(q[0], q[1])) { bd = d; best = q; } } return best; }, checkpoints: () => checkpoints };
 }
 boot().catch(e => { console.error(e); $('loadmsg').textContent = '載入失敗：' + e; });
 loop();
