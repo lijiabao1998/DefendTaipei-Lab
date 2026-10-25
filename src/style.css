@@ -22,3 +22,5 @@
 #charsel{display:flex;gap:18px;justify-content:center;margin-top:8px}.ch{width:200px;padding:14px;background:rgba(30,30,30,.85);border:2px solid #6b5f3a;border-radius:10px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px}.ch:hover{border-color:#f2d27a;transform:translateY(-3px)}
 .ch small{color:#bba;line-height:1.5}.pv{width:70px;height:110px;border-radius:35px 35px 8px 8px;margin-bottom:6px}.pv.m{background:linear-gradient(#1a1410 0 18%,#f1eee8 18% 32%,#3d5a78 32% 62%,#3a3a44 62%)}.pv.f{background:linear-gradient(#2a1a12 0 24%,#f1eee8 24% 34%,#c8505a 34% 62%,#2a3a5a 62%)}
 .selh{margin-top:10px;color:#ccb}
+
+#phone{position:absolute;right:16px;top:70px;width:300px;padding:10px 12px;background:rgba(18,22,30,.92);border:1px solid #3a4a6a;border-radius:14px;color:#e8eef8;font-size:13px;line-height:1.5;box-shadow:0 6px 20px #000a;transform:translateX(360px);transition:transform .5s;pointer-events:none;z-index:5}#phone.on{transform:none}#phone b{color:#ffd76a}

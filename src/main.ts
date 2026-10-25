@@ -5,7 +5,7 @@ import { iconURL } from './icons';
 import { makeRig, animate, setWeapon, Rig, AnimState } from './human';
 import { Nav, smooth } from './nav';
 import { VehicleSystem, VehicleKind } from './vehicles';
-import { furnish, nightMarket } from './interiors';
+import { furnish, nightMarket, setPower } from './interiors';
 import { buildDecay } from './decay';
 import { buildAlley } from './alley';
 
@@ -62,6 +62,11 @@ const wallTexs = WALLC.map((col, wi) => canvasTex(256, 256, c => {
   if (broken) { c.fillStyle = '#0c0e10'; c.beginPath(); c.moveTo(80, 60); c.lineTo(150, 70); c.lineTo(120, 130); c.lineTo(90, 110); c.fill(); c.strokeStyle = 'rgba(200,220,235,.7)'; c.lineWidth = 1; for (let k = 0; k < 10; k++) { c.beginPath(); c.moveTo(120, 95); c.lineTo(120 + (Math.random() - 0.5) * 120, 95 + (Math.random() - 0.5) * 90); c.stroke(); } c.fillStyle = '#5a6a7a'; c.fillRect(150, 52, 40, 96); }
   else { c.fillStyle = 'rgba(255,255,255,.12)'; c.fillRect(70, 56, 30, 88); }
   c.strokeStyle = '#5a3018'; c.lineWidth = 5; c.strokeRect(54, 40, 148, 120); c.lineWidth = 3; for (let x = 66; x < 200; x += 14) { c.beginPath(); c.moveTo(x, 40); c.lineTo(x, 160); c.stroke(); } c.beginPath(); c.moveTo(54, 100); c.lineTo(202, 100); c.stroke();
+  // long-term grime: grey cement-dust streaks under the sill, black water stains from the slab edge, rust bleeding from the 鐵窗
+  for (let i = 0; i < 26; i++) { const x = 50 + Math.random() * 160; const g = c.createLinearGradient(0, 158, 0, 256); g.addColorStop(0, 'rgba(105,100,92,.55)'); g.addColorStop(1, 'rgba(105,100,92,0)'); c.fillStyle = g; c.fillRect(x, 158, 1 + Math.random() * 5, 40 + Math.random() * 98); }
+  for (let i = 0; i < 14; i++) { const x = Math.random() * 256; const g = c.createLinearGradient(0, 0, 0, 90); g.addColorStop(0, 'rgba(20,20,18,.6)'); g.addColorStop(1, 'rgba(20,20,18,0)'); c.fillStyle = g; c.beginPath(); c.moveTo(x, 0); c.lineTo(x + 6 + Math.random() * 14, 0); c.lineTo(x + 3 + Math.random() * 4, 30 + Math.random() * 60); c.fill(); }
+  { const g = c.createLinearGradient(0, 0, 0, 18); g.addColorStop(0, 'rgba(25,25,22,.7)'); g.addColorStop(1, 'rgba(25,25,22,0)'); c.fillStyle = g; c.fillRect(0, 0, 256, 18); }
+  for (let i = 0; i < 4; i++) { const x = Math.random() * 230, y = 165 + Math.random() * 60; c.fillStyle = 'rgba(60,55,50,.25)'; c.beginPath(); c.ellipse(x, y, 10 + Math.random() * 18, 6 + Math.random() * 10, 0, 0, Math.PI * 2); c.fill(); }
   for (let i = 0; i < 9; i++) { const x = 56 + Math.random() * 146; const g = c.createLinearGradient(0, 160, 0, 230); g.addColorStop(0, 'rgba(120,60,20,.6)'); g.addColorStop(1, 'rgba(120,60,20,0)'); c.fillStyle = g; c.fillRect(x, 160, 2 + Math.random() * 3, 30 + Math.random() * 60); } // rust drips
 }));
 const wallMats = wallTexs.map(t => new THREE.MeshStandardMaterial({ map: t, roughness: 0.95 }));
@@ -114,7 +119,7 @@ function shopType(s: string, n: string) {
 const SIGN: Record<string, [string, string, string]> = { store: ['7-12', '#e8eef0', '#d23a1e'], pharmacy: ['康是福藥局', '#1d8a5a', '#ffffff'], police: ['派出所', '#1d3f8a', '#ffffff'] };
 const signTex: Record<string, THREE.Texture> = {};
 for (const k in SIGN) { const [t, bg, fg] = SIGN[k]; signTex[k] = canvasTex(256, 64, c => { c.fillStyle = bg; c.fillRect(0, 0, 256, 64); if (k === 'store') { c.fillStyle = '#f08a1c'; c.fillRect(0, 0, 256, 10); c.fillStyle = '#1c9a4a'; c.fillRect(0, 54, 256, 10); } c.fillStyle = fg; c.font = 'bold 40px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(t, 128, 34); }); }
-const b2sign: Record<string, [string, string, string]> = { store: ['7-12', '', ''], pharmacy: ['', '', ''], grocery: ['金來雜貨店', '#b8241c', '#fff2a0'], breakfast: ['晨光早餐', '#f2a81c', '#7a1a10'], betel: ['檳榔・香菸', '#111111', '#33ff66'] };
+const b2sign: Record<string, [string, string, string]> = { store: ['7-12', '', ''], pharmacy: ['', '', ''], grocery: ['金來雜貨店', '#b8241c', '#fff2a0'], breakfast: ['晨光早餐', '#f2a81c', '#7a1a10'], betel: ['檳榔・香菸', '#111111', '#33ff66'], market: ['全民福利超市', '#1a4aa8', '#ffffff'], hardware: ['永興五金行', '#f0c020', '#1a1a1a'] };
 const extraSign: Record<string, THREE.Texture> = {};
 function setSign(b: Bld, k: string) {
   let tex = signTex[k]; if (!tex) { const [t, bg, fg] = b2sign[k]; tex = extraSign[k] || (extraSign[k] = canvasTex(256, 64, c => { c.fillStyle = bg; c.fillRect(0, 0, 256, 64); c.fillStyle = fg; c.font = 'bold 38px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(t, 128, 34); })); }
@@ -163,7 +168,7 @@ function buildMap(data: any) {
   data.buildings.forEach((ob: any, id: number) => {
     const pts: V2[] = ob.p; const A = area(pts); if (A < 12 || A > 6000) return;
     let xs = pts.map(p => p[0]), zs = pts.map(p => p[1]);
-    const lv = ob.l || (2 + Math.floor(rnd() * 4)); const h = Math.min(lv, 7) * 3.2;
+    const hh = (k: number) => { const v = Math.sin(id * 12.9898 + k * 78.233) * 43758.5453; return v - Math.floor(v); }; if (!ob.l) rnd(); const rr = hh(1); const lv = ob.l ? Math.min(ob.l, rr < 0.45 ? 3 : 9) : rr < 0.5 ? 2 + Math.floor(hh(2) * 2) : rr < 0.88 ? 4 + Math.floor(hh(2) * 2) : 6 + Math.floor(hh(2) * 2); /* 透天 2-3F, 公寓 4-5F, few taller */ const h = Math.min(lv, 7) * 3.2;
     const type = shopType(ob.s, ob.n);
     const cx = xs.reduce((a, b) => a + b) / xs.length, cz = zs.reduce((a, b) => a + b) / zs.length;
     const group = new THREE.Group(); scene.add(group);
@@ -199,11 +204,11 @@ function buildMap(data: any) {
     const roof = new THREE.Mesh(rgeo, roofMat); roof.position.y = h; roof.castShadow = true; b.roof.add(roof);
     const fl = new THREE.Mesh(rgeo, floorMat); fl.position.y = 0.03; fl.receiveShadow = true; group.add(fl); b.floor = fl;
     // rooftop additions 頂樓加蓋 + water tanks
-    if (A > 40 && rnd() < 0.55) {
+    if (A > 40 && rnd() < 0.55 || A > 30 && hh(3) < (lv <= 3 ? 0.6 : 0)) {
       const sx = (b.maxx - b.minx) * 0.4, sz = (b.maxz - b.minz) * 0.4;
       const tin = new THREE.Mesh(new THREE.BoxGeometry(sx, 2.6, sz), tinMat); tin.position.set(cx, h + 1.3, cz); if (pip([cx, cz], pts)) { tin.castShadow = true; b.roof.add(tin); }
     }
-    if (rnd() < 0.5) { const t = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 1.4, 10), tankMat); const tp: V2 = [cx + (rnd() - 0.5) * 2, cz + (rnd() - 0.5) * 2]; if (pip(tp, pts)) { t.position.set(tp[0], h + 0.7, tp[1]); t.castShadow = true; b.roof.add(t); } }
+    const tq = rnd(); if (tq < 0.5 || hh(4) < (lv <= 3 ? 0.5 : 0)) { const st = lv <= 3 ? 1.6 : 0; const t = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 1.4, 10), tankMat); const tp: V2 = tq < 0.5 ? [cx + (rnd() - 0.5) * 2, cz + (rnd() - 0.5) * 2] : [cx + (hh(5) - 0.5) * 2, cz + (hh(6) - 0.5) * 2]; if (pip(tp, pts)) { t.position.set(tp[0], h + 0.7 + st, tp[1]); t.castShadow = true; b.roof.add(t); if (st) for (const [ox, oz] of [[-0.45, -0.45], [0.45, -0.45], [0.45, 0.45], [-0.45, 0.45]]) { const lg = new THREE.Mesh(new THREE.BoxGeometry(0.07, st, 0.07), tinMat); lg.position.set(tp[0] + ox, h + st / 2, tp[1] + oz); b.roof.add(lg); } } }
     group.add(b.roof);
     blds.push(b);
     // containers
@@ -325,7 +330,7 @@ function contDist(c: Cont) { let x = c.p[0], z = c.p[1]; if (c.half && c.axis) {
 function nearestCont() { let best: Cont | null = null, bd = 1.5; for (const c of conts) { if (Math.abs(c.p[0] - player.pos.x) > 6 || Math.abs(c.p[1] - player.pos.z) > 6) continue; const d = contDist(c); if (d < bd) { bd = d; best = c; } } return best; }
 function updateVis(c: Cont) { if (!c.vis || !c.init) return; for (const v of c.vis) { const init = c.init[v.item] || 1; v.im.count = Math.ceil(v.max * clamp((c.items[v.item] || 0) / init, 0, 1)); } }
 function nearestDoor() { let best: Door | null = null, bd = 2.2; for (const d of doors) { const x = Math.hypot(d.p[0] - player.pos.x, d.p[1] - player.pos.z); if (x < bd) { bd = x; best = d; } } return best; }
-function interact() { const c = nearestCont(); const v = !c && vehicles.nearest(player.pos, 2.2); if (v) { log(v.kind === 'scooter' ? '這台機車沒鑰匙，載具系統下一版開放' : v.kind === 'truck' ? '佔領軍卡車，油箱上鎖（下一版可駕駛）' : '車門鎖住了（載具系統下一版開放）', '#ccc'); return; } if (c) { curCont = c; panelOpen = true; $('panel').classList.remove('hidden'); renderPanel(); } }
+function interact() { const c = nearestCont(); const v = !c && vehicles.nearest(player.pos, 2.2); if (v) { log(v.kind === 'scooter' ? '這台機車沒鑰匙，載具系統下一版開放' : v.kind === 'truck' ? '佔領軍卡車，油箱上鎖（下一版可駕駛）' : '車門鎖住了（載具系統下一版開放）', '#ccc'); return; } if (c && /飲水機|流理台|廚房/.test(c.label)) { if (!UT.water) { log('水龍頭只流出幾滴…停水了。', '#e88'); } else if ((c as any).tapT === undefined || gameMin > (c as any).tapT) { (c as any).tapT = gameMin + 90; c.items.water = (c.items.water || 0) + 1; log('接了一瓶自來水。', '#9cf'); } } if (c) { curCont = c; panelOpen = true; $('panel').classList.remove('hidden'); renderPanel(); } }
 const plankMat = new THREE.MeshStandardMaterial({ color: 0x9a7040 });
 function setBarricade(d: Door) {
   d.barricaded = true; d.seg = { a: d.a, b: d.c }; addSeg(d.seg);
@@ -395,7 +400,27 @@ function checkSectors(silent = false) {
 
 // ---------- save ----------
 const SAVE = 'defendtaipei-save-v1';
-function save() { if (!started || dead) return; localStorage.setItem(SAVE, JSON.stringify({ g: player.gender, p: [player.pos.x, player.pos.z], hp: player.hp, hu: player.hunger, th: player.thirst, fa: player.fatigue, bl: player.bleed, inv: player.inv, eq: player.equip, k: player.kills, t: gameMin, conts: conts.map(c => [c.id, c.items, c.p]), dead: sols.filter(s => s.state === 'dead').map(s => s.id), bar: doors.map((d, i) => d.barricaded ? i : -1).filter(i => i >= 0) })); }
+// ---------- story: utilities timeline (有電有水 → 斷電 → 斷水) ----------
+const UT = { power: true, water: true, ev: {} as Record<string, 1> };
+const POWER_OFF = 2 * 1440 + 19 * 60, WATER_OFF = 4 * 1440 + 7 * 60; // 第3天 19:00 斷電・第5天 07:00 斷水
+const STORY: { t: number; id: string; who: string; msg: string; fx?: () => void }[] = [
+  { t: 8 * 60 + 5, id: 'a', who: '📱 國家級警報', msg: '萬華、中正一帶實施戒嚴，民眾非必要請勿外出。夜間 20:00 後宵禁。' },
+  { t: 12 * 60, id: 'b', who: '📻 中廣（收音機）', msg: '…佔領當局宣稱「水電維持正常供應」，但多處變電所已遭接管…' },
+  { t: 1440 + 9 * 60, id: 'c', who: '💬 里長 LINE 群組', msg: '各位鄰居：聽說台電員工被帶走了，大家趕快把水桶裝滿、手機充飽電！' },
+  { t: 2 * 1440 + 14 * 60, id: 'd', who: '📱 台電簡訊', msg: '【停電通知】因「軍事管制」，萬華區即日起停止供電，復電時間未定。' },
+  { t: POWER_OFF, id: 'P', who: '⚡ 斷電', msg: '整條街一瞬間暗了下來。冰箱停了，裡面的食物撐不了多久。', fx: () => { UT.power = false; } },
+  { t: 3 * 1440 + 10 * 60, id: 'e', who: '📻 收音機（電池）', msg: '…自來水事業處人員已撤離，加壓站停擺，高樓層將最先停水…' },
+  { t: WATER_OFF, id: 'W', who: '🚱 停水', msg: '水龍頭只流出幾滴黃水就停了。從現在起，每一瓶水都很珍貴。', fx: () => { UT.water = false; } },
+];
+function phone(who: string, msg: string) { const el = $('phone'); el.innerHTML = `<b>${who}</b><br>${msg}`; el.classList.add('on'); clearTimeout((phone as any).t); (phone as any).t = setTimeout(() => el.classList.remove('on'), 9000); log(`${who}：${msg}`, '#9fd0ff'); }
+let spoilT = 0;
+const PERISH = ['bento', 'rice', 'oden', 'soymilk', 'milktea', 'danbing', 'chicken', 'sausage', 'egg'];
+function updateStory(gm: number) {
+  for (const e of STORY) if (gameMin >= e.t && !UT.ev[e.id]) { UT.ev[e.id] = 1; e.fx?.(); if (gameMin - e.t < 120) phone(e.who, e.msg); }
+  if (gameMin >= POWER_OFF) UT.power = false; if (gameMin >= WATER_OFF) UT.water = false;
+  if (!UT.power) { spoilT += gm; if (spoilT > 60) { spoilT = 0; for (const c of conts) if (/冷藏|櫃台|攤/.test(c.label)) for (const k of PERISH) if (c.items[k] && rnd() < 0.15) { c.items[k]--; if (!c.items[k]) delete c.items[k]; c.items.rotten = (c.items.rotten || 0) + 1; } } }
+}
+function save() { if (!started || dead) return; localStorage.setItem(SAVE, JSON.stringify({ g: player.gender, p: [player.pos.x, player.pos.z], hp: player.hp, hu: player.hunger, th: player.thirst, fa: player.fatigue, bl: player.bleed, inv: player.inv, eq: player.equip, k: player.kills, t: gameMin, ut: UT, conts: conts.map(c => [c.id, c.items, c.p]), dead: sols.filter(s => s.state === 'dead').map(s => s.id), bar: doors.map((d, i) => d.barricaded ? i : -1).filter(i => i >= 0) })); }
 
 // ---------- main loop ----------
 let started = false, dead = false; const clock = new THREE.Clock(); let acc = 0, saveT = 0, streetT = 0;
@@ -407,7 +432,7 @@ function update(dt: number) {
   const tscale = player.sleeping ? 40 : 1;
   gameMin += dt * tscale; // 1 real sec = 1 game minute
   const gm = dt * tscale / 60; // game hours
-  player.hunger -= gm * 2.2; player.thirst -= gm * 3.2; player.fatigue += player.sleeping ? -gm * 14 : gm * 2.6;
+  updateStory(gm); player.hunger -= gm * 2.2; player.thirst -= gm * 3.2; player.fatigue += player.sleeping ? -gm * 14 : gm * 2.6;
   if (player.sleeping && player.fatigue <= 0) { player.sleeping = false; log('你醒了', '#aaf'); }
   if (player.sleeping && sols.some(s => s.state === 'combat')) { player.sleeping = false; log('你被驚醒了！', '#f66'); }
   player.hunger = clamp(player.hunger, 0, 100); player.thirst = clamp(player.thirst, 0, 100); player.fatigue = clamp(player.fatigue, 0, 100);
@@ -499,7 +524,7 @@ function update(dt: number) {
   if (!dayF) sun.position.set(player.pos.x - 30, 70, player.pos.z + 20);
   const fogC = new THREE.Color(0x0c1220).lerp(new THREE.Color(0xa7b0b5), dayF); (scene.fog as THREE.Fog).color.copy(fogC); renderer.setClearColor(fogC);
   hemi.color.setHSL(0.6, 0.5, 0.35 + dayF * 0.45);
-  updateLamps(1 - dayF, dt); decay?.update(dt, 1 - dayF, player.pos.x, player.pos.z); alley?.update(dt, 1 - dayF, player.pos.x, player.pos.z); roadMat.roughness = 0.95 - (1 - dayF) * 0.55; roadMat.metalness = (1 - dayF) * 0.35;
+  const PW = UT.power ? 1 : 0; if ((updateLamps as any).pw !== PW) { (updateLamps as any).pw = PW; setPower(!!PW); } updateLamps((1 - dayF) * PW, dt); decay?.update(dt, (1 - dayF) * PW, player.pos.x, player.pos.z); alley?.update(dt, (1 - dayF) * PW, player.pos.x, player.pos.z, PW); roadMat.roughness = 0.95 - (1 - dayF) * 0.55; roadMat.metalness = (1 - dayF) * 0.35;
   flash.intensity = player.light ? 60 : 0; flash.position.set(player.pos.x, 1.6, player.pos.z); flash.target.position.copy(aimPt);
   // camera
   camera.position.copy(player.pos).add(CAM_OFF); camera.lookAt(player.pos);
@@ -547,9 +572,9 @@ async function boot() {
   for (const c of startCands) { if (furnish(c, 'home', fx)) { start = c; c.detailed = 'home'; break; } }
   if (!start) start = homes[0] || blds.find(b => b.door)!;
   const near = blds.filter(b => b !== start && b.door && !b.detailed && Math.hypot(b.c[0] - start!.c[0], b.c[1] - start!.c[1]) < 130).sort((a, b) => Math.hypot(a.c[0] - start!.c[0], a.c[1] - start!.c[1]) - Math.hypot(b.c[0] - start!.c[0], b.c[1] - start!.c[1]));
-  const want = ['store', 'pharmacy', 'grocery', 'breakfast', 'betel', 'store', 'grocery', 'breakfast', 'betel', 'pharmacy', 'store'];
+  const want = ['market', 'store', 'pharmacy', 'grocery', 'hardware', 'breakfast', 'betel', 'grocery', 'hardware', 'store', 'breakfast', 'betel', 'pharmacy', 'grocery'];
   const KIND_SIGN: Record<string, string> = { store: 'store', pharmacy: 'pharmacy' };
-  for (const k of want) { const cand = near.find(b => !b.detailed && (k === 'betel' ? area(b) < 120 : area(b) > 50) && furnish(b, k, fx)); if (cand) { cand.detailed = k; cand.type = KIND_SIGN[k] || k; if (b2sign[k]) setSign(cand, k); } }
+  for (const k of want) { const cand = near.find(b => !b.detailed && (k === 'betel' ? area(b) < 120 : k === 'market' ? area(b) > 220 : area(b) > 50) && furnish(b, k, fx)); if (cand) { cand.detailed = k; cand.type = KIND_SIGN[k] || k; if (b2sign[k]) setSign(cand, k); } }
   for (const b of near.slice(0, 60)) if (!b.detailed && area(b) > 40 && furnish(b, 'home', fx)) b.detailed = 'home';
   // remove generic containers inside detailed buildings
   for (let i = conts.length - 1; i >= 0; i--) { const c = conts[i]; if (c.b && c.b.detailed && !c.id.startsWith('x')) { c.mesh.parent?.remove(c.mesh); conts.splice(i, 1); } }
@@ -558,7 +583,7 @@ async function boot() {
   if (bestR) nightMarket(bestR.p, bestR.t === 'tertiary' ? 9 : 6, fx, 'nm');
   decay = buildDecay({ scene, rnd, pip, bldAt, addSeg: (q, low) => addSeg(q, low), merge: mergeGeometries, roads, blds, RW: ROADW, center: start.c, R: 140, doors: doors.map(d => d.p) });
   checkpoints = decay.checkpoints;
-  alley = buildAlley({ scene, rnd, pip, bldAt, addSeg: (q, low) => addSeg(q, low), merge: mergeGeometries, roads, blds, RW: ROADW, center: start.c, R: 85, doors: doors.map(d => d.p) });
+  alley = buildAlley({ poles: decay.polePos, scene, rnd, pip, bldAt, addSeg: (q, low) => addSeg(q, low), merge: mergeGeometries, roads, blds, RW: ROADW, center: start.c, R: 85, doors: doors.map(d => d.p) });
   // navigation grid (built after all collision geometry exists)
   nav = new Nav(start.c[0] - 170, start.c[1] - 170, start.c[0] + 170, start.c[1] + 170, 0.5); for (const q of segs) nav.markSeg(q.a, q.b, 1);
   spawnSoldiers(new Set(sv?.dead || []));
@@ -572,10 +597,10 @@ async function boot() {
   const go = (load: boolean, gender = 'm') => {
     if (load && sv) gender = sv.g || 'm';
     player.gender = gender; player.rig = spawnRig(HERO[gender]); player.mesh = player.rig.root;
-    if (load && sv) { player.pos.set(sv.p[0], 0, sv.p[1]);  Object.assign(player, { hp: sv.hp, hunger: sv.hu, thirst: sv.th, fatigue: sv.fa, bleed: sv.bl, inv: sv.inv, equip: sv.eq, kills: sv.k }); gameMin = sv.t;
+    if (load && sv) { player.pos.set(sv.p[0], 0, sv.p[1]);  Object.assign(player, { hp: sv.hp, hunger: sv.hu, thirst: sv.th, fatigue: sv.fa, bleed: sv.bl, inv: sv.inv, equip: sv.eq, kills: sv.k }); gameMin = sv.t; if (sv.ut) Object.assign(UT, sv.ut);
       const map = new Map<string, any>(sv.conts.map((c: any) => [c[0], c])); for (const c of conts) { const s = map.get(c.id); if (s) c.items = s[1]; map.delete(c.id); } map.forEach(c => makeCont(c[0], c[2], 'crate', undefined, c[1])); (sv.bar || []).forEach((i: number) => doors[i] && setBarricade(doors[i])); checkSectors(true); conts.forEach(updateVis); }
     else { localStorage.removeItem(SAVE); }
-    $('title').style.display = 'none'; started = true; log('解放軍已佔領台北。活下去，把他們趕出萬華。', '#ffd76a'); log('提示：先搜刮身邊的櫥櫃（E），按 Tab 開背包裝備菜刀。', '#ccc');
+    $('title').style.display = 'none'; started = true; log('十月某日清晨，解放軍登陸後三天，台北淪陷。萬華的電燈還亮著，水龍頭還有水——但能撐多久？', '#ffd76a'); log('提示：先搜刮身邊的櫥櫃（E），按 Tab 開背包裝備菜刀。', '#ccc');
   };
   if (sv) { const b = document.createElement('button'); b.textContent = '繼續遊戲'; b.onclick = () => go(true); btns.appendChild(b); }
   const sel = document.createElement('div'); sel.id = 'charsel';
@@ -584,7 +609,7 @@ async function boot() {
   const h = document.createElement('div'); h.className = 'selh'; h.textContent = sv ? '或建立新的倖存者：' : '選擇你的倖存者：'; btns.appendChild(h); btns.appendChild(sel);
   camera.position.copy(player.pos).add(CAM_OFF); camera.lookAt(player.pos);
   addEventListener('beforeunload', save);
-  (window as any).__game = { player, sols, blds, conts, nav, started: () => started, go, vehicles, decay: () => decay, alley: () => alley, camera, CAM_OFF, setTime: (m: number) => { gameMin = m; }, tp: (x: number, z: number) => player.pos.set(x, 0, z) };
+  (window as any).__game = { player, sols, blds, conts, nav, started: () => started, go, vehicles, decay: () => decay, alley: () => alley, camera, CAM_OFF, setTime: (m: number) => { gameMin = m; }, UT, start: () => start!.c, scene, gm: () => gameMin, tp: (x: number, z: number) => player.pos.set(x, 0, z) };
 }
 boot().catch(e => { console.error(e); $('loadmsg').textContent = '載入失敗：' + e; });
 loop();

@@ -21,6 +21,7 @@ export const ITEMS: Record<string, ItemDef> = {
   coffee: { name: '藍山罐裝咖啡', w: 0.3, kind: 'drink', thirst: 10, fatigue: -25 },
   soymilk: { name: '冰豆漿', w: 0.5, kind: 'drink', thirst: 28, hunger: 6 },
   betel: { name: '檳榔', w: 0.05, kind: 'food', hunger: 2, fatigue: -15, desc: '提神，但對身體不好' },
+  rotten: { name: '腐壞的食物', w: 0.3, kind: 'food', hunger: 6, hp: -12, desc: '停電後冰箱裡放壞了，吃了會拉肚子' },
   bandage: { name: '繃帶', w: 0.1, kind: 'med', hp: 5, stopBleed: true },
   medkit: { name: '急救包', w: 0.8, kind: 'med', hp: 35, stopBleed: true },
   pill: { name: '止痛錠', w: 0.05, kind: 'med', hp: 10 },
@@ -51,5 +52,7 @@ export const LOOT: Record<string, [string, number, number][]> = {
   stall: [['chicken',4,2],['sausage',4,3],['milktea',3,2]],
   kitchen: [['can',3,2],['noodle',3,3],['water',3,2],['knife',3,1],['soymilk',1,1],['egg',2,3]],
   wardrobe: [['bandage',2,1],['bat',2,1],['plank',3,2],['hammer',2,1],['tissue',2,1]],
+  tapw: [['water',1,1]],
+  hardware: [['hammer',4,1],['pipe',3,1],['plank',4,2],['knife',2,1],['bat',1,1],['bandage',1,1]],
   altar: [['pineapple',4,3],['can',2,1],['tea',2,2]],
 };

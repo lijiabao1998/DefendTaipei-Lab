@@ -148,7 +148,7 @@ export function buildDecay(c: DCtx) {
   const ND = 48; const dg = new THREE.BufferGeometry(); const dp = new Float32Array(ND * 3); dg.setAttribute('position', new THREE.BufferAttribute(dp, 3)); const drops = new THREE.Points(dg, new THREE.PointsMaterial({ color: 0xa8c8e0, size: 0.06, transparent: true, opacity: 0.8 })); drops.frustumCulled = false; c.scene.add(drops);
   const dsrc: THREE.Vector3[] = []; const dv = new Float32Array(ND); let dt0 = 0;
   return {
-    checkpoints, poles: allPoles.length, acs: acs.length,
+    checkpoints, polePos: allPoles.map(p => [p.x, p.z] as [number, number]), poles: allPoles.length, acs: acs.length,
     update(dt: number, night: number, px: number, pz: number) {
       signMat.emissiveIntensity = 0.12 + night * 0.85;
       dt0 -= dt; if (dt0 <= 0) { dt0 = 1; dsrc.length = 0; acs.filter(a => Math.abs(a.x - px) < 30 && Math.abs(a.z - pz) < 30).slice(0, 16).forEach(a => dsrc.push(a)); }
