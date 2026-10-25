@@ -1,0 +1,10 @@
+node_modules
+dist
+public
+.github
+*.md
+index.html
+package-lock.json
+server/package-lock.json
+server/.wrangler
+shots
