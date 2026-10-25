@@ -3,9 +3,9 @@
 // Each tile is deterministic from its seed; player changes (looted wrecks, cleared barriers) are stored separately.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-type Seg = [number, number, number, number, number, string, number, string];
-type Node = [number, number, number, [number, number, number][]];
-type TileData = { tx: number; tz: number; seed: number; segs: Seg[]; nodes: Node[] };
+type Seg = [number, number, number, number, number, string, number, string, number?, number?];
+type Node = [number, number, number, [number, number, number][], number?];
+type TileData = { tx: number; tz: number; seed: number; segs: Seg[]; nodes: Node[]; clip?: [number, number, number][] };
 export type Wreck = { id: string; key: string; x: number; z: number; kind: 'car' | 'bus'; looted: boolean; g: THREE.Object3D };
 export type Light = { x: number; z: number; ax: number; lamps: THREE.Mesh[] };
 type Tile = { key: string; g: THREE.Group; lights: Light[]; wrecks: Wreck[]; barriers: { id: string; key: string; x: number; z: number; g: THREE.Object3D }[]; geos: THREE.BufferGeometry[] };
@@ -56,26 +56,42 @@ export class RoadTiles {
     const disc = (m: string, x: number, z: number, rad: number, y = 0.047, seg = 14) => { const g = new THREE.CircleGeometry(rad, seg); g.rotateX(-Math.PI / 2); g.translate(x, y, z); put(m, g); };
     const solid = (m: string, g: THREE.BufferGeometry, x: number, y: number, z: number, ry = 0) => { g.rotateY(ry); g.translate(x, y, z); put(m, g); };
     const tile: Tile = { key, g: new THREE.Group(), lights: [], wrecks: [], barriers: [], geos: [] };
-    for (const [ax, az, bx, bz, w, cls] of td.segs) {
+    const clip = td.clip || [];
+    for (const [ax, az, bx, bz, w0, cls, , , f = 0, ow = w0] of td.segs) {
       const L = Math.hypot(bx - ax, bz - az), ux = (bx - ax) / L, uz = (bz - az) / L, nx = -uz, nz = ux, ang = Math.atan2(uz, ux);
       const at = (t: number, o: number): [number, number] => [ax + ux * t + nx * o, az + uz * t + nz * o];
-      if (cls === 'main' || cls === 'street') {
-        const lanes = w >= 16 ? 2 : 1; // lanes per direction
-        if (w < 12) for (let t = 1; t < L - 1; t += 6) { const [x, z] = at(t + 1.5, 0); quad('yellow', x, z, ang, 3, 0.14); } // dashed yellow centre (2-lane)
-        if (lanes === 2) for (const sgn of [-1, 1]) for (let t = 1; t < L - 1; t += 8) { const [x, z] = at(t + 2, sgn * w / 4); quad('white', x, z, ang, 4, 0.12); } // lane dividers
-        for (const sgn of [-1, 1]) { const [x, z] = at(L / 2, sgn * (w / 2 - 0.25)); quad('white', x, z, ang, L, 0.1); // edge line
-          const [cx, cz] = at(L / 2, sgn * (w / 2 + 0.08)); if (!bldAt(cx, cz)) solid('curb', new THREE.BoxGeometry(L, 0.14, 0.18), cx, 0.07, cz, -ang); // curb
-          if (w >= 12 && r() < 0.35) { const [rx, rz] = at(L / 2, sgn * (w / 2 - 0.05)); quad('red', rx, rz, ang, L * 0.8, 0.12, 0.05); } } // red no-parking line
-        if (w >= 16 && r() < 0.5) { const [x, z] = at(L / 2, (w / 2 - 1.1)); quad('green', x, z, ang, L * 0.9, 1.4, 0.044); } // green bike/scooter lane
-      } else if (cls === 'lane' || cls === 'alley') {
-        for (const sgn of [-1, 1]) { const [x, z] = at(L / 2, sgn * (w / 2 - 0.2)); quad('white', x, z, ang, L, 0.08); }
+      // v19.1: visible spans along the segment = [0,L] minus junction areas (markings stop before the zebra)
+      let spans: [number, number][] = [[0, L]];
+      for (const [cx, cz, cr] of clip) { const rx = cx - ax, rz = cz - az, tc = rx * ux + rz * uz, lat = Math.abs(rx * nx + rz * nz); if (lat >= cr + w0 / 2) continue;
+        const h = Math.sqrt(Math.max(0, cr * cr - Math.min(lat, cr) ** 2)) + w0 / 4, t0 = tc - h, t1 = tc + h; const nsp: [number, number][] = [];
+        for (const [s0, s1] of spans) { if (t1 <= s0 || t0 >= s1) { nsp.push([s0, s1]); continue; } if (t0 > s0) nsp.push([s0, t0]); if (t1 < s1) nsp.push([t1, s1]); } spans = nsp.filter(([a, b]) => b - a > 0.6); }
+      const inSpan = (t: number) => spans.some(([a, b]) => t >= a && t <= b);
+      const line = (m: string, o: number, wd: number, y = 0.045, frac = 1) => { for (const [a, b] of spans) { const l = (b - a) * frac; const [x, z] = at((a + b) / 2, o); quad(m, x, z, ang, l, wd, y); } };
+      if ((cls === 'main' || cls === 'street') && f !== 2) {
+        // f: 0 normal two-way, 3/4 = one half of a dual carriageway (outer side +1 / -1), 2 = duplicate way (no markings)
+        const half = f === 3 || f === 4, outer = f === 4 ? -1 : 1; const w = half ? Math.max(6, ow) : w0;
+        if (!half) { const lanes = w >= 16 ? 2 : 1; // lanes per direction
+          if (w < 12) for (let t = 1; t < L - 1; t += 6) { if (!inSpan(t) || !inSpan(t + 3)) continue; const [x, z] = at(t + 1.5, 0); quad('yellow', x, z, ang, 3, 0.14); } // dashed yellow centre
+          else line('yellow', 0, 0.14);
+          if (lanes === 2) for (const sgn of [-1, 1]) for (let t = 1; t < L - 1; t += 8) { if (!inSpan(t) || !inSpan(t + 4)) continue; const [x, z] = at(t + 2, sgn * w / 4); quad('white', x, z, ang, 4, 0.12); } // lane dividers
+          for (const sgn of [-1, 1]) { line('white', sgn * (w / 2 - 0.25), 0.1);
+            const [cx, cz] = at(L / 2, sgn * (w / 2 + 0.08)); if (!bldAt(cx, cz)) solid('curb', new THREE.BoxGeometry(L, 0.14, 0.18), cx, 0.07, cz, -ang);
+            if (w >= 12 && r() < 0.35) line('red', sgn * (w / 2 - 0.05), 0.12, 0.05, 0.8); }
+          if (w >= 16 && r() < 0.5) line('green', w / 2 - 1.1, 1.4, 0.044, 0.9); }
+        else { // one carriageway of a divided road: outer edge + curb on the outside, single yellow along the median side, one dashed divider
+          line('white', outer * (w / 2 - 0.25), 0.1); line('yellow', -outer * (w / 2 - 0.3), 0.12, 0.046);
+          const [cx, cz] = at(L / 2, outer * (w / 2 + 0.08)); if (!bldAt(cx, cz)) solid('curb', new THREE.BoxGeometry(L, 0.14, 0.18), cx, 0.07, cz, -ang);
+          if (w >= 8) for (let t = 1; t < L - 1; t += 8) { if (!inSpan(t) || !inSpan(t + 4)) continue; const [x, z] = at(t + 2, 0); quad('white', x, z, ang, 4, 0.12); }
+          if (r() < 0.35) line('red', outer * (w / 2 - 0.05), 0.12, 0.05, 0.8); }
+      } else if (cls === 'lane' || cls === 'alley') { const w = w0;
+        for (const sgn of [-1, 1]) line('white', sgn * (w / 2 - 0.2), 0.08);
         const ds = r() < 0.5 ? 1 : -1; for (let t = 1; t < L - 1; t += 1.2) { const [x, z] = at(t, ds * (w / 2 - 0.45)); if (!bldAt(x, z)) quad('dark', x, z, ang, 1.0, 0.35, 0.046); } // gutter drain grates
         for (let t = 2; t < L - 2; t += 2.4 + r() * 6) if (r() < 0.35) { const [x, z] = at(t, -ds * (w / 2 - 0.7)); if (bldAt(x, z)) continue; // parked scooters along the alley wall
           const g = new THREE.Group(); const b = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.45, 1.5), MAT.scoot); b.position.y = 0.45; g.add(b); const s = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.7), MAT.dark); s.position.set(0, 0.74, -0.2); g.add(s);
           for (const zz of [-0.55, 0.55]) { const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.1, 10), MAT.dark); wh.rotation.z = Math.PI / 2; wh.position.set(0, 0.22, zz); g.add(wh); }
           g.position.set(x, 0, z); g.rotation.y = Math.atan2(nx, nz) + (r() - 0.5) * 0.4; ((b.material as any).color as THREE.Color); tile.g.add(g); }
       }
-      if (w < 4) continue;
+      const w = w0; if (w < 4) continue;
       // surface wear
       for (let t = 3; t < L - 2; t += 9) { const o = (r() - 0.5) * (w - 1.5);
         const q = r(); const [x, z] = at(t + r() * 5, o);
@@ -90,9 +106,9 @@ export class RoadTiles {
         else if (q < 0.26 || (q < 0.3 && w >= 12)) { const bus = q >= 0.26; const [x, z] = at(L * (0.2 + r() * 0.6), (r() < 0.5 ? 1 : -1) * (w / 2 - (bus ? 1.8 : 1.5))); if (!bldAt(x, z)) this.wreck(tile, key, `w${x | 0}_${z | 0}`, x, z, Math.atan2(ux, uz) + (r() - 0.5) * 0.7, bus, r); } }
     }
     // junctions: zebras, stop lines, 待轉格, signals; mirrors at alley corners
-    for (const [x, z, w, arms] of td.nodes) {
+    for (const [x, z, w, arms, rad = w / 2] of td.nodes) {
       if (w >= 9) { const sig = arms.length >= 3;
-        for (const [ux, uz, aw] of arms) { const ang = Math.atan2(uz, ux), nx = -uz, nz = ux; const d0 = Math.max(w, aw) / 2 + 1.6; const hw = aw / 2 - 0.3; if (aw < 6) continue;
+        for (const [ux, uz, aw] of arms) { const ang = Math.atan2(uz, ux), nx = -uz, nz = ux; const d0 = Math.max(rad, aw / 2) + 1.6; const hw = aw / 2 - 0.3; if (aw < 6) continue;
           for (let o = -hw + 0.3; o < hw; o += 0.9) quad('white', x + ux * d0 + nx * o, z + uz * d0 + nz * o, ang, 2.6, 0.45); // zebra
           quad('white', x + ux * (d0 + 2.0) + nx * hw / 2, z + uz * (d0 + 2.0) + nz * hw / 2, ang + Math.PI / 2, hw, 0.3); // stop line (right half)
           if (aw >= 12) { const bx = x + ux * (d0 - 2.6) - nx * (hw * 0.6), bz = z + uz * (d0 - 2.6) - nz * (hw * 0.6); for (const [l, ww, oa, ob] of [[2.6, 0.08, 0, 0.9], [2.6, 0.08, 0, -0.9], [0.08, 1.8, 1.3, 0], [0.08, 1.8, -1.3, 0]] as const) quad('white', bx + ux * oa + nx * ob, bz + uz * oa + nz * ob, ang, l, ww, 0.046); } // 待轉格 (two-stage left-turn box)
