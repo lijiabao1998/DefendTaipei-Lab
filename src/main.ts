@@ -32,21 +32,22 @@ function segInter(p: V2, q: V2, a: V2, b: V2) { const d1x = q[0] - p[0], d1z = q
 
 // ---------- renderer ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+const MOBILE = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window || navigator.maxTouchPoints > 0; if (MOBILE) document.body.classList.add('mobile');
+renderer.setPixelRatio(Math.min(devicePixelRatio, MOBILE ? 1.25 : 1.5));
 renderer.setSize(innerWidth, innerHeight);
-renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = MOBILE ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 $('app').appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x9aa4ac, 60, 160);
 let zoom = 1;
 const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, -200, 400);
-function resize() { const a = innerWidth / innerHeight, s = 22 / zoom; camera.left = -s * a; camera.right = s * a; camera.top = s; camera.bottom = -s; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); }
+function resize() { const a = innerWidth / innerHeight, s = (MOBILE && a < 1 ? Math.max(22, 16 / a) * 0.62 : 22) / zoom; camera.left = -s * a; camera.right = s * a; camera.top = s; camera.bottom = -s; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); }
 addEventListener('resize', resize); resize();
 const CAM_OFF = new THREE.Vector3(40, 56, 40);
 const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x4a4030, 0.9); scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffe8c0, 2.2); sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 200 }); sun.shadow.bias = -0.0002; sun.shadow.normalBias = 0.04;
+sun.shadow.mapSize.set(MOBILE ? 1024 : 2048, MOBILE ? 1024 : 2048); Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 200 }); sun.shadow.bias = -0.0002; sun.shadow.normalBias = 0.04;
 scene.add(sun, sun.target);
 const flash = new THREE.SpotLight(0xfff2cc, 0, 26, 0.5, 0.5, 1.2); scene.add(flash, flash.target);
 
@@ -412,6 +413,14 @@ const fx: { o: THREE.Object3D; t: number }[] = [];
 function tracer(a: THREE.Vector3, b: THREE.Vector3) { const g = new THREE.BufferGeometry().setFromPoints([a.clone().setY(1.2), b.clone().setY(1.2)]); const l = new THREE.Line(g, tracerMat); scene.add(l); fx.push({ o: l, t: 0.08 }); }
 
 // ---------- input ----------
+const joy = { x: 0, y: 0, id: -1 };
+{ const J = document.getElementById('joy')!, K = document.getElementById('joyk')!; const R = 55; let cx = 0, cy = 0;
+  const upd = (e: PointerEvent) => { let dx = e.clientX - cx, dy = e.clientY - cy; const L = Math.hypot(dx, dy); if (L > R) { dx *= R / L; dy *= R / L; } joy.x = dx / R; joy.y = dy / R; K.style.transform = `translate(${dx}px,${dy}px)`; };
+  J.addEventListener('pointerdown', e => { e.preventDefault(); const b = J.getBoundingClientRect(); cx = b.left + b.width / 2; cy = b.top + b.height / 2; joy.id = e.pointerId; J.setPointerCapture(e.pointerId); upd(e); });
+  J.addEventListener('pointermove', e => { if (e.pointerId === joy.id) upd(e); });
+  const end = (e: PointerEvent) => { if (e.pointerId !== joy.id) return; joy.id = -1; joy.x = joy.y = 0; K.style.transform = ''; };
+  J.addEventListener('pointerup', end); J.addEventListener('pointercancel', end);
+  if (MOBILE) { for (const ev of ['touchmove', 'gesturestart', 'contextmenu', 'selectstart']) document.addEventListener(ev, e => e.preventDefault(), { passive: false }); } }
 const keys: Record<string, boolean> = {}; let mouse = new THREE.Vector2(); let clicking = false;
 addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'Tab') { e.preventDefault(); toggleInv(); } if (!started) return; if (e.code === 'KeyC') { player.sneak = !player.sneak; log(player.sneak ? '進入潛行' : '解除潛行'); } if (e.code === 'KeyE') interact(); if (e.code === 'KeyI') toggleInv(); if (e.code === 'KeyB') barricade(); if (e.code === 'KeyZ') sleep(); if (e.code === 'Digit1') setSpeed(1); if (e.code === 'Digit2') setSpeed(3); if (e.code === 'Digit3') setSpeed(20); if (e.code === 'KeyF') { player.light = !player.light; } if (e.code === 'Space') { e.preventDefault(); tryVault(); } if (e.code === 'KeyQ') shove(); if (e.code === 'Escape') closePanel(); });
 addEventListener('keyup', e => keys[e.code] = false);
@@ -596,8 +605,9 @@ function update(dt: number) {
   if (!player.sleeping) {
     const f = new THREE.Vector3(-1, 0, -1).normalize(), r = new THREE.Vector3(1, 0, -1).normalize(); const mv = new THREE.Vector3();
     if (keys.KeyW) mv.add(f); if (keys.KeyS) mv.sub(f); if (keys.KeyD) mv.add(r); if (keys.KeyA) mv.sub(r);
-    const running = (keys.ShiftLeft || keys.ShiftRight) && !player.sneak && player.fatigue < 95;
-    let sp = player.sneak ? 1.6 : running ? 6 : 3.4; if (player.fatigue > 80) sp *= 0.7; if (weight() > 12) sp *= 0.8;
+    const jm = Math.min(1, Math.hypot(joy.x, joy.y)); if (jm > 0.12) { mv.addScaledVector(f, -joy.y).addScaledVector(r, joy.x); }
+    const running = (keys.ShiftLeft || keys.ShiftRight || jm > 0.93) && !player.sneak && player.fatigue < 95;
+    let sp = player.sneak ? 1.6 : running ? 6 : 3.4; if (jm > 0.12 && !running) sp *= Math.max(0.3, Math.min(1, (jm - 0.12) / 0.7)); if (player.fatigue > 80) sp *= 0.7; if (weight() > 12) sp *= 0.8;
     // momentum: accelerate / decelerate toward desired velocity
     const want3 = mv.lengthSq() > 0 ? mv.clone().normalize().multiplyScalar(sp) : new THREE.Vector3();
     if (player.vaultT > 0) { player.vaultT -= dt; const q = 1 - player.vaultT / 0.55; player.pos.lerpVectors(player.vFrom, player.vTo, q < 0 ? 0 : q > 1 ? 1 : q * q * (3 - 2 * q)); want3.set(0, 0, 0); player.vel.set(0, 0, 0); }
