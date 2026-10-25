@@ -22,6 +22,7 @@ import { placeRooftop, dressRoof, pickRoofMat, setShackNight } from './rooftin';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { ITEMS, LOOT } from './items';
 import { iconURL, iconMat } from './icons';
+import { GF, FH, ARC, arcadeFits, buildArcade, flushArcades, setArcadeDeps, arcadeAudit } from './arcade';
 import { makeRig, animate, setWeapon, setLodFocus, Rig, AnimState } from './human';
 import { Nav, smooth } from './nav';
 import { RoadTiles } from './roads';
@@ -777,7 +778,7 @@ function buildMap(data: any) {
       ),
     );
   // buildings
-  const pillarG: THREE.BufferGeometry[] = [];
+  setArcadeDeps({ roadDist, pip: pip as any, addSeg });
   data.buildings.forEach((ob: any, id: number) => {
     const pts: V2[] = ob.p;
     const A = area(pts);
@@ -797,7 +798,8 @@ function buildMap(data: any) {
         : rr < 0.88
           ? 4 + Math.floor(hh(2) * 2)
           : 6 + Math.floor(hh(2) * 2);
-    /* 透天 2-3F, 公寓 4-5F, few taller */ const h = Math.min(lv, 7) * 3.2;
+    /* 透天 2-3F, 公寓 4-5F, few taller; v19.3 ground floor 3.8 m, upper floors 3.2 m */ const h =
+      GF + (Math.min(lv, 7) - 1) * FH;
     const type = shopType(ob.s, ob.n);
     const cx = xs.reduce((a, b) => a + b) / xs.length,
       cz = zs.reduce((a, b) => a + b) / zs.length;
@@ -832,17 +834,18 @@ function buildMap(data: any) {
     const wg: THREE.BufferGeometry[] = [];
     const wins: { x: number; z: number; y: number; ry: number; f: number }[] = [];
     (b as any).wins = wins;
-    const wallBox = (a: V2, c: V2, y0: number, y1: number) => {
+    const wallBox = (a: V2, c: V2, y0: number, y1: number, win = y0 === 0) => {
       const l = Math.hypot(c[0] - a[0], c[1] - a[1]);
       if (l < 0.05) return;
       const g = new THREE.BoxGeometry(l + 0.25, y1 - y0, 0.25);
       const uv = g.attributes.uv;
-      for (let k = 0; k < uv.count; k++) uv.setXY(k, (uv.getX(k) * l) / 3.2, (uv.getY(k) * (y1 - y0)) / 3.2);
+      for (let k = 0; k < uv.count; k++)
+        uv.setXY(k, (uv.getX(k) * l) / 3.2, (y0 - (GF - FH) + uv.getY(k) * (y1 - y0)) / FH); // floor bands in world height
       g.rotateY(-Math.atan2(c[1] - a[1], c[0] - a[0]));
       g.translate((a[0] + c[0]) / 2, (y0 + y1) / 2, (a[1] + c[1]) / 2);
       wg.push(g);
       /* window slots matching the painted wall-texture windows (for 3D window units near the player) */
-      if (y0 === 0 && h > 4) {
+      if (win && h > GF + 1) {
         const ux = (c[0] - a[0]) / l,
           uz = (c[1] - a[1]) / l;
         let nx = -uz,
@@ -858,11 +861,11 @@ function buildMap(data: any) {
           const sd = back ? l + 0.125 - (k + 0.5) * T : -0.125 + (k + 0.5) * T;
           if (back ? sd < 0.9 : sd > l - 0.9) break;
           if (sd < 0.9 || sd > l - 0.9) continue;
-          for (let f = 1; f * 3.2 + 2.7 < h; f++)
+          for (let f = 1; GF + (f - 1) * FH + 2.7 < h; f++)
             wins.push({
               x: a[0] + ux * sd + nx * 0.126,
               z: a[1] + uz * sd + nz * 0.126,
-              y: f * 3.2 + 1.95,
+              y: GF + (f - 1) * FH + 1.95,
               ry: Math.atan2(nx, nz),
               f,
             });
@@ -878,12 +881,7 @@ function buildMap(data: any) {
           m = dl / 2;
         const d1: V2 = [a[0] + ux * (m - 0.8), a[1] + uz * (m - 0.8)],
           d2: V2 = [a[0] + ux * (m + 0.8), a[1] + uz * (m + 0.8)];
-        wallBox(a, d1, 0, h);
-        wallBox(d2, c, 0, h);
-        wallBox(d1, d2, 2.3, h);
-        addSeg({ a, b: d1 });
-        addSeg({ a: d2, b: c });
-        const mid: V2 = [(d1[0] + d2[0]) / 2, (d1[1] + d2[1]) / 2];
+        let mid: V2 = [(d1[0] + d2[0]) / 2, (d1[1] + d2[1]) / 2];
         // outward normal
         let nx = -uz,
           nz = ux;
@@ -891,28 +889,35 @@ function buildMap(data: any) {
           nx = -nx;
           nz = -nz;
         }
-        const door: Door = { b, p: mid, a: d1, c: d2, barricaded: false };
+        const arcOk = h > 6 && rnd() < 0.7 ? arcadeFits(pts, a, c, ux, uz, nx, nz, dl, h) : null;
+        let da = d1,
+          dc = d2;
+        if (arcOk) {
+          // upper floors flush with the footprint edge; ground floor recessed behind the columns
+          wallBox(a, c, GF, h, true);
+          const ia: V2 = [a[0] - nx * ARC, a[1] - nz * ARC],
+            ic: V2 = [c[0] - nx * ARC, c[1] - nz * ARC];
+          da = [d1[0] - nx * ARC, d1[1] - nz * ARC];
+          dc = [d2[0] - nx * ARC, d2[1] - nz * ARC];
+          wallBox(ia, da, 0, GF, false);
+          wallBox(dc, ic, 0, GF, false);
+          wallBox(da, dc, 2.4, GF, false);
+          addSeg({ a: ia, b: da });
+          addSeg({ a: dc, b: ic });
+          mid = [(da[0] + dc[0]) / 2, (da[1] + dc[1]) / 2];
+        } else {
+          wallBox(a, d1, 0, h);
+          wallBox(d2, c, 0, h);
+          wallBox(d1, d2, 2.4, h);
+          addSeg({ a, b: d1 });
+          addSeg({ a: d2, b: c });
+        }
+        const door: Door = { b, p: mid, a: da, c: dc, barricaded: false };
         b.door = door;
         doors.push(door);
-        // arcade 騎樓 pillars + sign
-        if (h > 6 && rnd() < 0.6 && roadDist(mid[0] + nx * 3.2, mid[1] + nz * 3.2) < ROADW.residential / 2 + 2.5) {
-          /* 騎樓: only on street-facing facades, a pillar row 3m out under an arcade ceiling */ let any = false;
-          for (let s = 1.5; s < dl - 1; s += 3.5) {
-            const px = a[0] + ux * s + nx * 3.0,
-              pz = a[1] + uz * s + nz * 3.0;
-            if (bldAt(px, pz) || roadDist(px, pz) < 1.5) continue;
-            any = true;
-            const g = new THREE.BoxGeometry(0.45, 3.2, 0.45);
-            g.translate(px, 1.6, pz);
-            pillarG.push(g);
-          }
-          if (any) {
-            const g = new THREE.BoxGeometry(dl, 0.3, 3.2);
-            g.rotateY(-Math.atan2(uz, ux));
-            g.translate(mid[0] + nx * 1.6, 3.35, mid[1] + nz * 1.6);
-            pillarG.push(g);
-          }
-        }
+        // v19.3 騎樓: built inside the footprint — columns on the street edge under the upper floors,
+        // shopfront recessed ARC m behind them, continuous ceiling; only on edges facing a road
+        if (arcOk) buildArcade(arcOk, b.roof);
         if ((h > 6 && rnd() < 0.6) || type !== 'home') {
           const tex = type !== 'home' ? signTex[type] : pick(shopSignTex);
           const sg = new THREE.Mesh(
@@ -925,8 +930,10 @@ function buildMap(data: any) {
               side: THREE.DoubleSide,
             }),
           );
-          sg.position.set(mid[0] + nx * 0.2, 3.0, mid[1] + nz * 0.2);
-          sg.lookAt(mid[0] + nx * 5, 3.0, mid[1] + nz * 5);
+          const sy = arcOk ? GF + 0.75 : 3.0,
+            so = arcOk ? ARC + 0.16 : 0.16; // attached flat to the facade (fascia above the arcade)
+          sg.position.set(mid[0] + nx * so, sy, mid[1] + nz * so);
+          sg.lookAt(mid[0] + nx * (so + 5), sy, mid[1] + nz * (so + 5));
           group.add(sg);
           b.sign = sg;
         }
@@ -1019,11 +1026,7 @@ function buildMap(data: any) {
       }
     }
   });
-  if (pillarG.length) {
-    const pm = new THREE.Mesh(mergeGeometries(pillarG), new THREE.MeshStandardMaterial({ color: 0xb7ad9c }));
-    pm.castShadow = true;
-    scene.add(pm);
-  }
+  flushArcades(scene);
   // parked vehicles (scooters on sidewalks, cars/taxis on bigger roads, occupation trucks) + street lamps
   const spots: { x: number; z: number; ang: number; kind: VehicleKind }[] = [];
   for (const r of roads) {
@@ -4241,6 +4244,7 @@ async function boot() {
   camera.lookAt(player.pos);
   addEventListener('beforeunload', save);
   (window as any).__game = {
+    arcadeAudit: () => arcadeAudit(bldAt),
     roadT,
     traffic,
     drive,
