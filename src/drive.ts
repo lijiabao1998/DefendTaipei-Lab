@@ -26,7 +26,7 @@ const cyl = (g: THREE.Object3D, r: number, w: number, m: THREE.Material, x: numb
 function label(txt: string, w: number, h: number, bg: string, fg: string, font = 'bold 44px sans-serif') { const cv = document.createElement('canvas'); cv.width = 256; cv.height = Math.round(256 * h / w); const c = cv.getContext('2d')!; c.fillStyle = bg; c.fillRect(0, 0, cv.width, cv.height); c.fillStyle = fg; c.font = font; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(txt, cv.width / 2, cv.height / 2); const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return new THREE.MeshStandardMaterial({ map: t, roughness: 0.6 }); }
 const plateNo = (r: () => number, two: boolean) => { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; const l = () => A[Math.floor(r() * A.length)]; const d = () => Math.floor(r() * 10); return two ? `${l()}${l()}${l()}-${d()}${d()}${d()}` : `${l()}${l()}${l()}-${d()}${d()}${d()}${d()}`; };
 const TIN = [0x8fa8a0, 0xc8c0b0, 0x6a8a9a, 0xa83a30, 0x2a2a2e, 0xe8e4da, 0x4a6a5a];
-function scooterModel(kind: DKind, r: () => number) { const g = new THREE.Group(); const wheels: THREE.Object3D[] = [];
+export function scooterModel(kind: DKind, r: () => number) { const g = new THREE.Group(); const wheels: THREE.Object3D[] = [];
   const col = kind === 'escooter' ? [0x9ac8d0, 0xe8e8e8, 0x3a3a40][Math.floor(r() * 3)] : TIN[Math.floor(r() * TIN.length)]; const fade = new THREE.Color(col).lerp(new THREE.Color(0xd8d0c0), 0.25 + r() * 0.3).getHex();
   const body = M(fade, 0.6, 0.05), dark = M(0x1c1c1e, 0.85), chrome = M(0x9a9a9a, 0.4, 0.6);
   box(g, 0.36, 0.28, 0.95, body, 0, 0.42, -0.05); box(g, 0.32, 0.6, 0.18, body, 0, 0.66, 0.48, -0.25); box(g, 0.3, 0.08, 0.42, dark, 0, 0.32, 0.25); // floorboard
@@ -46,7 +46,7 @@ function bikeModel(kind: DKind, r: () => number) { const g = new THREE.Group(); 
   if (kind === 'ubike') { box(g, 0.36, 0.22, 0.28, M(0xe8f0ec, 0.6), 0, 0.82, 0.68); box(g, 0.34, 0.1, 0.005, label('微笑', 0.34, 0.1, '#2a9a8a', '#fff'), 0, 0.82, 0.825); box(g, 0.08, 0.12, 0.6, M(0xe8f0ec, 0.6), 0, 0.42, 0.15); }
   else box(g, 0.36, 0.24, 0.3, M(0x9a8a6a, 0.9), 0, 0.82, 0.68);
   for (const z of [-0.55, 0.6]) wheels.push(cyl(g, 0.33, 0.04, dark, 0, 0.33, z)); return { g, wheels }; }
-function carModel(kind: DKind, r: () => number) { const g = new THREE.Group(); const wheels: THREE.Object3D[] = []; const s = SPEC[kind]; const L = s.L, W = s.W;
+export function carModel(kind: DKind, r: () => number) { const g = new THREE.Group(); const wheels: THREE.Object3D[] = []; const s = SPEC[kind]; const L = s.L, W = s.W;
   const glass = M(0x1e2a30, 0.15, 0.6), dark = M(0x151515, 0.9), lamp = M(0xf4f0e0, 0.3), red = M(0xa02020, 0.4);
   const C = kind === 'taxi' ? 0xf0c020 : kind === 'kei' ? [0x2a5a9a, 0xe8e8e8, 0x6a8aa0][Math.floor(r() * 3)] : kind === 'van' ? [0xe8e8e0, 0xc8c8c0, 0x8a9aa8][Math.floor(r() * 3)] : kind === 'bus' ? 0xe8ece8 : kind === 'garbage' ? 0xf2c818 : [0xd8d4c8, 0x8a1a1a, 0x2a3a5a, 0x4a5a4a, 0xb8b8b0][Math.floor(r() * 5)];
   const paint = M(C, kind === 'sedan' ? 0.75 : 0.45, 0.3);

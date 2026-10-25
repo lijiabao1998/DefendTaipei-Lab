@@ -5,7 +5,7 @@ import { buildFacade } from './facade';
 import { buildParks } from './park';
 import { ArmorSystem, type ArmorKind } from './armor';
 import { Recon, boom } from './drone';
-import { DriveSystem, type DKind } from './drive';
+import { SPEC, DriveSystem, type DKind } from './drive';
 import { ROLES, roleById, type Role } from './roles';
 import type { FPV } from './fpv';
 import type { GameMap } from './map';
@@ -17,6 +17,8 @@ import { ITEMS, LOOT } from './items';
 import { iconURL, iconMat } from './icons';
 import { makeRig, animate, setWeapon, Rig, AnimState } from './human';
 import { Nav, smooth } from './nav';
+import { RoadTiles } from './roads';
+import { Traffic } from './traffic';
 // character-select portraits: render each faceless role rig once with a small offscreen renderer
 const _pc = new Map<string, string>(); let _pr: THREE.WebGLRenderer | null = null;
 function rolePortrait(id: string, g: 'm' | 'f') {
@@ -352,7 +354,7 @@ function buildMap(data: any) {
   buildLamps();
 }
 
-const ROADW: Record<string, number> = { primary: 16, secondary: 12, tertiary: 9, residential: 6, unclassified: 6, living_street: 5, service: 4, pedestrian: 6, footway: 2.5 };
+const ROADW: Record<string, number> = { trunk: 18, primary: 16, secondary: 12, tertiary: 9, residential: 6, unclassified: 6, living_street: 5, service: 4, pedestrian: 6, footway: 2.5 };
 let decay: ReturnType<typeof buildDecay> | null = null; let alley: ReturnType<typeof buildAlley> | null = null; const roadMat = new THREE.MeshStandardMaterial({ map: roadTex, roughness: 0.95 }); let checkpoints: V2[] = [];
 // ---------- street lamps ----------
 const lamps: [number, number, number][] = []; const lampPool: THREE.PointLight[] = []; let lampHeadMat: THREE.MeshStandardMaterial;
@@ -403,6 +405,12 @@ const groundMat = new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1 
 let ROLE: Role = roleById('courier');
 function roadWAt(x: number, z: number) { let best = 1e9, w = 0; for (const r of roads) { const hw = (ROADW[r.t.replace('_link', '')] ?? 3); for (let i = 0; i < r.p.length - 1; i++) { const [ax, az] = r.p[i], [bx, bz] = r.p[i + 1]; const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1; const t = clamp(((x - ax) * dx + (z - az) * dz) / l2, 0, 1); const d = Math.hypot(ax + dx * t - x, az + dz * t - z); if (d < best) { best = d; w = hw; } } } return best < w / 2 + 1.5 ? w : 0; }
 const drive = new DriveSystem({ scene, bldAt: (x, z) => bldAt(x, z), noise: (x, z, r) => noise(x, z, r), log: (m, c) => log(m, c || '#ddd'), power: () => UT.power, armor: () => armor ? armor.list.map((a: any) => a.g.position) : [], skills: () => ROLE.skills, inv: () => player.inv, hurt: n => { player.hp -= n; }, roadW: roadWAt });
+const roadT = new RoadTiles({ scene, base: import.meta.env.BASE_URL, bldAt: (x, z) => bldAt(x, z), power: () => UT.power, war: () => !PRO.on || PRO.stage >= 2 });
+const JN = new Set<string>(); const jk = (x: number, z: number) => Math.round(x) + ',' + Math.round(z);
+function buildJunctions() { const cnt = new Map<string, number>(); for (const r of roads) for (const q of r.p) { const k = jk(q[0], q[1]); cnt.set(k, (cnt.get(k) || 0) + 1); } for (const [k, n] of cnt) if (n >= 2) JN.add(k); }
+const traffic = new Traffic({ scene, junction: (x, z) => JN.has(jk(x, z)), green: (ux, uz) => roadT.green(ux, uz), player: () => player.pos, bldAt: (x, z) => bldAt(x, z),
+  abandon: (kind, x, z, hd) => { const v = drive.spawn(kind, x, z, hd, Math.random, { key: Math.random() < 0.6 }); if (!SPEC[kind].two) { const c = makeCont('ab' + v.id, [x, z], 'crate', undefined, Math.random() < 0.5 ? { water: 1, snack: 1 } : { tissue: 1, coffee: 1, bandage: 1 }); c.label = '棄置車內的物品'; c.mesh.visible = false; } } });
+const WRECK_LOOT: [string, number][][] = [[['water', 1], ['snack', 1]], [['bandage', 1], ['tissue', 1]], [['gas', 2]], [['patch', 1], ['hose', 1]], [['coffee', 1], ['noodle', 1]], [['carbat', 1]]];
 function spawnDrivables(c: V2) { let sd = 977; const r = () => (sd = (sd * 16807) % 2147483647) / 2147483647; let n = 0, bus = 0, gb = 0, dock = 0;
   const segs: [number, number, number, number, number][] = []; for (const rd of roads) { const w = ROADW[rd.t.replace('_link', '')] ?? 3; if (w < 4) continue; for (let i = 0; i < rd.p.length - 1; i++) { const [ax, az] = rd.p[i], [bx, bz] = rd.p[i + 1]; const mx = (ax + bx) / 2, mz = (az + bz) / 2; const d = Math.hypot(mx - c[0], mz - c[1]); if (d < 190 && Math.hypot(bx - ax, bz - az) > 8) segs.push([ax, az, bx, bz, w]); } }
   segs.sort(() => r() - 0.5);
@@ -597,6 +605,7 @@ function updateVis(c: Cont) { if (!c.vis || !c.init) return; for (const v of c.v
 function nearestDoor() { let best: Door | null = null, bd = 2.2; for (const d of doors) { const x = Math.hypot(d.p[0] - player.pos.x, d.p[1] - player.pos.z); if (x < bd) { bd = x; best = d; } } return best; }
 function interact() { if (npcInteract()) return;
   if (drive.cur) { const v = drive.cur; const o = drive.exit()!; player.pos.copy(o); collide(player.pos, 0.35); player.mesh.visible = true; log(`下車（${v.s.name}）`, '#ccc'); return; }
+  { const w = roadT.wreckNear(player.pos.x, player.pos.z, 2.8); if (w && !w.looted && !nearestCont() && !drive.nearest(player.pos, 1.5)) { roadT.loot(w); const got = WRECK_LOOT[Math.floor(Math.random() * WRECK_LOOT.length)]; for (const [k, n] of got) addItem(k, n); log(`🚗 翻找${w.kind === 'bus' ? '燒毀的公車' : '廢棄車輛'}：` + got.map(([k, n]) => `${ITEMS[k]?.name || k}×${n}`).join('、'), '#9f9'); return; } }
   { const v = drive.nearest(player.pos); if (v && !nearestCont()) { const rf = drive.refuel(v); if (rf) { log('⛽ ' + rf, '#9f9'); return; } const rp = drive.repair(v); if (rp) { log('🔧 ' + rp, '#9f9'); return; }
     const m = drive.enter(v); if (!m) { player.mesh.visible = v.s.two; log(`${v.s.two ? '騎上' : '坐進'} ${v.s.name}｜${drive.status(v)}`, '#9f9'); return; }
     if (player.inv.hose && !v.s.pedal && !v.s.elec && v.fuel > 1 && !/接線/.test(m)) { log(drive.siphon(v), '#fc8'); return; } log(m + '｜' + drive.status(v), '#ccc'); return; } } const c = nearestCont(); const v = !c && vehicles.nearest(player.pos, 2.2); if (v) { log(v.kind === 'truck' ? '佔領軍卡車，油箱上鎖' : '這台被鎖死了，零件也被拆光，找別台吧', '#ccc'); return; } if (c && /飲水機|流理台|廚房/.test(c.label)) { if (!UT.water) { log('水龍頭只流出幾滴…停水了。', '#e88'); } else if ((c as any).tapT === undefined || gameMin > (c as any).tapT) { (c as any).tapT = gameMin + 90; c.items.water = (c.items.water || 0) + 1; log('接了一瓶自來水。', '#9cf'); } } if (c) { curCont = c; panelOpen = true; $('panel').classList.remove('hidden'); renderPanel(); } }
@@ -740,6 +749,11 @@ function update(dt: number) {
     const jm = Math.min(1, Math.hypot(joy.x, joy.y)); if (jm > 0.12) mv.addScaledVector(f, -joy.y).addScaledVector(r, joy.x);
     drive.update(dt, mv, UT.power); const v = drive.cur; if (v) { player.pos.set(v.pos.x, 0, v.pos.z); player.mesh.position.set(v.pos.x, v.s.seatY - 0.45, v.pos.z); player.mesh.rotation.y = v.hd; player.moving = 0; player.vel.set(0, 0, 0); } }
   else drive.update(dt, new THREE.Vector3(), UT.power);
+  roadT.update(player.pos.x, player.pos.z, dt); traffic.update(dt);
+  if (drive.cur) { const v = drive.cur; const b = roadT.barrierAt(v.pos.x, v.pos.z, v.s.two ? 1.2 : 2.0); if (b) { if (Math.abs(v.v) > 6 && !v.s.two) { roadT.clear(b.key, b.id); v.v *= 0.5; v.eng = Math.max(0, v.eng - 0.08); noise(v.pos.x, v.pos.z, 30); log('💥 撞開路障！引擎受損', '#fc8'); } else { v.pos.x -= Math.sin(v.hd) * Math.sign(v.v) * 0.3; v.pos.z -= Math.cos(v.hd) * Math.sign(v.v) * 0.3; v.v = 0; } }
+    const w = roadT.wreckNear(v.pos.x, v.pos.z, v.s.two ? 1.6 : 2.6); if (w && Math.abs(v.v) > 0.5) { v.pos.x -= Math.sin(v.hd) * Math.sign(v.v) * 0.4; v.pos.z -= Math.cos(v.hd) * Math.sign(v.v) * 0.4; if (Math.abs(v.v) > 8) { v.eng = Math.max(0, v.eng - 0.1); log('💥 撞上廢棄車！', '#fc8'); } v.v = 0; } }
+  else { const b = roadT.barrierAt(player.pos.x, player.pos.z, 1.1); if (b) { const dx = player.pos.x - b.x, dz = player.pos.z - b.z, L = Math.hypot(dx, dz) || 1; player.pos.x = b.x + dx / L * 1.1; player.pos.z = b.z + dz / L * 1.1; }
+    const w = roadT.wreckNear(player.pos.x, player.pos.z, 1.4); if (w) { const dx = player.pos.x - w.x, dz = player.pos.z - w.z, L = Math.hypot(dx, dz) || 1; player.pos.x = w.x + dx / L * 1.4; player.pos.z = w.z + dz / L * 1.4; } }
   if (!player.sleeping && !fpv?.active && !drive.cur) {
     const f = new THREE.Vector3(-1, 0, -1).normalize(), r = new THREE.Vector3(1, 0, -1).normalize(); const mv = new THREE.Vector3();
     if (keys.KeyW) mv.add(f); if (keys.KeyS) mv.sub(f); if (keys.KeyD) mv.add(r); if (keys.KeyA) mv.sub(r);
@@ -867,13 +881,13 @@ const PRO = { on: false, hide: false, t: 0, stage: 0, from: [0, 0] as V2, dest: 
 function siren(on: boolean) { try { if (on && !PRO.sir) { const ac = new AudioContext(); const o = ac.createOscillator(), g = ac.createGain(), l = ac.createOscillator(), lg = ac.createGain(); o.type = 'sawtooth'; o.frequency.value = 520; l.frequency.value = 0.12; lg.gain.value = 260; l.connect(lg); lg.connect(o.frequency); g.gain.value = 0.05; o.connect(g); g.connect(ac.destination); o.start(); l.start(); PRO.sir = ac; } else if (!on && PRO.sir) { PRO.sir.close(); PRO.sir = null; } } catch { /* no audio */ } }
 function scrFlash(col: string, ms = 600) { const f = document.createElement('div'); f.style.cssText = `position:fixed;inset:0;z-index:40;pointer-events:none;background:${col};transition:opacity ${ms}ms;opacity:1`; document.body.appendChild(f); requestAnimationFrame(() => requestAnimationFrame(() => { f.style.opacity = '0'; })); setTimeout(() => f.remove(), ms + 100); }
 function startPrologue(from: V2, dest: V2, label: string) {
-  Object.assign(PRO, { on: true, hide: true, t: 0, stage: 1, from, dest, label, msgs: 0, nb: 0 }); gameMin = 7 * 60 + 20;
+  Object.assign(PRO, { on: true, hide: true, t: 0, stage: 1, from, dest, label, msgs: 0, nb: 0 }); gameMin = 7 * 60 + 20; roadT.rebuild(); traffic.start(mainRoads.map(r => ({ p: r.p, w: ROADW[r.t.replace('_link', '')] ?? 9 })), from, 26);
   const g = new THREE.Group(); const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 40, 12, 1, true), new THREE.MeshBasicMaterial({ color: 0xffd040, transparent: true, opacity: 0.28, depthWrite: false })); beam.position.y = 20; g.add(beam);
   const ring = new THREE.Mesh(new THREE.RingGeometry(2.2, 2.8, 32), new THREE.MeshBasicMaterial({ color: 0xffd040, side: THREE.DoubleSide })); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.08; g.add(ring); g.position.set(dest[0], 0, dest[1]); scene.add(g); PRO.beam = g;
   const ov = document.createElement('div'); ov.id = 'wake'; ov.innerHTML = `<div>07:20　⏰ 鬧鐘響了</div><small>${ROLE.names[player.gender === 'm' ? 0 : 1]}・${ROLE.name}｜今天也要去${label}</small>`; document.body.appendChild(ov);
   const sk = document.createElement('button'); sk.id = 'skipbtn'; sk.textContent = '跳過開場 ⏭'; sk.onclick = () => endPrologue(); document.body.appendChild(sk);
 }
-function endPrologue() { if (!PRO.on) return; PRO.on = false; PRO.hide = false; PRO.stage = 9; siren(false); if (PRO.beam) scene.remove(PRO.beam); document.getElementById('skipbtn')?.remove(); document.getElementById('wake')?.remove();
+function endPrologue() { if (!PRO.on) return; PRO.on = false; PRO.hide = false; PRO.stage = 9; siren(false); traffic.abandonAll(); if (PRO.beam) scene.remove(PRO.beam); document.getElementById('skipbtn')?.remove(); document.getElementById('wake')?.remove();
   log('解放軍已攻入萬華，街上到處是哨兵與裝甲車。從現在起，活下去，一區一區奪回來。', '#ffd76a'); }
 const PRO_NEWS: [number, string, string][] = [[3, '📱 早安推播', '今日台北：多雲 26°C，午後局部陣雨。'], [12, '📱 新聞快訊', '國防部：共軍於台海周邊實施「聯合演習」，政府呼籲民眾照常上班上課。'], [24, '📱 交通', '捷運板南線正常營運；西門町周邊道路車多請改道。'], [38, '📱 新聞快訊', '多處網站遭受大規模網路攻擊，部分銀行 App 暫停服務。']];
 function updatePrologue(dt: number) { if (!PRO.on) return; PRO.t += dt;
@@ -881,7 +895,7 @@ function updatePrologue(dt: number) { if (!PRO.on) return; PRO.t += dt;
   { const ov = document.getElementById('wake'); if (ov) { if (PRO.t > 2.6) ov.classList.add('out'); if (PRO.t > 4.2) ov.remove(); } }
   if (PRO.stage === 1) { while (PRO.msgs < PRO_NEWS.length && PRO.t > PRO_NEWS[PRO.msgs][0]) { const [, w, m] = PRO_NEWS[PRO.msgs++]; phone(w, m); }
     $('objective').textContent = `🧭 前往${PRO.label}（還有 ${Math.round(left)} m）｜跟著黃色光柱`;
-    if (prog > 0.45 || PRO.t > 75 || left < 6) { PRO.stage = 2; PRO.t = 0; siren(true); scrFlash('rgba(200,20,10,.55)', 900); phone('⚠️ 國家級警報', '飛彈空襲警報！共軍部隊於淡水河沿岸登陸，請立即就近避難，遠離窗戶。'); log('📢 防空廣播：「這不是演習！這不是演習！請民眾立即進入地下室或避難處所……」', '#ff8a7a'); noise(P.x, P.z, 1); } }
+    if (prog > 0.45 || PRO.t > 75 || left < 6) { PRO.stage = 2; PRO.t = 0; siren(true); traffic.panic(); roadT.rebuild(); scrFlash('rgba(200,20,10,.55)', 900); phone('⚠️ 國家級警報', '飛彈空襲警報！共軍部隊於淡水河沿岸登陸，請立即就近避難，遠離窗戶。'); log('📢 防空廣播：「這不是演習！這不是演習！請民眾立即進入地下室或避難處所……」', '#ff8a7a'); noise(P.x, P.z, 1); } }
   else if (PRO.stage === 2) { $('objective').textContent = '⚠️ 空襲警報！找掩蔽！'; PRO.nb -= dt;
     if (PRO.nb <= 0 && PRO.t < 14) { PRO.nb = 1.2 + Math.random() * 1.5; const a = Math.random() * 7, d = 16 + Math.random() * 34; const e = new THREE.Vector3(P.x + Math.cos(a) * d, 2, P.z + Math.sin(a) * d); boom(scene, e, 2); scrFlash('rgba(255,200,120,.25)', 400); }
     if (PRO.t > 5 && PRO.hide) { PRO.hide = false; phone('📱 LINE 家族群組', '你在哪？？西園路那邊有軍車開進來了！不要出門！'); log('街口傳來履帶聲——穿著陌生迷彩的士兵封鎖了路口。', '#ff8a7a'); }
@@ -918,7 +932,7 @@ async function boot() {
   // night market on the nearest named mid-size road
   let bestR: any = null, bd = 1e9; for (const r of roads) { if (!['tertiary', 'residential', 'pedestrian', 'unclassified'].includes(r.t) || r.p.length < 2) continue; const d = Math.min(...r.p.map(p => Math.hypot(p[0] - start!.c[0], p[1] - start!.c[1]))); if (d < bd && d > 15) { bd = d; bestR = r; } }
   if (bestR) nightMarket(bestR.p, bestR.t === 'tertiary' ? 9 : 6, fx, 'nm');
-  setupArmor(start!.c as V2); spawnDrivables(start!.c as V2);
+  setupArmor(start!.c as V2); spawnDrivables(start!.c as V2); buildJunctions(); await roadT.init();
   decay = buildDecay({ scene, rnd, pip, bldAt, addSeg: (q, low) => addSeg(q, low), merge: mergeGeometries, roads, blds, RW: ROADW, center: start.c, R: 140, doors: doors.map(d => d.p) });
   checkpoints = decay.checkpoints; setupRecon(start!.c as V2); setupRoc();
   alley = buildAlley({ poles: decay.polePos, scene, rnd, pip, bldAt, addSeg: (q, low) => addSeg(q, low), merge: mergeGeometries, roads, blds, RW: ROADW, center: start.c, R: 85, doors: doors.map(d => d.p) });
@@ -961,7 +975,7 @@ async function boot() {
     ROLE = roleById(roleId); player.gender = gender; player.rig = spawnRig({ gender, ...ROLE.look[gender as 'm' | 'f'], outfit: ROLE.id }); player.mesh = player.rig.root;
     if (load && sv) { player.pos.set(sv.p[0], 0, sv.p[1]);  Object.assign(player, { hp: sv.hp, hunger: sv.hu, thirst: sv.th, fatigue: sv.fa, bleed: sv.bl, inv: sv.inv, equip: sv.eq, kills: sv.k }); gameMin = sv.t; DAYH = sv.dl || 1; if (sv.wx) Object.assign(WX, sv.wx); if (sv.ex) UT.ev.ex = 1; if (sv.inf) INF = sv.inf; if (sv.ut) Object.assign(UT, sv.ut);
       const map = new Map<string, any>(sv.conts.map((c: any) => [c[0], c])); for (const c of conts) { const s = map.get(c.id); if (s) c.items = s[1]; map.delete(c.id); } map.forEach(c => String(c[0]).startsWith('pb') ? makeBucket(c[0], c[2], c[1]) : makeCont(c[0], c[2], 'crate', undefined, c[1])); (sv.bar || []).forEach((i: number) => doors[i] && setBarricade(doors[i])); checkSectors(true); conts.forEach(updateVis); }
-    else { localStorage.removeItem(SAVE); gmap?.reset(); player.inv = { ...ROLE.inv }; spawnRole(ROLE, skipIntro); }
+    else { localStorage.removeItem(SAVE); gmap?.reset(); roadT.reset(); player.inv = { ...ROLE.inv }; spawnRole(ROLE, skipIntro); }
     $('title').style.display = 'none'; started = true; { const mb = document.getElementById('mapbtn'); if (mb) mb.style.display = ''; } lastHp = player.hp; startRainAudio(); { const sp = document.createElement('div'); sp.id = 'speed'; sp.innerHTML = '<span class="st"></span>' + SPEEDS.map((v, i) => `<button data-s="${v}" title="按 ${i + 1}">${v === 1 ? '▶' : v === 3 ? '⏩' : '⏭'} ×${v}</button>`).join('') + `<small>一天 = ${DAYH} 小時</small>`; sp.querySelectorAll('button').forEach(b => (b as HTMLElement).onclick = () => setSpeed(+(b as HTMLElement).dataset.s!)); $('topright').appendChild(sp); renderSpeed(); } PRO.on || log('十月某日清晨，解放軍登陸後三天，台北淪陷。萬華的電燈還亮著，水龍頭還有水——但能撐多久？', '#ffd76a'); log('提示：先搜刮身邊的櫥櫃（E），按 Tab 開背包裝備菜刀。', '#ccc');
   };
   if (sv) { const b = document.createElement('button'); b.textContent = '繼續遊戲'; b.onclick = () => go(true); btns.appendChild(b); }
@@ -978,7 +992,7 @@ async function boot() {
   const h = document.createElement('div'); h.className = 'selh'; h.textContent = sv ? '或建立新的倖存者：' : '選擇你的倖存者：'; btns.appendChild(h); btns.appendChild(dl); btns.appendChild(gsw); btns.appendChild(sel);
   camera.position.copy(player.pos).add(CAM_OFF); camera.lookAt(player.pos);
   addEventListener('beforeunload', save);
-  (window as any).__game = { drive, PRO, role: () => ROLE, endPrologue: () => endPrologue(), map: gmap, player, sols, blds, conts, nav, started: () => started, go, vehicles, decay: () => decay, alley: () => alley, facade: () => facade, setSpeed, speed: () => speed, WX, airdrop, makeBucket, noise, dayh: () => DAYH, evac: () => evac && evac.pos, evacOpen, doEvac, INF: () => INF, RV: () => RV, infPos: () => infPos, elderPos: () => elderPos, npcInteract, verifyInf, setMin: (m: number) => { gameMin = m; }, parks: () => parks, simRain: (h: number) => { for (let i = 0; i < h * 20; i++) updateWeather(0.05, 0.05); }, camera, CAM_OFF, setTime: (m: number) => { gameMin = m; }, UT, start: () => start!.c, scene, gm: () => gameMin, tp: (x: number, z: number) => player.pos.set(x, 0, z), damageSol, toggleInv, addItem, armor: () => armor, fpv: () => fpv, recon: () => recon, ROC, roc: () => roc, useItem, testAT: (k: string) => { const a = armor!.list.find(a => !a.dead)!; const dir = a.g.position.clone().sub(player.pos).setY(0).normalize(); fireAT(k, ITEMS[k], dir); return a.hp; }, callSupport, rocCheck, liberate: (n: number) => { for (let i = 0; i < SX * SZ && liberated.size < n; i++) if (!liberated.has(i)) { for (const q of sols) if (q.sector === i) { q.state = 'dead'; q.hp = 0; q.mesh.visible = false; } liberated.add(i); } rocCheck(false); }, lastBlast: () => lastBlast, shells, launchFPV, blast, sim: (n: number, dt = 0.05) => { for (let i = 0; i < n; i++) { update(dt); if (fpv?.active) fpv.update(dt); } }, roadPt: () => { let best: V2 = [player.pos.x, player.pos.z], bd = 1e9; for (const r of roads) if (/primary|secondary|tertiary/.test(r.t)) for (const q of r.p) { const d = Math.hypot(q[0] - player.pos.x, q[1] - player.pos.z); if (d < bd && d > 8 && !bldAt(q[0], q[1])) { bd = d; best = q; } } return best; }, checkpoints: () => checkpoints };
+  (window as any).__game = { roadT, traffic, drive, PRO, role: () => ROLE, endPrologue: () => endPrologue(), map: gmap, player, sols, blds, conts, nav, started: () => started, go, vehicles, decay: () => decay, alley: () => alley, facade: () => facade, setSpeed, speed: () => speed, WX, airdrop, makeBucket, noise, dayh: () => DAYH, evac: () => evac && evac.pos, evacOpen, doEvac, INF: () => INF, RV: () => RV, infPos: () => infPos, elderPos: () => elderPos, npcInteract, verifyInf, setMin: (m: number) => { gameMin = m; }, parks: () => parks, simRain: (h: number) => { for (let i = 0; i < h * 20; i++) updateWeather(0.05, 0.05); }, camera, CAM_OFF, setTime: (m: number) => { gameMin = m; }, UT, start: () => start!.c, scene, gm: () => gameMin, tp: (x: number, z: number) => player.pos.set(x, 0, z), damageSol, toggleInv, addItem, armor: () => armor, fpv: () => fpv, recon: () => recon, ROC, roc: () => roc, useItem, testAT: (k: string) => { const a = armor!.list.find(a => !a.dead)!; const dir = a.g.position.clone().sub(player.pos).setY(0).normalize(); fireAT(k, ITEMS[k], dir); return a.hp; }, callSupport, rocCheck, liberate: (n: number) => { for (let i = 0; i < SX * SZ && liberated.size < n; i++) if (!liberated.has(i)) { for (const q of sols) if (q.sector === i) { q.state = 'dead'; q.hp = 0; q.mesh.visible = false; } liberated.add(i); } rocCheck(false); }, lastBlast: () => lastBlast, shells, launchFPV, blast, sim: (n: number, dt = 0.05) => { for (let i = 0; i < n; i++) { update(dt); if (fpv?.active) fpv.update(dt); } }, roadPt: () => { let best: V2 = [player.pos.x, player.pos.z], bd = 1e9; for (const r of roads) if (/primary|secondary|tertiary/.test(r.t)) for (const q of r.p) { const d = Math.hypot(q[0] - player.pos.x, q[1] - player.pos.z); if (d < bd && d > 8 && !bldAt(q[0], q[1])) { bd = d; best = q; } } return best; }, checkpoints: () => checkpoints };
 }
 boot().catch(e => { console.error(e); $('loadmsg').textContent = '載入失敗：' + e; });
 loop();
