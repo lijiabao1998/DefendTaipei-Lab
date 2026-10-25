@@ -24,9 +24,9 @@ const col = (g: THREE.BufferGeometry, c: number) => { const n = g.attributes.pos
 const B = (w: number, h: number, d: number, x: number, y: number, z: number, c: number, ry = 0) => { const g = new THREE.BoxGeometry(w, h, d); if (ry) g.rotateY(ry); g.translate(x, y, z); g.deleteAttribute('uv'); return col(g, c); };
 const strip = (g: THREE.BufferGeometry) => { const n = g.index ? g.toNonIndexed() : g; for (const k of Object.keys(n.attributes)) if (!['position', 'normal', 'uv', 'color'].includes(k)) n.deleteAttribute(k); return n; };
 
-export type ShackOpt = { H?: number; open?: boolean; kind?: number };
+export type ShackOpt = { H?: number; open?: boolean; kind?: number; mat?: number; roofMat?: number };
 export function makeShack(W: number, D: number, rnd: () => number, o: ShackOpt = {}) {
-  const g = new THREE.Group(); const H = o.H ?? 2.5 + rnd() * 0.4; const wallI = pickMat(rnd()), roofI = rnd() < 0.6 ? wallI : pickMat(rnd());
+  const g = new THREE.Group(); const H = o.H ?? 2.5 + rnd() * 0.4; const wallI = o.mat ?? pickMat(rnd()), roofI = o.roofMat ?? (rnd() < 0.6 ? wallI : pickMat(rnd()));
   const walls: THREE.BufferGeometry[] = [], roofs: THREE.BufferGeometry[] = [], det: THREE.BufferGeometry[] = [], glass: THREE.BufferGeometry[] = [];
   // walls: 4 planes with ribs vertical (u along wall, v up) -> ribs run vertically
   const wall = (len: number, ry: number, ox: number, oz: number) => { const p = new THREE.PlaneGeometry(len, H); uvMeters(p, 'xy'); p.translate(0, H / 2, 0); p.rotateY(ry); p.translate(ox, 0, oz); walls.push(p); };
@@ -102,28 +102,17 @@ export function placeRooftop(root: THREE.Object3D, pts: [number, number][], h: n
   const plants = (u: number, v: number, y: number, n: number) => { for (let i = 0; i < n; i++) { const a = (rnd() - 0.5) * 2.4, b = (rnd() - 0.5) * 1.2; extra.push(ext(B(0.4, 0.35, 0.4, a, 0.18, b, [0x8a5a3a, 0x5a5a5a, 0xb07040][i % 3]), u, v, y)); const s = new THREE.SphereGeometry(0.3 + rnd() * 0.2, 6, 4); s.translate(a, 0.6, b); s.deleteAttribute('uv'); extra.push(ext(col(s, rnd() < 0.5 ? 0x3a7a3a : 0x507a30), u, v, y)); } };
   const laundry = (u: number, v: number, y: number, L: number) => { extra.push(ext(B(0.05, 1.8, 0.05, -L / 2, 0.9, 0, 0x9aa0a0), u, v, y), ext(B(0.05, 1.8, 0.05, L / 2, 0.9, 0, 0x9aa0a0), u, v, y), ext(B(L, 0.03, 0.03, 0, 1.75, 0, 0x9aa0a0), u, v, y)); for (let k = 0; k < Math.floor(L / 0.6); k++) extra.push(ext(B(0.4, 0.55 + rnd() * 0.3, 0.02, -L / 2 + 0.4 + k * 0.6, 1.4, 0, [0xd84a4a, 0xe8e0c8, 0x3a6aa8, 0xe8c040, 0x404040][Math.floor(rnd() * 5)]), u, v, y)); };
   // lots along the long axis
-  const lots: [number, number][] = []; let a = u0 + 0.3; while (a < u1 - 2.5) { let w = 4 + rnd() * 3; if (rnd() < 0.25) w *= 2; w = Math.min(w, u1 - 0.3 - a); if (u1 - 0.3 - (a + w) < 3) w = u1 - 0.3 - a; lots.push([a, w]); a += w; if (lots.length > 7) break; }
-  let prev = -1;
+  // v15 REGULAR layout (real Taipei aerials): the tin addition covers (almost) the whole roof, aligned to the footprint and
+  // parapets, one roof form + corrugation direction per building, continuous along the row; lots differ only slightly
+  // (height step, colour/age), with an occasional gap left as open roof with tanks.
+  const lots: [number, number][] = []; let a = u0 + 0.5; const lotW = 4.5 + rnd() * 2; while (a < u1 - 0.5 - 2.5) { let w = lotW; if (u1 - 0.5 - (a + w) < 3) w = u1 - 0.5 - a; lots.push([a, w]); a += w; if (lots.length > 10) break; }
+  const kind = rnd() < 0.65 ? 0.2 : rnd() < 0.6 ? 0.6 : 0.9; const baseMat = pickMat(rnd()); const H0 = 2.6 + rnd() * 0.3; const set = 0.5 + rnd() * 0.4; const vm = (v0 + v1) / 2;
+  const uniform = rnd() < 0.5; // whole row built as one (same colour) vs. per-lot colour steps
   for (const [la, lw] of lots) {
-    let t = rnd(); if (t < 0.17 && prev === 0) t = 0.3 + rnd() * 0.7; // no two identical full canopies in a row usually
-    const um = la + lw / 2; const skew = rnd() < 0.18 ? (rnd() - 0.5) * 0.35 : 0; const dd = D - 0.6; const front = rnd() < 0.5 ? 1 : -1;
-    const Hk = 2.3 + rnd() * 0.9;
-    if (t < 0.28) { prev = 0; // full-roof canopy (often open sided, ridge along depth)
-      put(um, (v0 + v1) / 2, lw - 0.2, dd, h, skew * 0.3, { H: Hk + 0.3, open: rnd() < 0.45, kind: rnd() < 0.6 ? 0.2 : 0.6 });
-    } else if (t < 0.52) { prev = 1; // partial shack hugging a parapet, covering 35-70% depth
-      const d = dd * (0.35 + rnd() * 0.35), w = lw * (0.6 + rnd() * 0.35); const v = (v0 + v1) / 2 + front * (dd - d) / 2; put(um + (rnd() - 0.5) * (lw - w), v, w, d, h, skew, { H: Hk });
-      const fv = (v0 + v1) / 2 - front * (dd / 2 - (dd - d) / 2); if (rnd() < 0.6) tank(um + (rnd() - 0.5) * lw * 0.5, fv, h); if (rnd() < 0.6) plants(um, fv + front * 0.6, h, 2 + Math.floor(rnd() * 3)); if (rnd() < 0.5) laundry(um, fv - front * 0.4, h, Math.min(lw - 1, 3));
-    } else if (t < 0.64) { prev = 2; // stacked 2-storey
-      const d = dd * (0.55 + rnd() * 0.3), w = lw * (0.75 + rnd() * 0.2); const v = (v0 + v1) / 2 + front * (dd - d) / 2;
-      if (put(um, v, w, d, h, skew * 0.5, { H: 2.6, kind: 0.8 })) put(um + (rnd() - 0.5) * w * 0.3, v + front * d * 0.1, w * (0.55 + rnd() * 0.3), d * (0.55 + rnd() * 0.3), h + 2.95, skew * 0.5 + (rnd() - 0.5) * 0.2, { H: 2.3 + rnd() * 0.3 });
-    } else if (t < 0.8) { prev = 3; // stair tower + lean-to
-      const sw = 2.3, sd = 2.6, sh = 2.7; const su2 = la + 0.3 + sw / 2 + rnd() * Math.max(0, lw - sw - 0.6), sv = (v0 + v1) / 2 + front * (dd - sd) / 2 * rnd();
-      if (inside(su2, sv, sw, sd, 0)) { cg.push(ext(B(sw, sh, sd, 0, sh / 2, 0, 0xa8a49a), su2, sv, h), ext(B(sw + 0.2, 0.15, sd + 0.2, 0, sh + 0.07, 0, 0x8a8680), su2, sv, h), ext(B(0.9, 2.0, 0.05, 0, 1.0, -front * (sd / 2 + 0.03), 0x5a4a3a), su2, sv, h));
-        const lw2 = Math.min(lw - sw - 0.4, 2.5 + rnd() * 3); const side = su2 - la > la + lw - su2 ? -1 : 1; if (lw2 > 2.2) put(su2 + side * (sw / 2 + lw2 / 2 + 0.05), sv, lw2, sd + rnd() * 1.5, h, 0, { H: 2.3, kind: 0.9 }); }
-      if (rnd() < 0.6) tank(um, (v0 + v1) / 2 - front * dd * 0.3, h + (rnd() < 0.4 ? sh + 0.15 - 0.4 : 0));
-    } else { prev = 4; // open lot: tanks, plants, laundry, maybe a small storage shed
-      if (rnd() < 0.7) tank(um + (rnd() - 0.5) * lw * 0.4, (v0 + v1) / 2 + (rnd() - 0.5) * dd * 0.5, h); plants(um, v0 + 0.8, h, 2 + Math.floor(rnd() * 4)); if (rnd() < 0.6) laundry(um, (v0 + v1) / 2, h, Math.min(lw - 1, 3.2)); if (rnd() < 0.35) put(um + (rnd() - 0.5) * (lw - 2), v1 - 1.5, 1.8 + rnd(), 1.6 + rnd() * 0.8, h, (rnd() - 0.5) * 0.5, { H: 2.0, kind: 0.9 });
-    }
+    const um = la + lw / 2;
+    if (lots.length > 2 && rnd() < 0.1) { if (rnd() < 0.8) tank(um, vm, h); if (rnd() < 0.6) laundry(um, vm + 1, h, Math.min(lw - 1, 3)); continue; } // occasional gap
+    const m = uniform || rnd() < 0.55 ? baseMat : pickMat(rnd()); const dH = uniform ? 0 : Math.round((rnd() - 0.5) * 2) * 0.25;
+    put(um, vm, lw - 0.05, D - set * 2, h, 0, { H: H0 + dH, kind, mat: m, roofMat: m, open: false });
   }
   // merge everything by material to keep draw calls low
   grp.updateMatrixWorld(true); const buckets = new Map<THREE.Material, THREE.BufferGeometry[]>();
