@@ -714,7 +714,9 @@ export function buildFacade(c: FCtx) {
                 );
             }
           }
-          const lk = lineK[s];
+          // v19.2: curb paint moved to roads.ts (on the curb, per §168/§169)
+          const lk = '';
+          void lineK[s];
           if (lk) {
             const off =
               style === 'sw'

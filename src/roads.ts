@@ -3,6 +3,7 @@
 // Each tile is deterministic from its seed; player changes (looted wrecks, cleared barriers) are stored separately.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { GLYPHS, GMAT, atlas } from './roadglyphs';
 type Seg = [number, number, number, number, number, string, number, string, number?, number?];
 type Node = [number, number, number, [number, number, number][], number?];
 type TileData = { tx: number; tz: number; seed: number; segs: Seg[]; nodes: Node[]; clip?: [number, number, number][] };
@@ -41,9 +42,12 @@ const M = (c: number, o: Partial<THREE.MeshStandardMaterialParameters> = {}) =>
     ...o,
   });
 const MAT = {
-  white: M(0xe8e6dc),
-  yellow: M(0xd8b040),
-  red: M(0xb02a22),
+  white: M(0xe9e7df),
+  yellow: M(0xe2b228),
+  red: M(0xc0302a),
+  busred: M(0x8a3a30, { roughness: 0.9 }),
+  curbR: new THREE.MeshStandardMaterial({ color: 0xb8302a, roughness: 0.8 }),
+  curbY: new THREE.MeshStandardMaterial({ color: 0xd8a828, roughness: 0.8 }),
   green: M(0x2f7a4a, { roughness: 0.7 }),
   dark: M(0x1b1c1e, { roughness: 0.95 }),
   patch: M(0x3a3b3e, { roughness: 0.9 }),
@@ -86,6 +90,7 @@ const LM = {
   y1: LAMP.y[0].clone(),
   g1: LAMP.g[0].clone(),
 };
+// v19.2 road paint per 道路交通標誌標線號誌設置規則: white / yellow / red, glyph atlas for 標字 and icons (white or yellow variant)
 const SAVE = 'dt-tiles-v1';
 export class RoadTiles {
   size = 200;
@@ -291,51 +296,131 @@ export class RoadTiles {
           quad(m, x, z, ang, l, wd, y);
         }
       };
+      // dashed line per §181/§182: 4 m paint, 6 m gap (only whole dashes inside visible spans)
+      const dash = (m: string, o: number, wd: number, seg = 4, gap = 6) => {
+        for (const [a0, b0] of spans)
+          for (let t = a0 + 1; t + seg <= b0 - 0.5; t += seg + gap) {
+            const [x, z] = at(t + seg / 2, o);
+            quad(m, x, z, ang, seg, wd);
+          }
+      };
+      const dbl = (m: string, o: number) => {
+        line(m, o - 0.1, 0.1);
+        line(m, o + 0.1, 0.1);
+      }; // §165 雙實線: 10 cm lines, 10 cm apart
+      // curb with painted no-parking (§168 yellow / §169 red on the curb face and top)
+      const curb = (sgn: number, w: number, paint: string) => {
+        for (const [a0, b0] of spans) {
+          const l = b0 - a0;
+          const [cx, cz] = at((a0 + b0) / 2, sgn * (w / 2 + 0.08));
+          if (!bldAt(cx, cz))
+            solid(
+              paint === 'R' ? 'curbR' : paint === 'Y' ? 'curbY' : 'curb',
+              new THREE.BoxGeometry(l, 0.15, 0.18),
+              cx,
+              0.075,
+              cz,
+              -ang,
+            );
+        }
+      };
+      // text / icon decal: reads toward the driver travelling along (dx,dz), first glyph furthest (§150)
+      const near = (t: number) => inSpan(t) && inSpan(t - 3) && inSpan(t + 3);
       if ((cls === 'main' || cls === 'street') && f !== 2) {
-        // f: 0 normal two-way, 3/4 = one half of a dual carriageway (outer side +1 / -1), 2 = duplicate way (no markings)
+        // f: 0 normal two-way, 3/4 = one carriageway of a divided road (outer side +1 / -1), 2 = duplicate way (no markings)
         const half = f === 3 || f === 4,
           outer = f === 4 ? -1 : 1;
         const w = half ? Math.max(6, ow) : w0;
+        const paints = [r() < 0.45 ? 'R' : r() < 0.5 ? 'Y' : '', r() < 0.45 ? 'R' : r() < 0.5 ? 'Y' : ''];
         if (!half) {
-          const lanes = w >= 16 ? 2 : 1; // lanes per direction
-          if (w < 12)
-            for (let t = 1; t < L - 1; t += 6) {
-              if (!inSpan(t) || !inSpan(t + 3)) continue;
-              const [x, z] = at(t + 1.5, 0);
-              quad('yellow', x, z, ang, 3, 0.14);
-            } // dashed yellow centre
-          else line('yellow', 0, 0.14);
-          if (lanes === 2)
-            for (const sgn of [-1, 1])
-              for (let t = 1; t < L - 1; t += 8) {
-                if (!inSpan(t) || !inSpan(t + 4)) continue;
-                const [x, z] = at(t + 2, (sgn * w) / 4);
-                quad('white', x, z, ang, 4, 0.12);
-              } // lane dividers
-          for (const sgn of [-1, 1]) {
-            line('white', sgn * (w / 2 - 0.25), 0.1);
-            const [cx, cz] = at(L / 2, sgn * (w / 2 + 0.08));
-            if (!bldAt(cx, cz)) solid('curb', new THREE.BoxGeometry(L, 0.14, 0.18), cx, 0.07, cz, -ang);
-            if (w >= 12 && r() < 0.35) line('red', sgn * (w / 2 - 0.05), 0.12, 0.05, 0.8);
-          }
-          if (w >= 16 && r() < 0.5) line('green', w / 2 - 1.1, 1.4, 0.044, 0.9);
-        } else {
-          // one carriageway of a divided road: outer edge + curb on the outside, single yellow along the median side, one dashed divider
-          line('white', outer * (w / 2 - 0.25), 0.1);
-          line('yellow', -outer * (w / 2 - 0.3), 0.12, 0.046);
-          const [cx, cz] = at(L / 2, outer * (w / 2 + 0.08));
-          if (!bldAt(cx, cz)) solid('curb', new THREE.BoxGeometry(L, 0.14, 0.18), cx, 0.07, cz, -ang);
-          if (w >= 8)
-            for (let t = 1; t < L - 1; t += 8) {
-              if (!inSpan(t) || !inSpan(t + 4)) continue;
-              const [x, z] = at(t + 2, 0);
-              quad('white', x, z, ang, 4, 0.12);
+          if (w < 12) {
+            dash('yellow', 0, 0.1);
+            for (const sgn of [-1, 1]) {
+              const p = paints[sgn > 0 ? 0 : 1];
+              curb(sgn, w, p);
+              if (!p) line('white', sgn * (w / 2 - 0.3), 0.15);
             }
-          if (r() < 0.35) line('red', outer * (w / 2 - 0.05), 0.12, 0.05, 0.8);
+          } // 行車分向線 + 路面邊線 15 cm
+          else {
+            dbl('yellow', 0); // 分向限制線
+            const bus = w >= 18; // 中華路-type: median 公車專用道 (§174), double white separating it
+            for (const sgn of [-1, 1]) {
+              const hw = w / 2;
+              const p = paints[sgn > 0 ? 0 : 1];
+              curb(sgn, w, p);
+              const dir = sgn; // traffic on +n side moves +u
+              if (bus) {
+                dbl('white', sgn * 3.4);
+                line('busred', sgn * 1.75, 3.1, 0.043);
+              }
+              const inner = bus ? 3.4 : 0;
+              const mlane = hw - 2.6; // outer 2.5 m 機慢車優先道 (§174-1 white solid line)
+              if (hw - inner > 6.5) dash('white', sgn * (inner + (mlane - inner) / 2), 0.1);
+              line('white', sgn * mlane, 0.1);
+              // repeated decals along the segment, away from junctions
+              for (const [a0, b0] of spans) {
+                const lenS = b0 - a0;
+                if (lenS < 24) continue;
+                const tt = dir > 0 ? b0 - 14 : a0 + 14;
+                const tt2 = (a0 + b0) / 2;
+                const dX = ux * dir,
+                  dZ = uz * dir;
+                const oLane = sgn * (mlane + (hw - mlane) / 2);
+                this.text(put, '機車優先', at(tt, oLane), dX, dZ, 1.0, 1.7, 'W');
+                this.text(put, 'SCOOT', at(tt + dir * 8.5, oLane), dX, dZ, 0.9, 1.8, 'W');
+                const arL = sgn * (inner + (mlane - inner) / 2);
+                this.text(put, r() < 0.6 ? 'UP' : r() < 0.5 ? 'UPR' : 'UPL', at(tt, arL), dX, dZ, 1.1, 4.5, 'W'); // 指向線 before the junction
+                if (!bus && r() < 0.5) this.text(put, '禁行機車', at(tt2, sgn * (inner + 1.6)), dX, dZ, 1.0, 1.7, 'Y'); // §178 yellow
+                if (bus) this.text(put, '公車專用', at(tt2, sgn * 1.75), dX, dZ, 1.0, 1.7, 'W');
+                if (bus)
+                  for (const k of [-1, 1]) {
+                    const [px, pz] = at(tt2 + k * 9, sgn * 1.75);
+                    this.diamond(put, px, pz, ang);
+                  }
+              }
+            }
+          }
+          // mid-block 斑馬紋行人穿越道 (§186): two 10 cm edge lines 4 m apart, 40 cm diagonals at 45 deg; 慢 30 m before (§163)
+          if (L > 70 && w >= 9 && r() < 0.3) {
+            const tm = L / 2;
+            if (near(tm)) {
+              for (const k of [-2, 2]) {
+                const [x, z] = at(tm + k, 0);
+                quad('white', x, z, ang + Math.PI / 2, w - 0.6, 0.1);
+              }
+              for (let o = -w / 2 + 0.6; o < w / 2 - 0.6; o += 0.8 * Math.SQRT2) {
+                const [x, z] = at(tm, o);
+                quad('white', x, z, ang + Math.PI / 4, 5.4, 0.4);
+              }
+              for (const sgn of [-1, 1]) {
+                const tt = tm - sgn * 32;
+                if (inSpan(tt)) this.text(put, '慢', at(tt, (sgn * w) / 4), ux * sgn, uz * sgn, 1.6, 3.0, 'W');
+              }
+            }
+          }
+        } else {
+          // one carriageway of a divided road: single yellow 10 cm along the median side (§165), curb + paint on the outside
+          line('yellow', -outer * (w / 2 - 0.3), 0.1);
+          curb(outer, w, paints[0]);
+          if (!paints[0]) line('white', outer * (w / 2 - 0.3), 0.15);
+          if (w >= 7) dash('white', 0, 0.1);
+          if (w >= 9) line('white', outer * (w / 2 - 2.6), 0.1);
         }
       } else if (cls === 'lane' || cls === 'alley') {
         const w = w0;
-        for (const sgn of [-1, 1]) line('white', sgn * (w / 2 - 0.2), 0.08);
+        // 巷道: often only red/yellow edge lines 30 cm from the edge (§168/§169, no curb) or a 15 cm white edge line; 慢 near junctions
+        for (const sgn of [-1, 1]) {
+          const q = r();
+          if (q < 0.3) line('red', sgn * (w / 2 - 0.3), 0.1);
+          else if (q < 0.45) line('yellow', sgn * (w / 2 - 0.3), 0.1);
+          else if (q < 0.7) line('white', sgn * (w / 2 - 0.3), 0.15);
+        }
+        if (w >= 6 && L > 20)
+          for (const [a0, b0] of spans) {
+            if (b0 - a0 < 14) continue;
+            if (r() < 0.6) this.text(put, '慢', at(b0 - 6, -w / 4), ux, uz, 1.3, 2.4, 'W');
+            if (r() < 0.6) this.text(put, '慢', at(a0 + 6, w / 4), -ux, -uz, 1.3, 2.4, 'W');
+          }
         const ds = r() < 0.5 ? 1 : -1;
         for (let t = 1; t < L - 1; t += 1.2) {
           const [x, z] = at(t, ds * (w / 2 - 0.45));
@@ -423,34 +508,75 @@ export class RoadTiles {
     for (const [x, z, w, arms, rad = w / 2] of td.nodes) {
       if (w >= 9) {
         const sig = arms.length >= 3;
+        const unsig = !sig;
         for (const [ux, uz, aw] of arms) {
           const ang = Math.atan2(uz, ux),
             nx = -uz,
             nz = ux;
-          const d0 = Math.max(rad, aw / 2) + 1.6;
           const hw = aw / 2 - 0.3;
-          if (aw < 6) continue;
-          for (let o = -hw + 0.3; o < hw; o += 0.9)
-            quad('white', x + ux * d0 + nx * o, z + uz * d0 + nz * o, ang, 2.6, 0.45); // zebra
-          quad(
-            'white',
-            x + ux * (d0 + 2.0) + (nx * hw) / 2,
-            z + uz * (d0 + 2.0) + (nz * hw) / 2,
-            ang + Math.PI / 2,
-            hw,
-            0.3,
-          ); // stop line (right half)
+          const P = (d: number, o: number): [number, number] => [x + ux * d + nx * o, z + uz * d + nz * o];
+          if (aw < 6) {
+            // alley meeting a main road: stop line + 停 (§170/§177), sometimes 網狀線 keep-clear box on the main road (§173)
+            const [sx, sz] = P(rad + 0.6, -aw / 4);
+            quad('white', sx, sz, ang + Math.PI / 2, aw / 2 - 0.2, 0.35);
+            this.text(put, '停', P(rad + 2.8, -aw / 4), -ux, -uz, 1.2, 2.2, 'W');
+            if (w >= 12 && r() < 0.35) {
+              const gw = aw + 3,
+                gl = w / 2 - 0.4;
+              const [gx, gz] = P(w / 4, 0);
+              this.grid(put, gx, gz, ang, gl, gw);
+            }
+            continue;
+          }
+          const d0 = Math.max(rad, aw / 2) + 1.2; // crosswalk 3-5 m back from the cross street edge (§185)
+          // 枕木紋行人穿越道 (§185): 40 cm stripes parallel to traffic, 3 m long, 40-80 cm gaps (here 60 cm)
+          for (let o = -hw + 0.2; o <= hw - 0.2; o += 1.0) {
+            const [px, pz] = P(d0 + 1.5, o);
+            quad('white', px, pz, ang, 3.0, 0.4);
+          }
+          // 停止線 (§170): 30-40 cm, 2-3 m behind the crosswalk, across the approach half (-n side for right-hand traffic)
+          const ds = d0 + 3.0 + 2.5;
+          const [sx, sz] = P(ds, -hw / 2);
+          quad('white', sx, sz, ang + Math.PI / 2, hw, 0.35);
           if (aw >= 12) {
-            const bx = x + ux * (d0 - 2.6) - nx * (hw * 0.6),
-              bz = z + uz * (d0 - 2.6) - nz * (hw * 0.6);
-            for (const [l, ww, oa, ob] of [
-              [2.6, 0.08, 0, 0.9],
-              [2.6, 0.08, 0, -0.9],
-              [0.08, 1.8, 1.3, 0],
-              [0.08, 1.8, -1.3, 0],
-            ] as const)
-              quad('white', bx + ux * oa + nx * ob, bz + uz * oa + nz * ob, ang, l, ww, 0.046);
-          } // 待轉格 (two-stage left-turn box)
+            // 機慢車停等區 (§174-2): box behind the stop line, 20 cm front/back, 10 cm sides, 3 m deep, scooter icons
+            if (r() < 0.7) {
+              const dep = 3;
+              const [bx, bz] = P(ds + 0.2 + dep, -hw / 2);
+              quad('white', bx, bz, ang + Math.PI / 2, hw, 0.2);
+              const [e1x, e1z] = P(ds + dep / 2 + 0.2, -0.25);
+              quad('white', e1x, e1z, ang, dep, 0.1);
+              const [e2x, e2z] = P(ds + dep / 2 + 0.2, -hw + 0.05);
+              quad('white', e2x, e2z, ang, dep, 0.1);
+              for (let o = -hw + 1.4; o < -1; o += 2.2)
+                this.text(put, 'SCOOT', P(ds + dep / 2 + 0.2, o), -ux, -uz, 0.8, 1.6, 'W');
+            }
+            // 機慢車左轉待轉區 (§191): 15 cm white box in front of the crosswalk on the departure side, scooter icon + 待轉
+            {
+              const bl = 2.2,
+                bw = 1.6;
+              const cdist = d0 - 0.5 - bl / 2;
+              const off = hw - bw / 2 - 0.4;
+              const [cx, cz] = P(cdist, off);
+              for (const [l, ww, oa, ob] of [
+                [bl, 0.15, 0, bw / 2],
+                [bl, 0.15, 0, -bw / 2],
+                [0.15, bw, bl / 2, 0],
+                [0.15, bw, -bl / 2, 0],
+              ] as const)
+                quad('white', cx + ux * oa + nx * ob, cz + uz * oa + nz * ob, ang, l, ww, 0.046);
+              this.text(put, 'SCOOT', [cx, cz], -nx, -nz, 0.6, 1.2, 'W');
+            }
+            // 槽化線 (§171): yellow hatched taper where the median begins, 15 cm outline, 20 cm diagonals / 30 cm gaps at 45 deg
+            if (r() < 0.6) {
+              const L0 = 9,
+                W0 = 1.2;
+              const [hx, hz] = P(ds + 0.5 + L0 / 2, 0);
+              this.hatch(put, hx, hz, ang, L0, W0);
+            }
+          }
+          // lane arrows behind the stop line on smaller signalised streets
+          else this.text(put, 'UP', P(ds + 4, -hw / 2), -ux, -uz, 1.0, 4.0, 'W');
           if (sig) {
             const px = x + ux * (d0 + 2.6) + nx * (aw / 2 + 0.4),
               pz = z + uz * (d0 + 2.6) + nz * (aw / 2 + 0.4);
@@ -482,7 +608,7 @@ export class RoadTiles {
       }
     }
     for (const [m, gs] of Object.entries(G)) {
-      const me = new THREE.Mesh(mergeGeometries(gs), (MAT as any)[m]);
+      const me = new THREE.Mesh(mergeGeometries(gs), m[0] === 'G' ? GMAT[m.slice(1)] : (MAT as any)[m]);
       me.receiveShadow = true;
       if (['curb', 'rubble'].includes(m)) me.castShadow = true;
       tile.g.add(me);
@@ -492,6 +618,129 @@ export class RoadTiles {
     this.d.scene.add(tile.g);
     this.stats.built++;
     return tile;
+  }
+  // glyph decals: each char 1 cell; laid out along travel direction (dx,dz), first glyph furthest
+  private text(
+    put: (m: string, g: THREE.BufferGeometry) => void,
+    str: string,
+    at: [number, number],
+    dx: number,
+    dz: number,
+    cw: number,
+    cl: number,
+    col: 'W' | 'Y' | 'R',
+  ) {
+    atlas();
+    const items = GLYPHS.includes(str) ? [str] : [...str];
+    const pitch = cl * 1.25;
+    const th = Math.atan2(-dx, -dz);
+    items.forEach((ch, i) => {
+      const gi = GLYPHS.indexOf(ch);
+      if (gi < 0) return;
+      const g = new THREE.PlaneGeometry(cw, cl);
+      const uv = g.attributes.uv;
+      const u0 = (gi % 8) / 8,
+        v1 = 1 - Math.floor(gi / 8) / 4;
+      for (let k = 0; k < uv.count; k++) uv.setXY(k, u0 + uv.getX(k) / 8, v1 - (1 - uv.getY(k)) / 4);
+      const off = ((items.length - 1) / 2 - i) * pitch;
+      g.rotateX(-Math.PI / 2);
+      g.rotateY(th);
+      g.translate(at[0] + dx * off, 0.05, at[1] + dz * off);
+      put('G' + col, g);
+    });
+  }
+  // 車種專用車道 diamond (§174): 2.5 m x 1.0 m, 15 cm line
+  private diamond(put: (m: string, g: THREE.BufferGeometry) => void, x: number, z: number, ang: number) {
+    const a = 1.25,
+      b = 0.5,
+      L = Math.hypot(a, b),
+      t = Math.atan2(b, a);
+    for (const [sx, sz] of [
+      [1, 1],
+      [1, -1],
+      [-1, 1],
+      [-1, -1],
+    ]) {
+      const g = new THREE.PlaneGeometry(L, 0.15);
+      g.rotateX(-Math.PI / 2);
+      g.rotateY(-(ang + sx * sz * -t));
+      const lx = (sx * a) / 2,
+        lz = (sz * b) / 2;
+      g.translate(x + Math.cos(ang) * lx - Math.sin(ang) * lz, 0.046, z + Math.sin(ang) * lx + Math.cos(ang) * lz);
+      put('white', g);
+    }
+  }
+  // 網狀線 (§173): yellow box, 20 cm outline, 10 cm diagonals at 45 deg, spacing 1.5 m
+  private grid(
+    put: (m: string, g: THREE.BufferGeometry) => void,
+    x: number,
+    z: number,
+    ang: number,
+    l: number,
+    w: number,
+  ) {
+    this.box(put, 'yellow', x, z, ang, l, w, 0.2);
+    const c = Math.cos(ang),
+      s = Math.sin(ang);
+    for (const sgn of [1, -1])
+      for (let k = -l - w; k <= l + w; k += 1.5) {
+        // line u = k + sgn*v clipped to |u|<=l/2, |v|<=w/2
+        const v0 = Math.max(-w / 2, sgn > 0 ? -l / 2 - k : k - l / 2),
+          v1 = Math.min(w / 2, sgn > 0 ? l / 2 - k : k + l / 2);
+        if (v1 - v0 < 0.1) continue;
+        const vm = (v0 + v1) / 2,
+          um = k + sgn * vm;
+        const len = (v1 - v0) * Math.SQRT2;
+        const g = new THREE.PlaneGeometry(len, 0.1);
+        g.rotateX(-Math.PI / 2);
+        g.rotateY(-(ang + (sgn * Math.PI) / 4));
+        g.translate(x + c * um - s * vm, 0.046, z + s * um + c * vm);
+        put('yellow', g);
+      }
+  }
+  private hatch(
+    put: (m: string, g: THREE.BufferGeometry) => void,
+    x: number,
+    z: number,
+    ang: number,
+    l: number,
+    w: number,
+  ) {
+    this.box(put, 'yellow', x, z, ang, l, w, 0.15);
+    const c = Math.cos(ang),
+      s = Math.sin(ang);
+    for (let k = -l / 2 + 0.3; k < l / 2 - 0.3; k += 0.5 * Math.SQRT2) {
+      const g = new THREE.PlaneGeometry(w * Math.SQRT2 * 0.9, 0.2);
+      g.rotateX(-Math.PI / 2);
+      g.rotateY(-(ang + Math.PI / 4));
+      g.translate(x + c * k, 0.046, z + s * k);
+      put('yellow', g);
+    }
+  }
+  private box(
+    put: (m: string, g: THREE.BufferGeometry) => void,
+    m: string,
+    x: number,
+    z: number,
+    ang: number,
+    l: number,
+    w: number,
+    lw: number,
+  ) {
+    const c = Math.cos(ang),
+      s = Math.sin(ang);
+    for (const [ll, ww, ou, ov] of [
+      [l, lw, 0, w / 2],
+      [l, lw, 0, -w / 2],
+      [lw, w, l / 2, 0],
+      [lw, w, -l / 2, 0],
+    ] as const) {
+      const g = new THREE.PlaneGeometry(ll, ww);
+      g.rotateX(-Math.PI / 2);
+      g.rotateY(-ang);
+      g.translate(x + c * ou - s * ov, 0.046, z + s * ou + c * ov);
+      put(m, g);
+    }
   }
   private signal(t: Tile, x: number, z: number, ang: number, ax: number) {
     const g = new THREE.Group();
