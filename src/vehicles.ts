@@ -1,5 +1,6 @@
-// Vehicle system (stub for future drivable vehicles). Parked scooters/cars are registered as Vehicles
-// so that a later round can add enter/drive/fuel/noise without touching map generation.
+// Parked street vehicles placed during map generation: locked or stripped scooters and cars, taxis and
+// occupation trucks (cars and trucks also get collision walls in main.ts). They can be inspected but not driven;
+// drivable vehicles are in drive.ts.
 import * as THREE from 'three';
 export type VehicleKind = 'scooter' | 'car' | 'taxi' | 'truck';
 export interface Vehicle {

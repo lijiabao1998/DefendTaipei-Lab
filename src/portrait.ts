@@ -1,8 +1,9 @@
+// Character-select portraits: render each faceless role rig once with a small offscreen renderer
+// and cache the result as a PNG data URL.
 import * as THREE from 'three';
 import { makeRig, animate } from './human';
 import { roleById } from './roles';
 
-// character-select portraits: render each faceless role rig once with a small offscreen renderer
 const _pc = new Map<string, string>();
 let _pr: THREE.WebGLRenderer | null = null;
 export function rolePortrait(id: string, g: 'm' | 'f') {
