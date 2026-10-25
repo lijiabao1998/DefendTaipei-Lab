@@ -53,16 +53,14 @@ export function buildFacade(c: FCtx) {
   const def = (k: string, g: THREE.BufferGeometry, mat: THREE.Material, shadow = false) =>
     parts.set(k, { g, mat, L: [], shadow });
   const put = (k: string, x: number, y: number, z: number, ry: number, col = 0xffffff, sx = 1, sy = 1) =>
-    parts
-      .get(k)!
-      .L.push({
-        m: new THREE.Matrix4().compose(
-          new THREE.Vector3(x, y, z),
-          new THREE.Quaternion().setFromEuler(new THREE.Euler(0, ry, 0)),
-          new THREE.Vector3(sx, sy, 1),
-        ),
-        c: col,
-      });
+    parts.get(k)!.L.push({
+      m: new THREE.Matrix4().compose(
+        new THREE.Vector3(x, y, z),
+        new THREE.Quaternion().setFromEuler(new THREE.Euler(0, ry, 0)),
+        new THREE.Vector3(sx, sy, 1),
+      ),
+      c: col,
+    });
   const std = (o: THREE.MeshStandardMaterialParameters = {}) =>
     new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7, ...o });
   // sky env so the glass actually reflects something

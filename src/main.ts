@@ -1,4 +1,12 @@
-import { shrink } from './texq';
+// Main game module: renderer, world state, the gameplay systems that share it, the main loop and boot.
+// Self-contained pieces live in their own files (textures, geom, world, portrait, pla-loot, joystick) and so do
+// the bigger systems (armor, drive, roads, traffic, roc, fpv, map, interiors, decay, alley, ...).
+// Sections, in order (search for "// ----------"):
+//   utils · renderer · world state (collision grid, line of sight) · sectors · build map · FPV + recon drones ·
+//   國軍 support · PLA armour · street lamps · characters · player role / vehicles / road tiles / traffic ·
+//   multiplayer glue · weather · airdrop · 線人 informant · curfew flashlights · time system, noise, log ·
+//   effects · input · inventory UI · combat · save · story timeline · main loop + HUD · prologue · boot
+// Test/debug hooks are exposed on window.__game at the end of boot().
 import { buildEvacZone, playEvac, cine } from './evac';
 import * as THREE from 'three';
 import { buildFacade } from './facade';
@@ -11,7 +19,6 @@ import type { FPV } from './fpv';
 import type { GameMap } from './map';
 import { RocSystem, ROC_NAME, type RocKind } from './roc';
 import { placeRooftop, dressRoof, pickRoofMat, setShackNight } from './rooftin';
-let facade: ReturnType<typeof buildFacade> | null = null;
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { ITEMS, LOOT } from './items';
 import { iconURL, iconMat } from './icons';
@@ -19,43 +26,28 @@ import { makeRig, animate, setWeapon, Rig, AnimState } from './human';
 import { Nav, smooth } from './nav';
 import { RoadTiles } from './roads';
 import { Traffic } from './traffic';
-// character-select portraits: render each faceless role rig once with a small offscreen renderer
-const _pc = new Map<string, string>();
-let _pr: THREE.WebGLRenderer | null = null;
-function rolePortrait(id: string, g: 'm' | 'f') {
-  const key = id + g;
-  if (_pc.has(key)) return _pc.get(key)!;
-  try {
-    if (!_pr) {
-      _pr = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
-      _pr.setSize(240, 320, false);
-      _pr.outputColorSpace = THREE.SRGBColorSpace;
-      _pr.toneMapping = THREE.ACESFilmicToneMapping;
-    }
-    const sc = new THREE.Scene();
-    sc.add(new THREE.HemisphereLight(0xdfe8ff, 0x3a3430, 1.6));
-    const d = new THREE.DirectionalLight(0xffffff, 2.4);
-    d.position.set(1.5, 3, 2.5);
-    sc.add(d);
-    const b = new THREE.DirectionalLight(0x9fb8ff, 1.0);
-    b.position.set(-2, 2, -2);
-    sc.add(b);
-    const rig = makeRig({ gender: g, ...roleById(id).look[g], outfit: id });
-    rig.root.rotation.y = -0.45;
-    sc.add(rig.root);
-    animate(rig, 'idle', 0, 0.016);
-    const cam = new THREE.PerspectiveCamera(26, 240 / 320, 0.1, 20);
-    cam.position.set(0, 1.05, 4.1);
-    cam.lookAt(0, 0.88, 0);
-    _pr.setClearColor(0x000000, 0);
-    _pr.render(sc, cam);
-    const u = _pr.domElement.toDataURL('image/png');
-    _pc.set(key, u);
-    return u;
-  } catch {
-    return '';
-  }
-}
+import { rolePortrait } from './portrait';
+import { type V2, type Seg, type Door, type Bld, type Cont, ROADW } from './world';
+import { clamp, pip, area, segInter, segX } from './geom';
+import {
+  canvasTex,
+  wallMats,
+  wallMatsT,
+  tinMat,
+  tankMat,
+  floorMat,
+  roadTex,
+  groundTex,
+  roadMat,
+  groundMat,
+  signTex,
+  b2sign,
+  extraSign,
+  shopSignTex,
+  contMat,
+} from './textures';
+import { plaDrop } from './pla-loot';
+import { joy, initJoystick } from './joystick';
 import { VehicleSystem, VehicleKind } from './vehicles';
 import { furnish, nightMarket, setPower } from './interiors';
 import { buildDecay } from './decay';
@@ -68,73 +60,7 @@ const rnd = () => {
   return seed / 4294967296;
 };
 const pick = <T>(a: T[]) => a[Math.floor(rnd() * a.length)];
-const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const $ = (id: string) => document.getElementById(id)!;
-type V2 = [number, number];
-type Seg = { a: V2; b: V2; door?: Door; low?: boolean };
-type Door = { b: Bld; p: V2; a: V2; c: V2; barricaded: boolean; seg?: Seg; mesh?: THREE.Mesh };
-type Bld = {
-  sign?: THREE.Mesh;
-  floor?: THREE.Mesh;
-  inner?: THREE.Group;
-  innerWalls?: THREE.Mesh;
-  detailed?: string;
-  id: number;
-  pts: V2[];
-  h: number;
-  type: string;
-  group: THREE.Group;
-  walls: THREE.Mesh;
-  roof: THREE.Group;
-  door?: Door;
-  c: V2;
-  minx: number;
-  maxx: number;
-  minz: number;
-  maxz: number;
-};
-type Cont = {
-  id: string;
-  p: V2;
-  items: Record<string, number>;
-  label: string;
-  mesh: THREE.Object3D;
-  b?: Bld;
-  half?: number;
-  axis?: V2;
-  vis?: { im: THREE.InstancedMesh; max: number; item: string }[];
-  init?: Record<string, number>;
-};
-
-function pip(p: V2, pts: V2[]) {
-  let ins = false;
-  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-    const [xi, zi] = pts[i],
-      [xj, zj] = pts[j];
-    if (zi > p[1] !== zj > p[1] && p[0] < ((xj - xi) * (p[1] - zi)) / (zj - zi) + xi) ins = !ins;
-  }
-  return ins;
-}
-function area(pts: V2[]) {
-  let s = 0;
-  for (let i = 0; i < pts.length; i++) {
-    const a = pts[i],
-      b = pts[(i + 1) % pts.length];
-    s += a[0] * b[1] - b[0] * a[1];
-  }
-  return Math.abs(s / 2);
-}
-function segInter(p: V2, q: V2, a: V2, b: V2) {
-  const d1x = q[0] - p[0],
-    d1z = q[1] - p[1],
-    d2x = b[0] - a[0],
-    d2z = b[1] - a[1];
-  const den = d1x * d2z - d1z * d2x;
-  if (Math.abs(den) < 1e-9) return false;
-  const t = ((a[0] - p[0]) * d2z - (a[1] - p[1]) * d2x) / den;
-  const u = ((a[0] - p[0]) * d1z - (a[1] - p[1]) * d1x) / den;
-  return t > 0 && t < 1 && u > 0 && u < 1;
-}
 
 // ---------- renderer ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -174,282 +100,6 @@ sun.shadow.normalBias = 0.04;
 scene.add(sun, sun.target);
 const flash = new THREE.SpotLight(0xfff2cc, 0, 26, 0.5, 0.5, 1.2);
 scene.add(flash, flash.target);
-
-// ---------- textures ----------
-function canvasTex(w: number, h: number, draw: (c: CanvasRenderingContext2D) => void) {
-  const cv = document.createElement('canvas');
-  cv.width = w;
-  cv.height = h;
-  draw(cv.getContext('2d')!);
-  const t = new THREE.CanvasTexture(shrink(cv));
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
-  return t;
-}
-const WALLC = ['#c9c1b0', '#b8b4a8', '#d8cfbd', '#a9a397', '#c4b49c', '#9fa7a8', '#d1c6b8'];
-const wallTexs = WALLC.map((col, wi) =>
-  canvasTex(256, 256, c => {
-    const tile = wi % 2 === 0; // 二丁掛 tile facades vs. painted render
-    c.fillStyle = col;
-    c.fillRect(0, 0, 256, 256);
-    if (tile) {
-      c.strokeStyle = 'rgba(70,60,50,.35)';
-      c.lineWidth = 1;
-      for (let y = 0; y < 256; y += 8) {
-        c.beginPath();
-        c.moveTo(0, y);
-        c.lineTo(256, y);
-        c.stroke();
-        for (let x = (y / 8) % 2 ? 0 : 12; x < 256; x += 24) {
-          c.beginPath();
-          c.moveTo(x, y);
-          c.lineTo(x, y + 8);
-          c.stroke();
-        }
-      }
-      for (let k = 0; k < 40; k++) {
-        c.fillStyle = 'rgba(120,120,115,.9)';
-        c.fillRect(Math.floor(Math.random() * 10) * 24, Math.floor(Math.random() * 32) * 8, 24, 8);
-      }
-    } // missing tiles
-    for (let i = 0; i < 1400; i++) {
-      c.fillStyle = `rgba(${Math.random() < 0.7 ? '0,0,0' : '255,255,255'},${Math.random() * 0.08})`;
-      c.fillRect(Math.random() * 256, Math.random() * 256, 1 + Math.random() * 4, 1 + Math.random() * 4);
-    }
-    for (let i = 0; i < 18; i++) {
-      const x = Math.random() * 256,
-        y0 = Math.random() * 120,
-        w = 2 + Math.random() * 10,
-        h = 40 + Math.random() * 180;
-      const g = c.createLinearGradient(0, y0, 0, y0 + h);
-      g.addColorStop(0, 'rgba(40,36,28,.38)');
-      g.addColorStop(1, 'rgba(40,36,28,0)');
-      c.fillStyle = g;
-      c.fillRect(x, y0, w, h);
-    } // rain streaks
-    for (let i = 0; i < 6; i++) {
-      const x = Math.random() * 220,
-        y = Math.random() * 220,
-        r = 8 + Math.random() * 26;
-      c.fillStyle = '#8f8a82';
-      c.beginPath();
-      for (let k = 0; k < 10; k++) {
-        const a = (k / 10) * Math.PI * 2,
-          rr = r * (0.5 + Math.random() * 0.6);
-        c.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr * 0.7);
-      }
-      c.fill();
-      c.strokeStyle = 'rgba(255,255,255,.25)';
-      c.stroke();
-    } // peeling plaster
-    const g2 = c.createLinearGradient(0, 190, 0, 256);
-    g2.addColorStop(0, 'rgba(30,40,25,0)');
-    g2.addColorStop(1, 'rgba(30,40,25,.55)');
-    c.fillStyle = g2;
-    c.fillRect(0, 190, 256, 66); // damp / mould at base
-    // window with rusty iron bars (鐵窗); some broken
-    const broken = wi % 3 === 1;
-    c.fillStyle = '#1e252c';
-    c.fillRect(60, 46, 136, 108);
-    c.fillStyle = broken ? '#20262c' : '#4e6478';
-    c.fillRect(66, 52, 124, 96);
-    if (broken) {
-      c.fillStyle = '#0c0e10';
-      c.beginPath();
-      c.moveTo(80, 60);
-      c.lineTo(150, 70);
-      c.lineTo(120, 130);
-      c.lineTo(90, 110);
-      c.fill();
-      c.strokeStyle = 'rgba(200,220,235,.7)';
-      c.lineWidth = 1;
-      for (let k = 0; k < 10; k++) {
-        c.beginPath();
-        c.moveTo(120, 95);
-        c.lineTo(120 + (Math.random() - 0.5) * 120, 95 + (Math.random() - 0.5) * 90);
-        c.stroke();
-      }
-      c.fillStyle = '#5a6a7a';
-      c.fillRect(150, 52, 40, 96);
-    } else {
-      c.fillStyle = 'rgba(255,255,255,.12)';
-      c.fillRect(70, 56, 30, 88);
-    }
-    c.strokeStyle = '#5a3018';
-    c.lineWidth = 5;
-    c.strokeRect(54, 40, 148, 120);
-    c.lineWidth = 3;
-    for (let x = 66; x < 200; x += 14) {
-      c.beginPath();
-      c.moveTo(x, 40);
-      c.lineTo(x, 160);
-      c.stroke();
-    }
-    c.beginPath();
-    c.moveTo(54, 100);
-    c.lineTo(202, 100);
-    c.stroke();
-    // long-term grime: grey cement-dust streaks under the sill, black water stains from the slab edge, rust bleeding from the 鐵窗
-    for (let i = 0; i < 26; i++) {
-      const x = 50 + Math.random() * 160;
-      const g = c.createLinearGradient(0, 158, 0, 256);
-      g.addColorStop(0, 'rgba(105,100,92,.55)');
-      g.addColorStop(1, 'rgba(105,100,92,0)');
-      c.fillStyle = g;
-      c.fillRect(x, 158, 1 + Math.random() * 5, 40 + Math.random() * 98);
-    }
-    for (let i = 0; i < 14; i++) {
-      const x = Math.random() * 256;
-      const g = c.createLinearGradient(0, 0, 0, 90);
-      g.addColorStop(0, 'rgba(20,20,18,.6)');
-      g.addColorStop(1, 'rgba(20,20,18,0)');
-      c.fillStyle = g;
-      c.beginPath();
-      c.moveTo(x, 0);
-      c.lineTo(x + 6 + Math.random() * 14, 0);
-      c.lineTo(x + 3 + Math.random() * 4, 30 + Math.random() * 60);
-      c.fill();
-    }
-    {
-      const g = c.createLinearGradient(0, 0, 0, 18);
-      g.addColorStop(0, 'rgba(25,25,22,.7)');
-      g.addColorStop(1, 'rgba(25,25,22,0)');
-      c.fillStyle = g;
-      c.fillRect(0, 0, 256, 18);
-    }
-    for (let i = 0; i < 4; i++) {
-      const x = Math.random() * 230,
-        y = 165 + Math.random() * 60;
-      c.fillStyle = 'rgba(60,55,50,.25)';
-      c.beginPath();
-      c.ellipse(x, y, 10 + Math.random() * 18, 6 + Math.random() * 10, 0, 0, Math.PI * 2);
-      c.fill();
-    }
-    for (let i = 0; i < 9; i++) {
-      const x = 56 + Math.random() * 146;
-      const g = c.createLinearGradient(0, 160, 0, 230);
-      g.addColorStop(0, 'rgba(120,60,20,.6)');
-      g.addColorStop(1, 'rgba(120,60,20,0)');
-      c.fillStyle = g;
-      c.fillRect(x, 160, 2 + Math.random() * 3, 30 + Math.random() * 60);
-    } // rust drips
-  }),
-);
-const wallMats = wallTexs.map(t => new THREE.MeshStandardMaterial({ map: t, roughness: 0.95 }));
-const wallMatsT = wallTexs.map(
-  t => new THREE.MeshStandardMaterial({ map: t, roughness: 0.9, transparent: true, opacity: 0.22, depthWrite: false }),
-);
-const roofMat = new THREE.MeshStandardMaterial({ color: 0x8c8a82, roughness: 1, side: THREE.DoubleSide });
-const tinMat = new THREE.MeshStandardMaterial({ color: 0x7f9fb0, roughness: 0.6, metalness: 0.3 });
-/* 鐵皮加蓋 variants: faded blue corrugated, rusted brown, grey-white, with rust streaks */
-const tinMats = [
-  ['#6f8f86', '#566f68'],
-  ['#5f8a86', '#46696a'],
-  ['#9a4a3a', '#743528'],
-  ['#8a5040', '#683a2e'],
-  ['#7e948a', '#62766e'],
-  ['#a85a46', '#80402f'],
-  ['#6a8ea6', '#4e6e82'],
-  ['#a8aaa6', '#7e807c'],
-].map(
-  ([b, l]) =>
-    new THREE.MeshStandardMaterial({
-      roughness: 0.65,
-      metalness: 0.25,
-      map: canvasTex(64, 64, c => {
-        c.fillStyle = b;
-        c.fillRect(0, 0, 64, 64);
-        c.fillStyle = l;
-        for (let i = 0; i < 64; i += 4) c.fillRect(i, 0, 1.5, 64);
-        for (let i = 0; i < 10; i++) {
-          const x = Math.random() * 64;
-          const g = c.createLinearGradient(0, 0, 0, 64);
-          g.addColorStop(0, 'rgba(120,60,25,.7)');
-          g.addColorStop(1, 'rgba(120,60,25,0)');
-          c.fillStyle = g;
-          c.fillRect(x, 0, 2 + Math.random() * 4, 20 + Math.random() * 44);
-        }
-      }),
-    }),
-);
-const tankMat = new THREE.MeshStandardMaterial({ color: 0xd8d8d0, roughness: 0.5, metalness: 0.4 });
-const floorMat = new THREE.MeshStandardMaterial({
-  map: canvasTex(64, 64, c => {
-    c.fillStyle = '#b9ad98';
-    c.fillRect(0, 0, 64, 64);
-    c.strokeStyle = '#8f8572';
-    c.strokeRect(0, 0, 32, 32);
-    c.strokeRect(32, 32, 32, 32);
-    c.strokeRect(0, 32, 32, 32);
-    c.strokeRect(32, 0, 32, 32);
-  }),
-  side: THREE.DoubleSide,
-});
-const roadTex = canvasTex(256, 256, c => {
-  c.fillStyle = '#3c3e41';
-  c.fillRect(0, 0, 256, 256);
-  for (let i = 0; i < 2500; i++) {
-    c.fillStyle = `rgba(${Math.random() < 0.5 ? '255,255,255' : '0,0,0'},${Math.random() * 0.07})`;
-    c.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
-  }
-  for (let i = 0; i < 5; i++) {
-    c.fillStyle = `rgba(${20 + Math.random() * 30},${20 + Math.random() * 30},${25 + Math.random() * 30},.6)`;
-    c.fillRect(Math.random() * 220, Math.random() * 220, 20 + Math.random() * 60, 15 + Math.random() * 40);
-  } // asphalt patches
-  c.strokeStyle = 'rgba(25,25,25,.22)';
-  c.lineWidth = 0.7;
-  for (let i = 0; i < 5; i++) {
-    let x = Math.random() * 256,
-      y = Math.random() * 256;
-    c.beginPath();
-    c.moveTo(x, y);
-    for (let k = 0; k < 4; k++) {
-      x += (Math.random() - 0.5) * 14;
-      y += (Math.random() - 0.5) * 14;
-      c.lineTo(x, y);
-    }
-    c.stroke();
-  } // hairline cracks
-  for (let i = 0; i < 6; i++) {
-    const g = c.createRadialGradient(0, 0, 0, 0, 0, 20);
-    g.addColorStop(0, 'rgba(10,10,12,.16)');
-    g.addColorStop(1, 'rgba(10,10,12,0)');
-    c.save();
-    c.translate(Math.random() * 256, Math.random() * 256);
-    c.scale(1, 0.6);
-    c.fillStyle = g;
-    c.fillRect(-20, -20, 40, 40);
-    c.restore();
-  }
-}); // oil stains
-const groundTex = canvasTex(256, 256, c => {
-  c.fillStyle = '#55565a';
-  c.fillRect(0, 0, 256, 256);
-  for (let i = 0; i < 3000; i++) {
-    c.fillStyle = `rgba(${Math.random() < 0.5 ? '255,255,255' : '0,0,0'},${Math.random() * 0.06})`;
-    c.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
-  }
-  for (let i = 0; i < 7; i++) {
-    c.fillStyle = `rgba(${95 + Math.random() * 30},${95 + Math.random() * 25},${90 + Math.random() * 20},.55)`;
-    c.fillRect(Math.random() * 230, Math.random() * 230, 20 + Math.random() * 70, 15 + Math.random() * 50);
-  } // poured-cement patches
-  c.strokeStyle = 'rgba(20,20,20,.2)';
-  c.lineWidth = 0.7;
-  for (let i = 0; i < 10; i++) {
-    let x = Math.random() * 256,
-      y = Math.random() * 256;
-    c.beginPath();
-    c.moveTo(x, y);
-    for (let k = 0; k < 7; k++) {
-      x += (Math.random() - 0.5) * 30;
-      y += (Math.random() - 0.5) * 30;
-      c.lineTo(x, y);
-    }
-    c.stroke();
-  }
-});
-
 // ---------- world state ----------
 const blds: Bld[] = [];
 const segs: Seg[] = [];
@@ -573,40 +223,6 @@ function shopType(s: string, n: string) {
   const r = rnd();
   return r < 0.06 ? 'store' : r < 0.1 ? 'pharmacy' : r < 0.115 ? 'police' : 'home';
 }
-const SIGN: Record<string, [string, string, string]> = {
-  store: ['7-12', '#e8eef0', '#d23a1e'],
-  pharmacy: ['康是福藥局', '#1d8a5a', '#ffffff'],
-  police: ['派出所', '#1d3f8a', '#ffffff'],
-};
-const signTex: Record<string, THREE.Texture> = {};
-for (const k in SIGN) {
-  const [t, bg, fg] = SIGN[k];
-  signTex[k] = canvasTex(256, 64, c => {
-    c.fillStyle = bg;
-    c.fillRect(0, 0, 256, 64);
-    if (k === 'store') {
-      c.fillStyle = '#f08a1c';
-      c.fillRect(0, 0, 256, 10);
-      c.fillStyle = '#1c9a4a';
-      c.fillRect(0, 54, 256, 10);
-    }
-    c.fillStyle = fg;
-    c.font = 'bold 40px sans-serif';
-    c.textAlign = 'center';
-    c.textBaseline = 'middle';
-    c.fillText(t, 128, 34);
-  });
-}
-const b2sign: Record<string, [string, string, string]> = {
-  store: ['7-12', '', ''],
-  pharmacy: ['', '', ''],
-  grocery: ['金來雜貨店', '#b8241c', '#fff2a0'],
-  breakfast: ['晨光早餐', '#f2a81c', '#7a1a10'],
-  betel: ['檳榔・香菸', '#111111', '#33ff66'],
-  market: ['全民福利超市', '#1a4aa8', '#ffffff'],
-  hardware: ['永興五金行', '#f0c020', '#1a1a1a'],
-};
-const extraSign: Record<string, THREE.Texture> = {};
 function setSign(b: Bld, k: string) {
   let tex = signTex[k];
   if (!tex) {
@@ -648,104 +264,6 @@ function setSign(b: Bld, k: string) {
     b.group.add(m);
     b.sign = m;
   }
-}
-const PARODY = [
-  '阿嬤小吃',
-  '金萬華當舖',
-  '老牌麵線',
-  '西門電玩',
-  '幸福理容',
-  '大眾五金',
-  '青草茶',
-  '鐘錶行',
-  '刺青',
-  '金紙香舖',
-];
-const shopSignTex = PARODY.map((t, i) =>
-  canvasTex(256, 64, c => {
-    c.fillStyle = ['#a8221e', '#20344f', '#c9971c', '#6a2a8a', '#2a6a3a'][i % 5];
-    c.fillRect(0, 0, 256, 64);
-    c.fillStyle = '#fff6d0';
-    c.font = 'bold 38px sans-serif';
-    c.textAlign = 'center';
-    c.textBaseline = 'middle';
-    c.fillText(t, 128, 34);
-  }),
-);
-
-const contMat = {
-  shelf: new THREE.MeshStandardMaterial({ color: 0xd9d9d9 }),
-  fridge: new THREE.MeshStandardMaterial({ color: 0xeef4f8, roughness: 0.3 }),
-  cab: new THREE.MeshStandardMaterial({ color: 0x8a5a34 }),
-  crate: new THREE.MeshStandardMaterial({ color: 0x4f5a2a }),
-};
-// PLA kill drops: soldier type by id → weapon + magazines with weighted rarity
-const SOLTYPE = ['步槍兵', '射手', '機槍手', '軍官', '特戰'] as const;
-function solType(id: number) {
-  const r = (((Math.sin(id * 91.7 + 3.1) * 43758.5453) % 1) + 1) % 1;
-  return r < 0.66 ? 0 : r < 0.78 ? 1 : r < 0.86 ? 2 : r < 0.94 ? 3 : 4;
-}
-function plaDrop(id: number) {
-  const t = solType(id),
-    it: Record<string, number> = {};
-  const R = Math.random,
-    pk = (a: [string, number][]) => {
-      let r = R() * a.reduce((s, x) => s + x[1], 0);
-      for (const [k, w] of a) if ((r -= w) <= 0) return k;
-      return a[0][0];
-    };
-  const add = (k: string, n = 1) => {
-    if (n > 0) it[k] = (it[k] || 0) + n;
-  };
-  if (t === 0) {
-    if (R() < 0.35)
-      add(
-        pk([
-          ['qbz191', 3],
-          ['qbz95', 2],
-        ]),
-      );
-    add('mag191', R() < 0.5 ? 1 : 0);
-    add('a556', Math.floor(R() * 25));
-  }
-  if (t === 1) {
-    if (R() < 0.4)
-      add(
-        pk([
-          ['qbu191', 2],
-          ['qbu88', 1],
-        ]),
-      );
-    add(R() < 0.5 ? 'mag88' : 'mag191', 1);
-    add('a556', Math.floor(R() * 12));
-  }
-  if (t === 2) {
-    if (R() < 0.3) add('qjy88');
-    add('belt88', R() < 0.6 ? 1 : 0);
-    add('a556', 10 + Math.floor(R() * 40));
-  }
-  if (t === 3) {
-    if (R() < 0.55) add('qsz92');
-    add('mag92', 1 + (R() < 0.3 ? 1 : 0));
-  }
-  if (t === 4) {
-    if (R() < 0.4)
-      add(
-        pk([
-          ['qcw05', 2],
-          ['qbs09', 1],
-        ]),
-      );
-    add(R() < 0.5 ? 'mag05' : 'a12', R() < 0.5 ? 1 : 4);
-  }
-  if (R() < (t === 4 ? 0.15 : 0.03)) add('fpv');
-  if (R() < 0.1) add('dmotor', 1 + Math.floor(R() * 2));
-  if (R() < 0.18) add('grenade');
-  if (R() < 0.08) add('helmet');
-  if (R() < 0.04) add('vest');
-  if (R() < 0.45) add('ration');
-  if (R() < 0.25) add('bandage');
-  return it;
 }
 function dropGun(c: Cont, p: THREE.Vector3, it: Record<string, number>) {
   const g = Object.keys(it).find(k => ITEMS[k].kind === 'gun') || Object.keys(it).find(k => ITEMS[k].mag);
@@ -1224,17 +742,6 @@ function buildMap(data: any) {
   scene.add(ground);
   // roads
   const RW: Record<string, number> = ROADW;
-  const _unused = {
-    primary: 16,
-    secondary: 12,
-    tertiary: 9,
-    residential: 6,
-    unclassified: 6,
-    living_street: 5,
-    service: 4,
-    pedestrian: 6,
-    footway: 2.5,
-  };
   const rg: THREE.BufferGeometry[] = [],
     lg: THREE.BufferGeometry[] = [];
   for (const r of data.roads) {
@@ -1579,21 +1086,9 @@ function buildMap(data: any) {
   buildLamps();
 }
 
-const ROADW: Record<string, number> = {
-  trunk: 18,
-  primary: 16,
-  secondary: 12,
-  tertiary: 9,
-  residential: 6,
-  unclassified: 6,
-  living_street: 5,
-  service: 4,
-  pedestrian: 6,
-  footway: 2.5,
-};
+let facade: ReturnType<typeof buildFacade> | null = null;
 let decay: ReturnType<typeof buildDecay> | null = null;
 let alley: ReturnType<typeof buildAlley> | null = null;
-const roadMat = new THREE.MeshStandardMaterial({ map: roadTex, roughness: 0.95 });
 let checkpoints: V2[] = [];
 // ---------- street lamps ----------
 const lamps: [number, number, number][] = [];
@@ -1782,8 +1277,7 @@ function spawnSoldiers(dead: Set<number>) {
   }
 }
 
-// ---------- time / noise / log ----------
-const groundMat = new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1 });
+// ---------- player role, drivable vehicles, streamed road detail, traffic ----------
 let ROLE: Role = roleById('courier');
 function roadWAt(x: number, z: number) {
   let best = 1e9,
@@ -2748,50 +2242,7 @@ function tracer(a: THREE.Vector3, b: THREE.Vector3) {
 }
 
 // ---------- input ----------
-const joy = { x: 0, y: 0, id: -1 };
-{
-  const J = document.getElementById('joy')!,
-    K = document.getElementById('joyk')!;
-  const R = 55;
-  let cx = 0,
-    cy = 0;
-  const upd = (e: PointerEvent) => {
-    let dx = e.clientX - cx,
-      dy = e.clientY - cy;
-    const L = Math.hypot(dx, dy);
-    if (L > R) {
-      dx *= R / L;
-      dy *= R / L;
-    }
-    joy.x = dx / R;
-    joy.y = dy / R;
-    K.style.transform = `translate(${dx}px,${dy}px)`;
-  };
-  J.addEventListener('pointerdown', e => {
-    e.preventDefault();
-    const b = J.getBoundingClientRect();
-    cx = b.left + b.width / 2;
-    cy = b.top + b.height / 2;
-    joy.id = e.pointerId;
-    J.setPointerCapture(e.pointerId);
-    upd(e);
-  });
-  J.addEventListener('pointermove', e => {
-    if (e.pointerId === joy.id) upd(e);
-  });
-  const end = (e: PointerEvent) => {
-    if (e.pointerId !== joy.id) return;
-    joy.id = -1;
-    joy.x = joy.y = 0;
-    K.style.transform = '';
-  };
-  J.addEventListener('pointerup', end);
-  J.addEventListener('pointercancel', end);
-  if (MOBILE) {
-    for (const ev of ['touchmove', 'gesturestart', 'contextmenu', 'selectstart'])
-      document.addEventListener(ev, e => e.preventDefault(), { passive: false });
-  }
-}
+initJoystick(MOBILE);
 const keys: Record<string, boolean> = {};
 let mouse = new THREE.Vector2();
 let clicking = false;
@@ -3229,10 +2680,6 @@ function tryVault() {
   player.rig.vaultT = 0.55;
   player.mesh.rotation.y = Math.atan2(fwd.x, fwd.z);
   noise(player.pos.x, player.pos.z, 4);
-}
-function segX(a: V2, b: V2, c: V2, d: V2) {
-  const o = (p: V2, q: V2, r: V2) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
-  return o(a, b, c) !== o(a, b, d) && o(c, d, a) !== o(c, d, b);
 }
 function shove() {
   if (player.cd > 0 || player.sleeping || dead) return;
