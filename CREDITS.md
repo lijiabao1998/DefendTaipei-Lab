@@ -9,3 +9,14 @@
 - 海洋（Gerstner）、天空、雲、煙火、浪花、調色、景深、bloom：程式產生 shader。
 - 音效：WebAudio 即時合成（旋翼、海浪），未使用任何音檔。
 - 頂樓加蓋參考（僅參考外觀，未使用影像）：PIXTA 132391252、自由時報 playing.ltn.com.tw/article/12528、東森新聞 488006（萬華西園路頂加）。
+
+## 解放軍制式輕兵器（v10 敵兵掉落）參考來源
+型號／口徑／彈匣容量皆依下列公開資料（Wikipedia 條目及其引用）；重量標「約值」者為推估。
+- QBZ-191：5.8×42mm、30 發彈匣（另有 75 發彈鼓）；同族 QBU-191 射手型 — https://en.wikipedia.org/wiki/QBZ-191
+- QBZ-95/95-1：5.8×42mm、30 發彈匣 — https://en.wikipedia.org/wiki/QBZ-95
+- QBU-88：5.8×42mm、10 發彈匣 — https://en.wikipedia.org/wiki/QBU-88
+- QSZ-92：9×19mm 15 發／5.8×21mm 20 發，重 760 g — https://en.wikipedia.org/wiki/QSZ-92
+- QJY-88：5.8×42mm，100／200 發彈鏈箱 — https://en.wikipedia.org/wiki/QJY-88
+- QCW-05：5.8×21mm（DAP92），50 發彈匣，一體消音 — https://en.wikipedia.org/wiki/QCW-05
+- QBS-09：18.4mm（12 號），5 發管式彈倉，重 3.45 kg — https://en.wikipedia.org/wiki/QBS-09
+- 手榴彈、頭盔、防彈背心、口糧以通稱表示，未對應特定型號。圖示均為原創示意剪影。

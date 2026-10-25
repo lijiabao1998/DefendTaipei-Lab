@@ -6,7 +6,7 @@ import { makeShack, setShackNight } from './rooftin';
 let facade: ReturnType<typeof buildFacade> | null = null;
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { ITEMS, LOOT } from './items';
-import { iconURL } from './icons';
+import { iconURL, iconMat } from './icons';
 import { makeRig, animate, setWeapon, Rig, AnimState } from './human';
 import { Nav, smooth } from './nav';
 import { VehicleSystem, VehicleKind } from './vehicles';
@@ -141,6 +141,20 @@ const PARODY = ['阿嬤小吃', '金萬華當舖', '老牌麵線', '西門電玩
 const shopSignTex = PARODY.map((t, i) => canvasTex(256, 64, c => { c.fillStyle = ['#a8221e', '#20344f', '#c9971c', '#6a2a8a', '#2a6a3a'][i % 5]; c.fillRect(0, 0, 256, 64); c.fillStyle = '#fff6d0'; c.font = 'bold 38px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(t, 128, 34); }));
 
 const contMat = { shelf: new THREE.MeshStandardMaterial({ color: 0xd9d9d9 }), fridge: new THREE.MeshStandardMaterial({ color: 0xeef4f8, roughness: 0.3 }), cab: new THREE.MeshStandardMaterial({ color: 0x8a5a34 }), crate: new THREE.MeshStandardMaterial({ color: 0x4f5a2a }) };
+// PLA kill drops: soldier type by id → weapon + magazines with weighted rarity
+const SOLTYPE = ['步槍兵', '射手', '機槍手', '軍官', '特戰'] as const;
+function solType(id: number) { const r = ((Math.sin(id * 91.7 + 3.1) * 43758.5453) % 1 + 1) % 1; return r < 0.66 ? 0 : r < 0.78 ? 1 : r < 0.86 ? 2 : r < 0.94 ? 3 : 4; }
+function plaDrop(id: number) { const t = solType(id), it: Record<string, number> = {}; const R = Math.random, pk = (a: [string, number][]) => { let r = R() * a.reduce((s, x) => s + x[1], 0); for (const [k, w] of a) if ((r -= w) <= 0) return k; return a[0][0]; };
+  const add = (k: string, n = 1) => { if (n > 0) it[k] = (it[k] || 0) + n; };
+  if (t === 0) { if (R() < 0.35) add(pk([['qbz191', 3], ['qbz95', 2]])); add('mag191', R() < 0.5 ? 1 : 0); add('a556', Math.floor(R() * 25)); }
+  if (t === 1) { if (R() < 0.4) add(pk([['qbu191', 2], ['qbu88', 1]])); add(R() < 0.5 ? 'mag88' : 'mag191', 1); add('a556', Math.floor(R() * 12)); }
+  if (t === 2) { if (R() < 0.3) add('qjy88'); add('belt88', R() < 0.6 ? 1 : 0); add('a556', 10 + Math.floor(R() * 40)); }
+  if (t === 3) { if (R() < 0.55) add('qsz92'); add('mag92', 1 + (R() < 0.3 ? 1 : 0)); }
+  if (t === 4) { if (R() < 0.4) add(pk([['qcw05', 2], ['qbs09', 1]])); add(R() < 0.5 ? 'mag05' : 'a12', R() < 0.5 ? 1 : 4); }
+  if (R() < 0.18) add('grenade'); if (R() < 0.08) add('helmet'); if (R() < 0.04) add('vest'); if (R() < 0.45) add('ration'); if (R() < 0.25) add('bandage');
+  return it; }
+function dropGun(c: Cont, p: THREE.Vector3, it: Record<string, number>) { const g = Object.keys(it).find(k => ITEMS[k].kind === 'gun') || Object.keys(it).find(k => ITEMS[k].mag); if (!g) return;
+  const L = ITEMS[g].kind === 'gun' ? (g === 'qsz92' ? 0.45 : g === 'qjy88' ? 1.5 : 1.15) : 0.5; const m = new THREE.Mesh(new THREE.PlaneGeometry(L * 1.7, L * 1.7), iconMat(g)); m.rotation.x = -Math.PI / 2; m.rotation.z = Math.random() * 6.28; m.position.set(p.x + 0.7, 0.04, p.z + 0.3); scene.add(m); (c as any).gunMesh = m; }
 function makeCont(id: string, p: V2, type: string, b?: Bld, preset?: Record<string, number>) {
   const items: Record<string, number> = preset || {};
   if (!preset) { const table = LOOT[type]; const n = 1 + Math.floor(rnd() * 3); const tot = table.reduce((s, x) => s + x[1], 0); for (let i = 0; i < n; i++) { if (rnd() < 0.18) continue; let r = rnd() * tot; for (const [k, w, m] of table) { r -= w; if (r <= 0) { items[k] = (items[k] || 0) + 1 + Math.floor(rnd() * m); break; } } } }
@@ -437,6 +451,7 @@ function addItem(k: string, n = 1) { player.inv[k] = (player.inv[k] || 0) + n; }
 function useItem(k: string) {
   const d = ITEMS[k]; if (!player.inv[k]) return;
   if (d.kind === 'melee' || d.kind === 'gun') { player.equip = player.equip === k ? '' : k; log(player.equip ? `裝備了 ${d.name}` : '收起武器'); }
+  else if (d.mag && d.ammo) { player.inv[d.ammo] = (player.inv[d.ammo] || 0) + d.mag; if (--player.inv[k] <= 0) delete player.inv[k]; log(`退出 ${d.mag} 發 ${ITEMS[d.ammo].name}`); }
   else if (d.kind === 'food' || d.kind === 'drink' || d.kind === 'med') {
     player.hunger = clamp(player.hunger + (d.hunger || 0), 0, 100); player.thirst = clamp(player.thirst + (d.thirst || 0), 0, 100); player.fatigue = clamp(player.fatigue + (d.fatigue || 0), 0, 100); player.hp = clamp(player.hp + (d.hp || 0), 0, 100); if (d.stopBleed && player.bleed) { player.bleed = false; log('止血了', '#9f9'); }
     log(`使用了 ${d.name}`); if (--player.inv[k] <= 0) delete player.inv[k];
@@ -449,7 +464,7 @@ function renderPanel() {
   if (!panelOpen) return; const p = $('panel'); p.innerHTML = '';
   const col = (title: string) => { const c = document.createElement('div'); c.className = 'col'; c.innerHTML = `<h3>${title}</h3>`; p.appendChild(c); return c; };
   const inv = col(`背包（${weight().toFixed(1)} / 15 kg）`);
-  for (const [k, n] of Object.entries(player.inv)) { const d = ITEMS[k]; const e = document.createElement('div'); e.className = 'it'; e.innerHTML = `<span><img src="${iconURL(k)}">${d.name}${player.equip === k ? ' ★' : ''} ×${n}</span><small>${{ food: '食用', drink: '飲用', med: '治療', melee: '裝備', gun: '裝備', ammo: '彈藥', tool: '工具' }[d.kind]}</small>`; e.title = d.desc || ''; e.onclick = () => useItem(k); inv.appendChild(e); }
+  for (const [k, n] of Object.entries(player.inv)) { const d = ITEMS[k]; const e = document.createElement('div'); e.className = 'it'; e.innerHTML = `<span><img src="${iconURL(k)}">${d.name}${d.cal ? `<small style="opacity:.6"> ${d.cal}${d.cap ? `・${d.cap}發` : ''}・${d.w}kg</small>` : ''}${player.equip === k ? ' ★' : ''} ×${n}</span><small>${{ food: '食用', drink: '飲用', med: '治療', melee: '裝備', gun: '裝備', ammo: '彈藥', tool: '工具' }[d.kind]}</small>`; e.title = d.desc || ''; e.onclick = () => useItem(k); inv.appendChild(e); }
   if (!Object.keys(player.inv).length) inv.innerHTML += '<small>空的</small>';
   if (curCont) {
     const c = col(curCont.label); const cc = curCont;
@@ -459,7 +474,7 @@ function renderPanel() {
   }
   const close = document.createElement('button'); close.textContent = '關閉 (Esc)'; close.onclick = closePanel; p.lastElementChild!.appendChild(close);
 }
-function take(c: Cont, k: string, all = false) { const n = all ? c.items[k] : (ITEMS[k].kind === 'ammo' ? c.items[k] : 1); if (weight() + ITEMS[k].w * n > 15) { log('背包太重了', '#f99'); return; } addItem(k, n); c.items[k] -= n; if (c.items[k] <= 0) delete c.items[k]; updateVis(c); if (!all) renderPanel(); }
+function take(c: Cont, k: string, all = false) { const n = all ? c.items[k] : (ITEMS[k].kind === 'ammo' ? c.items[k] : 1); if (weight() + ITEMS[k].w * n > 15) { log('背包太重了', '#f99'); return; } addItem(k, n); c.items[k] -= n; if (c.items[k] <= 0) delete c.items[k]; const gm = (c as any).gunMesh; if (gm && !Object.keys(c.items).some(q => ITEMS[q].kind === 'gun' || ITEMS[q].mag)) gm.visible = false; updateVis(c); if (!all) renderPanel(); }
 function toggleInv() { if (!started) return; if (panelOpen) closePanel(); else { curCont = null; panelOpen = true; $('panel').classList.remove('hidden'); renderPanel(); } }
 function closePanel() { panelOpen = false; curCont = null; $('panel').classList.add('hidden'); }
 
@@ -526,8 +541,7 @@ function playerAttack() {
 function damageSol(s: Sol, dmg: number, stealth: boolean) {
   s.hp -= dmg; if (stealth) log('偷襲！', '#ff9');
   if (s.hp <= 0) { s.state = 'dead'; s.cone.visible = false; player.kills++; log('擊倒一名佔領軍士兵', '#ffd76a');
-    const it: Record<string, number> = { a556: 5 + Math.floor(rnd() * 20) }; if (rnd() < 0.3) it.rifle = 1; if (rnd() < 0.5) it.ration = 1; if (rnd() < 0.3) it.bandage = 1;
-    makeCont('d' + s.id, [s.pos.x, s.pos.z], 'crate', undefined, it); checkSectors();
+    const it = plaDrop(s.id); const dc = makeCont('d' + s.id, [s.pos.x, s.pos.z], 'crate', undefined, it); dc.label = '士兵遺留裝備'; dropGun(dc, s.pos, it); checkSectors();
   } else { s.rig.hurtT = 0.35; s.rig.hurtSide = rnd() < 0.5 ? -1 : 1; s.stun = Math.max(s.stun || 0, 0.4); s.state = 'combat'; s.alert = 1; s.lastSeen = [player.pos.x, player.pos.z]; }
 }
 const liberated = new Set<number>();
@@ -781,7 +795,7 @@ async function boot() {
   const h = document.createElement('div'); h.className = 'selh'; h.textContent = sv ? '或建立新的倖存者：' : '選擇你的倖存者：'; btns.appendChild(h); btns.appendChild(dl); btns.appendChild(sel);
   camera.position.copy(player.pos).add(CAM_OFF); camera.lookAt(player.pos);
   addEventListener('beforeunload', save);
-  (window as any).__game = { player, sols, blds, conts, nav, started: () => started, go, vehicles, decay: () => decay, alley: () => alley, facade: () => facade, setSpeed, speed: () => speed, WX, airdrop, makeBucket, noise, dayh: () => DAYH, evac: () => evac && evac.pos, evacOpen, doEvac, INF: () => INF, RV: () => RV, infPos: () => infPos, elderPos: () => elderPos, npcInteract, verifyInf, setMin: (m: number) => { gameMin = m; }, parks: () => parks, simRain: (h: number) => { for (let i = 0; i < h * 20; i++) updateWeather(0.05, 0.05); }, camera, CAM_OFF, setTime: (m: number) => { gameMin = m; }, UT, start: () => start!.c, scene, gm: () => gameMin, tp: (x: number, z: number) => player.pos.set(x, 0, z) };
+  (window as any).__game = { player, sols, blds, conts, nav, started: () => started, go, vehicles, decay: () => decay, alley: () => alley, facade: () => facade, setSpeed, speed: () => speed, WX, airdrop, makeBucket, noise, dayh: () => DAYH, evac: () => evac && evac.pos, evacOpen, doEvac, INF: () => INF, RV: () => RV, infPos: () => infPos, elderPos: () => elderPos, npcInteract, verifyInf, setMin: (m: number) => { gameMin = m; }, parks: () => parks, simRain: (h: number) => { for (let i = 0; i < h * 20; i++) updateWeather(0.05, 0.05); }, camera, CAM_OFF, setTime: (m: number) => { gameMin = m; }, UT, start: () => start!.c, scene, gm: () => gameMin, tp: (x: number, z: number) => player.pos.set(x, 0, z), damageSol, toggleInv, addItem };
 }
 boot().catch(e => { console.error(e); $('loadmsg').textContent = '載入失敗：' + e; });
 loop();

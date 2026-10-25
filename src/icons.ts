@@ -23,6 +23,23 @@ function bag(c: C, col: string, label: string, sub: string, tcol = '#fff', deco?
   c.fillStyle = 'rgba(255,255,255,.18)'; c.fillRect(26, 28, 12, 76); deco?.(c); txt(c, label, 64, 62, label.length > 2 ? 20 : 28, tcol, 'rgba(0,0,0,.45)'); txt(c, sub, 64, 92, 11, tcol);
 }
 function box(c: C, col: string, label: string, sub: string, tcol = '#fff') { c.fillStyle = col; rr(c, 20, 30, 88, 72, 6); c.fill(); c.fillStyle = 'rgba(0,0,0,.18)'; c.fillRect(20, 84, 88, 18); c.fillStyle = 'rgba(255,255,255,.25)'; c.fillRect(20, 30, 88, 8); txt(c, label, 64, 60, label.length > 3 ? 15 : 20, tcol, 'rgba(0,0,0,.35)'); txt(c, sub, 64, 93, 10, tcol); }
+
+// generic PLA small-arms silhouettes (original drawings, not traced)
+function gunIco(c: C, o: { bull?: boolean; len?: number; mag?: 'box' | 'curve' | 'none' | 'tube' | 'belt'; scope?: boolean; supp?: boolean; bipod?: boolean; col?: string; label: string; pistol?: boolean }) {
+  const col = o.col || '#2c3128', L = o.len || 1; c.save(); c.translate(64, 64); c.rotate(-0.12);
+  if (o.pistol) { c.fillStyle = col; rr(c, -40, -18, 80, 18, 3); c.fill(); c.beginPath(); c.moveTo(10, 0); c.lineTo(34, 0); c.lineTo(40, 40); c.lineTo(18, 40); c.closePath(); c.fill(); c.strokeStyle = col; c.lineWidth = 4; c.beginPath(); c.arc(4, 6, 8, 0, Math.PI); c.stroke(); }
+  else { const x0 = -58 * L, x1 = 58 * L; c.fillStyle = col; c.fillRect(x0 + 14, -10, x1 - x0 - 30, 14); c.fillRect(x1 - 18, -6, o.supp ? 20 : 16, o.supp ? 10 : 5); if (o.supp) { c.fillStyle = '#1e211c'; c.fillRect(x1 - 30, -9, 30, 14); c.fillStyle = col; }
+    c.beginPath(); if (o.bull) { c.moveTo(x0, -10); c.lineTo(x0 + 18, -10); c.lineTo(x0 + 18, 12); c.lineTo(x0, 16); } else { c.moveTo(x0, -8); c.lineTo(x0 + 18, -6); c.lineTo(x0 + 18, 6); c.lineTo(x0, 16); } c.closePath(); c.fill();
+    const gx = o.bull ? 8 : -14; c.beginPath(); c.moveTo(gx, 4); c.lineTo(gx + 10, 4); c.lineTo(gx + 6, 28); c.lineTo(gx - 4, 28); c.closePath(); c.fill(); c.strokeStyle = col; c.lineWidth = 3; c.beginPath(); c.arc(gx - 6, 8, 6, 0, Math.PI); c.stroke();
+    const mx = o.bull ? gx - 26 : gx + 14; c.fillStyle = '#3a3e34';
+    if (o.mag === 'curve') { c.beginPath(); c.moveTo(mx, 4); c.lineTo(mx + 12, 4); c.quadraticCurveTo(mx + 16, 22, mx + 22, 36); c.lineTo(mx + 10, 38); c.quadraticCurveTo(mx + 4, 22, mx, 4); c.fill(); }
+    if (o.mag === 'box') { c.fillRect(mx, 4, 11, 20); } if (o.mag === 'tube') { c.fillRect(x0 + 40, 4, x1 - x0 - 70, 6); }
+    if (o.mag === 'belt') { c.fillStyle = '#7a6a3a'; c.fillRect(mx - 4, 4, 26, 22); c.fillStyle = '#c9a23a'; for (let i = 0; i < 6; i++) c.fillRect(mx - 30 + i * 5, 26 + i * 2, 3, 8); }
+    if (o.scope) { c.fillStyle = '#1a1a1a'; rr(c, -24, -24, 46, 10, 4); c.fill(); c.fillRect(-6, -16, 6, 7); }
+    else { c.fillStyle = '#1a1a1a'; c.fillRect(-14, -16, 22, 6); }
+    if (o.bipod) { c.strokeStyle = '#1a1a1a'; c.lineWidth = 3; c.beginPath(); c.moveTo(x1 - 34, 2); c.lineTo(x1 - 44, 30); c.moveTo(x1 - 34, 2); c.lineTo(x1 - 24, 30); c.stroke(); } }
+  c.restore(); c.fillStyle = '#f2d27a'; c.font = 'bold 15px sans-serif'; c.textAlign = 'center'; c.fillText(o.label, 64, 118); }
+function magIco(c: C, label: string, n: string, col = '#3a3e34', curve = true) { c.fillStyle = col; c.save(); c.translate(64, 56); c.rotate(curve ? 0.25 : 0); rr(c, -14, -40, 28, 78, 4); c.fill(); c.fillStyle = '#c9a23a'; rr(c, -9, -46, 18, 10, 3); c.fill(); c.restore(); c.fillStyle = '#fff'; c.font = 'bold 16px sans-serif'; c.textAlign = 'center'; c.fillText(n, 64, 62); c.fillStyle = '#f2d27a'; c.font = 'bold 14px sans-serif'; c.fillText(label, 64, 120); }
 const DRAW: Record<string, (c: C) => void> = {
   water: c => bottle(c, '#2a6fd6', '#9fd2ff', '#1f5fbf', '水源山', '天然礦泉水'),
   tea: c => bottle(c, '#1d7a3a', '#c9c25a', '#226b34', '茶裡旺', '日式綠茶 無糖'),
@@ -55,6 +72,21 @@ const DRAW: Record<string, (c: C) => void> = {
   rifle: c => { c.fillStyle = '#2b2f28'; c.fillRect(6, 54, 90, 14); c.fillRect(96, 58, 26, 6); c.fillStyle = '#4b5232'; c.beginPath(); c.moveTo(6, 54); c.lineTo(28, 54); c.lineTo(24, 86); c.lineTo(6, 82); c.fill(); c.fillStyle = '#2b2f28'; c.beginPath(); c.moveTo(56, 68); c.lineTo(68, 68); c.lineTo(72, 100); c.lineTo(62, 100); c.fill(); c.fillStyle = '#1a1a1a'; c.fillRect(40, 66, 10, 20); c.fillRect(44, 44, 24, 10); },
   a9: c => { c.fillStyle = '#5a4a2a'; rr(c, 18, 60, 92, 48, 4); c.fill(); for (let i = 0; i < 5; i++) { c.fillStyle = '#c9a23a'; rr(c, 26 + i * 16, 30, 11, 34, 5); c.fill(); c.fillStyle = '#b06a2a'; c.fillRect(26 + i * 16, 30, 11, 8); } txt(c, '9mm', 64, 86, 20, '#fff'); },
   a556: c => { c.fillStyle = '#3a4a2a'; rr(c, 18, 60, 92, 48, 4); c.fill(); for (let i = 0; i < 5; i++) { c.fillStyle = '#c9a23a'; rr(c, 26 + i * 16, 16, 10, 48, 5); c.fill(); c.fillStyle = '#7a5a2a'; c.fillRect(26 + i * 16, 16, 10, 12); } txt(c, '5.8mm', 64, 86, 18, '#fff'); },
+  qbz191: c => gunIco(c, { mag: 'curve', label: 'QBZ-191' }),
+  qbz95: c => gunIco(c, { bull: true, mag: 'curve', label: 'QBZ-95-1' }),
+  qbu191: c => gunIco(c, { mag: 'curve', scope: true, len: 1.1, bipod: true, label: 'QBU-191' }),
+  qbu88: c => gunIco(c, { bull: true, mag: 'box', scope: true, len: 1.1, bipod: true, label: 'QBU-88' }),
+  qsz92: c => gunIco(c, { pistol: true, label: 'QSZ-92' }),
+  qjy88: c => gunIco(c, { mag: 'belt', bipod: true, len: 1.1, label: 'QJY-88' }),
+  qcw05: c => gunIco(c, { bull: true, mag: 'box', supp: true, len: 0.75, label: 'QCW-05' }),
+  qbs09: c => gunIco(c, { mag: 'tube', col: '#2a2a2a', label: 'QBS-09' }),
+  mag191: c => magIco(c, '5.8×42 彈匣', '30'), mag88: c => magIco(c, 'QBU-88 彈匣', '10', '#2a2a2a', false), mag92: c => magIco(c, 'QSZ-92 彈匣', '15', '#2a2a2a', false), mag05: c => magIco(c, 'QCW-05 彈匣', '50'),
+  belt88: c => { c.fillStyle = '#4b5232'; rr(c, 18, 36, 92, 62, 6); c.fill(); c.fillStyle = '#e8e0c0'; c.font = 'bold 14px sans-serif'; c.textAlign = 'center'; c.fillText('5.8×42', 64, 72); c.fillStyle = '#f2d27a'; c.fillText('彈鏈 100', 64, 120); },
+  a58p: c => { c.fillStyle = '#3a3e4a'; rr(c, 18, 60, 92, 48, 4); c.fill(); for (let i = 0; i < 6; i++) { c.fillStyle = '#c9a23a'; rr(c, 24 + i * 14, 30, 9, 32, 4); c.fill(); } c.fillStyle = '#fff'; c.font = 'bold 13px sans-serif'; c.textAlign = 'center'; c.fillText('5.8×21', 64, 92); },
+  a12: c => { for (let i = 0; i < 4; i++) { c.fillStyle = '#a02a20'; rr(c, 22 + i * 22, 26, 16, 64, 3); c.fill(); c.fillStyle = '#c9a23a'; c.fillRect(22 + i * 22, 78, 16, 14); } c.fillStyle = '#fff'; c.font = 'bold 13px sans-serif'; c.textAlign = 'center'; c.fillText('12 號', 64, 116); },
+  grenade: c => { c.fillStyle = '#3e4a2e'; c.beginPath(); c.ellipse(64, 72, 26, 34, 0, 0, 7); c.fill(); c.fillStyle = '#777'; c.fillRect(56, 30, 16, 12); c.strokeStyle = '#aaa'; c.lineWidth = 3; c.beginPath(); c.arc(80, 34, 7, 0, 7); c.stroke(); },
+  helmet: c => { c.fillStyle = '#4b5a38'; c.beginPath(); c.arc(64, 74, 42, Math.PI, 0); c.lineTo(110, 84); c.lineTo(18, 84); c.fill(); for (let i = 0; i < 40; i++) { c.fillStyle = ['#3a4628', '#6a6a44', '#2a3020'][i % 3]; c.fillRect(30 + (i * 37) % 70, 44 + (i * 13) % 34, 8, 5); } },
+  vest: c => { c.fillStyle = '#4b5a38'; c.beginPath(); c.moveTo(30, 20); c.lineTo(50, 20); c.lineTo(64, 36); c.lineTo(78, 20); c.lineTo(98, 20); c.lineTo(104, 110); c.lineTo(24, 110); c.fill(); c.fillStyle = '#3a4628'; for (let i = 0; i < 3; i++) rr(c, 32 + i * 22, 70, 18, 26, 3), c.fill(); },
   plank: c => { c.save(); c.translate(64, 64); c.rotate(-0.5); c.fillStyle = '#b07a44'; c.fillRect(-56, -14, 112, 28); c.strokeStyle = '#7a5028'; c.lineWidth = 2; for (let i = -3; i < 4; i++) { c.beginPath(); c.moveTo(-56, i * 4); c.bezierCurveTo(-20, i * 4 + 4, 20, i * 4 - 4, 56, i * 4); c.stroke(); } c.restore(); },
   hammer: c => { c.save(); c.translate(64, 64); c.rotate(-0.6); c.fillStyle = '#8a5a2c'; c.fillRect(-5, -20, 10, 76); c.fillStyle = '#555'; c.fillRect(-26, -40, 46, 20); c.fillStyle = '#888'; c.fillRect(-26, -40, 46, 6); c.restore(); },
 };
