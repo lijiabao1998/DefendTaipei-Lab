@@ -2,6 +2,7 @@ import { buildEvacZone, playEvac, cine } from './evac';
 import * as THREE from 'three';
 import { buildFacade } from './facade';
 import { buildParks } from './park';
+import { ArmorSystem, type ArmorKind } from './armor';
 import { makeShack, setShackNight } from './rooftin';
 let facade: ReturnType<typeof buildFacade> | null = null;
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -155,6 +156,18 @@ function plaDrop(id: number) { const t = solType(id), it: Record<string, number>
   return it; }
 function dropGun(c: Cont, p: THREE.Vector3, it: Record<string, number>) { const g = Object.keys(it).find(k => ITEMS[k].kind === 'gun') || Object.keys(it).find(k => ITEMS[k].mag); if (!g) return;
   const L = ITEMS[g].kind === 'gun' ? (g === 'qsz92' ? 0.45 : g === 'qjy88' ? 1.5 : 1.15) : 0.5; const m = new THREE.Mesh(new THREE.PlaneGeometry(L * 1.7, L * 1.7), iconMat(g)); m.rotation.x = -Math.PI / 2; m.rotation.z = Math.random() * 6.28; m.position.set(p.x + 0.7, 0.04, p.z + 0.3); scene.add(m); (c as any).gunMesh = m; }
+// ---------- PLA armour on main roads ----------
+let armor: ArmorSystem | null = null;
+function setupArmor(c: V2) { armor = new ArmorSystem(scene, { canSee: (ax, az, bx, bz) => !bldAt(bx, bz) && los([ax, az], [bx, bz]), hurt: (dmg) => { if (player.sleeping) player.sleeping = false; player.rig.hurtT = 0.35; player.rig.hurtSide = 1; player.stun = 0.25; player.hp -= dmg; if (!player.bleed && Math.random() < 0.35) { player.bleed = true; log('你被機槍擊中，流血了！', '#f66'); } },
+    alert: (x, z) => { sols.filter(s => s.state !== 'dead' && !s.post).sort((a, b) => Math.hypot(a.pos.x - x, a.pos.z - z) - Math.hypot(b.pos.x - x, b.pos.z - z)).slice(0, 3).forEach(s => { s.state = 'investigate'; s.target = [player.pos.x, player.pos.z]; s.timer = 300; }); }, log, player: () => player.pos });
+  const len = (r: { p: V2[] }) => r.p.reduce((s, q, i) => i ? s + Math.hypot(q[0] - r.p[i - 1][0], q[1] - r.p[i - 1][1]) : 0, 0);
+  const main = roads.filter(r => /^(primary|secondary|trunk)/.test(r.t) || /西園路|環河南路|和平西路|康定路|中華路|艋舺大道/.test(r.n || '')).filter(r => r.p.length >= 2 && (ROADW[r.t.replace('_link', '')] ?? 0) >= 9 && len(r) > 70)
+    .filter(r => r.p.some(q => Math.hypot(q[0] - c[0], q[1] - c[1]) < 420)).sort((a, b) => len(b) - len(a));
+  const kinds: ArmorKind[] = ['zbl08', 'zbd05', 'mengshi', 'ztd05']; const used = new Set<string>();
+  for (const r of main) { if (armor.list.length >= kinds.length) break; const key = (r.n || '') + r.p[0].join(); if (used.has(key)) continue; if (r.p.some(q => Math.hypot(q[0] - c[0], q[1] - c[1]) < 30)) continue; used.add(key); armor.spawn(kinds[armor.list.length], r.p.map(q => [q[0], q[1]] as V2), Math.floor(r.p.length / 3)); }
+  // pre-placed burnt wrecks
+  let w = 0; for (const r of main.slice().reverse()) { if (w >= 3) break; const q = r.p[Math.floor(r.p.length / 2)], q2 = r.p[Math.floor(r.p.length / 2) + 1] || r.p[0]; if (Math.hypot(q[0] - c[0], q[1] - c[1]) < 25) continue; const ang = Math.atan2(-(q2[1] - q[1]), q2[0] - q[0]); const off = (ROADW[r.t.replace('_link', '')] ?? 9) / 2 - 2.2; armor.wreck((['zbd05', 'mengshi', 'zbl08'] as ArmorKind[])[w], q[0] - Math.sin(ang) * off, q[1] - Math.cos(ang) * off, ang + 0.3); w++; }
+  (UT as any).armorN = armor.list.length; }
 function makeCont(id: string, p: V2, type: string, b?: Bld, preset?: Record<string, number>) {
   const items: Record<string, number> = preset || {};
   if (!preset) { const table = LOOT[type]; const n = 1 + Math.floor(rnd() * 3); const tot = table.reduce((s, x) => s + x[1], 0); for (let i = 0; i < n; i++) { if (rnd() < 0.18) continue; let r = rnd() * tot; for (const [k, w, m] of table) { r -= w; if (r <= 0) { items[k] = (items[k] || 0) + 1 + Math.floor(rnd() * m); break; } } } }
@@ -532,6 +545,7 @@ function playerAttack() {
     for (const s of sols) { if (s.state === 'dead') continue; const to = s.pos.clone().sub(player.pos); const t = to.dot(dir); if (t < 0 || t > hd) continue; const perp = to.clone().sub(dir.clone().multiplyScalar(t)).length(); if (perp < 0.55 && los([player.pos.x, player.pos.z], [s.pos.x, s.pos.z])) { hit = s; hd = t; } }
     tracer(player.pos, player.pos.clone().add(dir.clone().multiplyScalar(hd)));
     if (hit) damageSol(hit, d.dmg * (0.8 + rnd() * 0.4), false);
+    else if (armor) { for (const a of armor.list) { if (a.dead) continue; const to = a.g.position.clone().sub(player.pos); to.y = 0; const t = to.dot(dir); if (t > 0 && t < d.range && to.clone().sub(dir.clone().multiplyScalar(t)).length() < 2.2) { armor.hit(a.g.position.x, a.g.position.z, d.dmg, false); break; } } }
   } else {
     noise(player.pos.x, player.pos.z, d.noise);
     for (const s of sols) { if (s.state === 'dead') continue; const to = s.pos.clone().sub(player.pos); const dist = to.length(); if (dist > d.range + 0.3) continue; if (to.normalize().dot(dir) < 0.5) continue;
@@ -613,7 +627,7 @@ function update(dt: number) {
   if (player.bleed) player.hp -= dt * 0.6;
   if (player.hunger > 50 && player.thirst > 50 && !player.bleed) player.hp = Math.min(100, player.hp + gm * 6);
   if (player.hp <= 0) return die();
-  vehicles.update(dt);
+  vehicles.update(dt); if (armor && started) armor.update(dt);
   player.cd -= dt;
   // movement
   if (!player.sleeping) {
@@ -760,6 +774,7 @@ async function boot() {
   // night market on the nearest named mid-size road
   let bestR: any = null, bd = 1e9; for (const r of roads) { if (!['tertiary', 'residential', 'pedestrian', 'unclassified'].includes(r.t) || r.p.length < 2) continue; const d = Math.min(...r.p.map(p => Math.hypot(p[0] - start!.c[0], p[1] - start!.c[1]))); if (d < bd && d > 15) { bd = d; bestR = r; } }
   if (bestR) nightMarket(bestR.p, bestR.t === 'tertiary' ? 9 : 6, fx, 'nm');
+  setupArmor(start!.c as V2);
   decay = buildDecay({ scene, rnd, pip, bldAt, addSeg: (q, low) => addSeg(q, low), merge: mergeGeometries, roads, blds, RW: ROADW, center: start.c, R: 140, doors: doors.map(d => d.p) });
   checkpoints = decay.checkpoints;
   alley = buildAlley({ poles: decay.polePos, scene, rnd, pip, bldAt, addSeg: (q, low) => addSeg(q, low), merge: mergeGeometries, roads, blds, RW: ROADW, center: start.c, R: 85, doors: doors.map(d => d.p) });
@@ -795,7 +810,7 @@ async function boot() {
   const h = document.createElement('div'); h.className = 'selh'; h.textContent = sv ? '或建立新的倖存者：' : '選擇你的倖存者：'; btns.appendChild(h); btns.appendChild(dl); btns.appendChild(sel);
   camera.position.copy(player.pos).add(CAM_OFF); camera.lookAt(player.pos);
   addEventListener('beforeunload', save);
-  (window as any).__game = { player, sols, blds, conts, nav, started: () => started, go, vehicles, decay: () => decay, alley: () => alley, facade: () => facade, setSpeed, speed: () => speed, WX, airdrop, makeBucket, noise, dayh: () => DAYH, evac: () => evac && evac.pos, evacOpen, doEvac, INF: () => INF, RV: () => RV, infPos: () => infPos, elderPos: () => elderPos, npcInteract, verifyInf, setMin: (m: number) => { gameMin = m; }, parks: () => parks, simRain: (h: number) => { for (let i = 0; i < h * 20; i++) updateWeather(0.05, 0.05); }, camera, CAM_OFF, setTime: (m: number) => { gameMin = m; }, UT, start: () => start!.c, scene, gm: () => gameMin, tp: (x: number, z: number) => player.pos.set(x, 0, z), damageSol, toggleInv, addItem };
+  (window as any).__game = { player, sols, blds, conts, nav, started: () => started, go, vehicles, decay: () => decay, alley: () => alley, facade: () => facade, setSpeed, speed: () => speed, WX, airdrop, makeBucket, noise, dayh: () => DAYH, evac: () => evac && evac.pos, evacOpen, doEvac, INF: () => INF, RV: () => RV, infPos: () => infPos, elderPos: () => elderPos, npcInteract, verifyInf, setMin: (m: number) => { gameMin = m; }, parks: () => parks, simRain: (h: number) => { for (let i = 0; i < h * 20; i++) updateWeather(0.05, 0.05); }, camera, CAM_OFF, setTime: (m: number) => { gameMin = m; }, UT, start: () => start!.c, scene, gm: () => gameMin, tp: (x: number, z: number) => player.pos.set(x, 0, z), damageSol, toggleInv, addItem, armor: () => armor };
 }
 boot().catch(e => { console.error(e); $('loadmsg').textContent = '載入失敗：' + e; });
 loop();

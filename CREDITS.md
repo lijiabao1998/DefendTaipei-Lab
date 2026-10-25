@@ -20,3 +20,9 @@
 - QCW-05：5.8×21mm（DAP92），50 發彈匣，一體消音 — https://en.wikipedia.org/wiki/QCW-05
 - QBS-09：18.4mm（12 號），5 發管式彈倉，重 3.45 kg — https://en.wikipedia.org/wiki/QBS-09
 - 手榴彈、頭盔、防彈背心、口糧以通稱表示，未對應特定型號。圖示均為原創示意剪影。
+
+## 解放軍裝甲車輛（v11）參考來源
+外型為原創低多邊形示意，迷彩為通用數位迷彩，車號為隨機數字，未複製任何真實徽章。
+- ZBD-05 / ZTD-05（05 式兩棲裝甲車族）：車體長 9.5 m、26.5 t、ZPT-99 30mm 砲塔（ZBD）、105mm 砲（ZTD）、載員 8 — https://en.wikipedia.org/wiki/Type_05_amphibious_fighting_vehicle
+- ZBL-08（08 式 8×8 輪式步兵戰車）：長約 8 m、21 t、30mm 砲塔、載員 7 — https://en.wikipedia.org/wiki/Type_08
+- 東風猛士 4×4 輕型車 — https://en.wikipedia.org/wiki/Dongfeng_Mengshi
