@@ -74,3 +74,12 @@ body.mobile #fpv .tc{top:11%}
 body:has(#roccine) #hud,body:has(#roccine) #log,body:has(#roccine) #phone{display:none}
 #fpv .dvr{position:absolute;left:0;right:0;bottom:6px;text-align:center;font:12px/1 monospace;color:#cfe;opacity:.8;text-shadow:0 0 2px #000}#fpv .dvr .rec{color:#f33}
 body.mobile #fpv .dvr{top:calc(64px + env(safe-area-inset-top));bottom:auto}
+#gmap{position:fixed;inset:0;z-index:60;background:#2a2620;font-family:"Noto Sans TC",sans-serif}#gmap.hidden{display:none}#gmap canvas{position:absolute;inset:0;cursor:grab}
+#gmap .mhead{position:absolute;z-index:2;top:calc(8px + env(safe-area-inset-top));left:8px;right:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:rgba(232,223,200,.92);color:#3a3428;padding:6px 10px;border:2px solid #6a6252;border-radius:4px}
+#gmap .mhead b{font-size:16px;margin-right:auto}#gmap .mhint{font-size:12px;opacity:.75}#gmap button{font:inherit;font-size:14px;padding:4px 10px;background:#f4efe2;border:1px solid #6a6252;border-radius:3px;color:#3a3428}
+#gmap .mleg{position:absolute;z-index:2;left:8px;bottom:calc(8px + env(safe-area-inset-bottom));max-width:min(560px,calc(100% - 16px));background:rgba(232,223,200,.9);color:#3a3428;font-size:12px;line-height:1.7;padding:4px 8px;border:1px solid #6a6252;border-radius:3px}
+#gmap .mleg i{display:inline-block;width:11px;height:11px;margin:0 3px 0 8px;vertical-align:-1px;border:1px solid #6a6252}#gmap .mleg em{font-style:normal;margin-left:8px}
+#gmap .mcred{position:absolute;z-index:2;right:8px;bottom:calc(8px + env(safe-area-inset-bottom));font-size:11px;color:#efe9da;opacity:.85}
+#gmap .mmenu{position:absolute;z-index:3;display:flex;flex-direction:column;gap:4px;background:#efe9da;border:2px solid #6a6252;padding:6px;border-radius:4px;min-width:150px;color:#3a3428}#gmap .mmenu p{margin:2px 0;font-size:12px;max-width:220px}
+#mapbtn{display:none}body.mobile #mapbtn{display:block;position:fixed;z-index:20;right:12px;top:calc(210px + env(safe-area-inset-top));width:48px;height:48px;border-radius:50%;background:rgba(232,223,200,.9);border:2px solid #6a6252;font-size:22px}
+body.mobile #gmap .mhint{display:none}body.mobile #gmap .mleg{font-size:10px;bottom:calc(30px + env(safe-area-inset-bottom))}

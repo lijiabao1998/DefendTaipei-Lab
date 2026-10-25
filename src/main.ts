@@ -1,3 +1,4 @@
+import { GameMap } from './map';
 import { buildEvacZone, playEvac, cine } from './evac';
 import * as THREE from 'three';
 import { buildFacade } from './facade';
@@ -383,7 +384,8 @@ function spawnSoldiers(dead: Set<number>) {
 
 // ---------- time / noise / log ----------
 const groundMat = new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1 });
-let lastHp = 100; let parks: any = null;
+let lastHp = 100; let parks: any = null; let gmap: GameMap | null = null;
+function mapIntelOutposts(lbl: string) { if (!gmap) return; checkpoints.forEach((c, i) => gmap!.intel('out' + i, c[0], c[1], 'out', lbl)); }
 // ---------- weather: rain (visual drops, wet ground, optional sound) + rain buckets ----------
 const WX = { rainNext: 15 * 60, rainUntil: 0, wet: 0, amt: 0 };
 const NR = 2500; const rainPos = new Float32Array(NR * 6); const rainG = new THREE.BufferGeometry(); rainG.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
@@ -450,7 +452,7 @@ function verifyInf() { const cost = player.inv.radio ? ['radio'] : ['water', 'ca
 function talkElder() { INF.elder = 1; dlg('👴 廟口阿伯', INF.fake ? '「那個戴鴨舌帽的少年仔？講話不是萬華腔，連華西街在哪都說不清楚，還一直問誰家有槍……你自己卡注意。」' : '「那個人喔，以前在華西街幫人顧攤，嘴巴緊。他講的話可以信。」', []); }
 function npcInteract() { const P = player.pos; if (infRig?.root.visible && Math.hypot(P.x - infPos[0], P.z - infPos[1]) < 2.4) { talkInformant(); return true; } if (elderRig && Math.hypot(P.x - elderPos[0], P.z - elderPos[1]) < 2.4) { talkElder(); return true; } return false; }
 function npcPrompt() { const P = player.pos; if (infRig?.root.visible && Math.hypot(P.x - infPos[0], P.z - infPos[1]) < 2.4) return INF.hid ? '[E] 抓住叛徒線人' : '[E] 和線人交談'; if (elderRig && Math.hypot(P.x - elderPos[0], P.z - elderPos[1]) < 2.4) return '[E] 和廟口阿伯聊天'; return ''; }
-function infMark(p: V2, col: number, txt: string) { const r = new THREE.Mesh(new THREE.RingGeometry(5, 6, 32), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.6, side: THREE.DoubleSide })); r.rotation.x = -Math.PI / 2; r.position.set(p[0], 0.07, p[1]); scene.add(r); infFx.push(r); log(txt, '#ffb0a0'); }
+function infMark(p: V2, col: number, txt: string) { gmap?.intel('inf' + Math.round(p[0]) + ',' + Math.round(p[1]), p[0], p[1], 'dng', txt.slice(0, 14)); const r = new THREE.Mesh(new THREE.RingGeometry(5, 6, 32), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.6, side: THREE.DoubleSide })); r.rotation.x = -Math.PI / 2; r.position.set(p[0], 0.07, p[1]); scene.add(r); infFx.push(r); log(txt, '#ffb0a0'); }
 function springTrap(aware: boolean) { const p = RV[INF.spot].p; INF.trap = 1; trapT = aware ? 0 : 3;
   const cand = sols.filter(s => s.state !== 'dead' && !s.post).sort((a, b) => Math.hypot(a.pos.x - p[0], a.pos.z - p[1]) - Math.hypot(b.pos.x - p[0], b.pos.z - p[1])).slice(0, 4);
   trapSols = cand; cand.forEach((s, i) => { const a = i * 1.57 + 0.4; s.pos.set(p[0] + Math.cos(a) * 16, 0, p[1] + Math.sin(a) * 16); s.mesh.visible = true; if (aware) { s.state = 'patrol'; s.post = [s.pos.x, s.pos.z]; s.route = [[s.pos.x, s.pos.z], [s.pos.x + 1, s.pos.z]]; } else { s.state = 'investigate'; s.target = [p[0], p[1]]; s.timer = 600; } });
@@ -511,7 +513,7 @@ const joy = { x: 0, y: 0, id: -1 };
   J.addEventListener('pointerup', end); J.addEventListener('pointercancel', end);
   if (MOBILE) { for (const ev of ['touchmove', 'gesturestart', 'contextmenu', 'selectstart']) document.addEventListener(ev, e => e.preventDefault(), { passive: false }); } }
 const keys: Record<string, boolean> = {}; let mouse = new THREE.Vector2(); let clicking = false;
-addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'Tab') { e.preventDefault(); toggleInv(); } if (!started) return; if (e.code === 'KeyC') { player.sneak = !player.sneak; log(player.sneak ? '進入潛行' : '解除潛行'); } if (e.code === 'KeyE') interact(); if (e.code === 'KeyI') toggleInv(); if (e.code === 'KeyB') barricade(); if (e.code === 'KeyZ') sleep(); if (e.code === 'Digit1') setSpeed(1); if (e.code === 'Digit2') setSpeed(3); if (e.code === 'Digit3') setSpeed(20); if (e.code === 'KeyF') { player.light = !player.light; } if (e.code === 'Space') { e.preventDefault(); tryVault(); } if (e.code === 'KeyQ') shove(); if (e.code === 'Escape') closePanel(); });
+addEventListener('keydown', e => { keys[e.code] = true; if (started && e.code === 'KeyM') { gmap?.toggle(); return; } if (gmap?.open && e.code === 'Escape') { gmap.toggle(false); return; } if (e.code === 'Tab') { e.preventDefault(); toggleInv(); } if (!started) return; if (e.code === 'KeyC') { player.sneak = !player.sneak; log(player.sneak ? '進入潛行' : '解除潛行'); } if (e.code === 'KeyE') interact(); if (e.code === 'KeyI') toggleInv(); if (e.code === 'KeyB') barricade(); if (e.code === 'KeyZ') sleep(); if (e.code === 'Digit1') setSpeed(1); if (e.code === 'Digit2') setSpeed(3); if (e.code === 'Digit3') setSpeed(20); if (e.code === 'KeyF') { player.light = !player.light; } if (e.code === 'Space') { e.preventDefault(); tryVault(); } if (e.code === 'KeyQ') shove(); if (e.code === 'Escape') closePanel(); });
 addEventListener('keyup', e => keys[e.code] = false);
 addEventListener('mousemove', e => { mouse.set(e.clientX / innerWidth * 2 - 1, -e.clientY / innerHeight * 2 + 1); });
 renderer.domElement.addEventListener('mousedown', e => { if (e.button === 0 && !fpv?.active) clicking = true; });
@@ -526,7 +528,8 @@ function addItem(k: string, n = 1) { player.inv[k] = (player.inv[k] || 0) + n; }
 function useItem(k: string) {
   const d = ITEMS[k]; if (!player.inv[k]) return;
   if (d.kind === 'melee' || d.kind === 'gun') { player.equip = player.equip === k ? '' : k; log(player.equip ? `裝備了 ${d.name}` : '收起武器'); }
-  else if (k === 'rocradio_b') { const ok = player.inv.lipo && (player.inv.vtx || player.inv.lipo >= 2); if (!ok) { log('修理需要：鋰電池＋圖傳模組（或 2 顆鋰電池）', '#f99'); return; } const use = player.inv.vtx ? ['lipo', 'vtx'] : ['lipo', 'lipo']; for (const q of use) { if (--player.inv[q] <= 0) delete player.inv[q]; } delete player.inv[k]; addItem('rocradio', 1); log('📻 無線電修好了！可以呼叫國軍裝甲支援（通話會引來巡邏）', '#9f9'); }
+  else if (k === 'rocradio_b') { const ok = player.inv.lipo && (player.inv.vtx || player.inv.lipo >= 2); if (!ok) { log('修理需要：鋰電池＋圖傳模組（或 2 顆鋰電池）', '#f99'); return; } const use = player.inv.vtx ? ['lipo', 'vtx'] : ['lipo', 'lipo']; for (const q of use) { if (--player.inv[q] <= 0) delete player.inv[q]; } delete player.inv[k]; addItem('rocradio', 1); mapIntelOutposts('解放軍哨點（國軍情資）'); if (evac) gmap?.intel('evac0', evac.pos[0], evac.pos[1], 'evac', '撤離點（國軍）'); log('📻 無線電修好了！可以呼叫國軍裝甲支援（通話會引來巡邏）', '#9f9'); }
+  else if (k === 'tmap') { if (--player.inv[k] <= 0) delete player.inv[k]; const si = Math.floor(Math.random() * SX * SZ), i = si % SX, j = Math.floor(si / SX); const w = (bounds.maxx - bounds.minx) / SX, h = (bounds.maxz - bounds.minz) / SZ; const x0 = bounds.minx + i * w, z0 = bounds.minz + j * h; gmap?.revealRect(x0, z0, x0 + w, z0 + h); checkpoints.forEach((c, n) => { if (sectorOf(c[0], c[1]) === si) gmap?.intel('out' + n, c[0], c[1], 'out', '解放軍哨點'); }); for (const c of conts.filter(c => c.p && sectorOf(c.p[0], c.p[1]) === si).slice(0, 3)) gmap?.intel('sup' + c.id, c.p[0], c.p[1], 'sup', '手繪：物資'); gmap?.save(); log(`📜 攤開手繪地圖：${SECTOR_LABEL(si)} 街區的巷弄與哨點已標上地圖（按 M）`, '#ffd27a'); closePanel(); }
   else if (k === 'rocradio') { callSupport(); closePanel(); }
   else if (k === 'fpv') { if (bldAt(player.pos.x, player.pos.z)) { log('在室內無法起飛，先到戶外', '#f99'); return; } if (--player.inv[k] <= 0) delete player.inv[k]; closePanel(); launchFPV(); }
   else if (k === 'frame') { const need: Record<string, number> = { frame: 1, dmotor: 4, lipo: 1, vtx: 1, grenade: 1 }; const miss = Object.entries(need).filter(([q, n]) => (player.inv[q] || 0) < n).map(([q, n]) => `${ITEMS[q].name}×${n - (player.inv[q] || 0)}`); if (miss.length) { log('還缺：' + miss.join('、'), '#f99'); return; } for (const [q, n] of Object.entries(need)) { player.inv[q] -= n; if (player.inv[q] <= 0) delete player.inv[q]; } addItem('fpv', 1); log('組好了一架 FPV 自殺無人機！', '#9f9'); }
@@ -668,7 +671,7 @@ function updateStory(gm: number) {
   if (gameMin >= POWER_OFF) UT.power = false; if (gameMin >= WATER_OFF) UT.water = false;
   if (!UT.power) { spoilT += gm; if (spoilT > 6) { spoilT = 0; for (const c of conts) if (/冷藏|櫃台|攤/.test(c.label)) for (const k of PERISH) if (c.items[k] && rnd() < 0.15) { c.items[k]--; if (!c.items[k]) delete c.items[k]; c.items.rotten = (c.items.rotten || 0) + 1; } } }
 }
-function save() { if (!started || dead) return; localStorage.setItem(SAVE, JSON.stringify({ g: player.gender, p: [player.pos.x, player.pos.z], hp: player.hp, hu: player.hunger, th: player.thirst, fa: player.fatigue, bl: player.bleed, inv: player.inv, eq: player.equip, k: player.kills, t: gameMin, dl: DAYH, wx: WX, ex: UT.ev.ex || 0, inf: INF, ut: UT, conts: conts.map(c => [c.id, c.items, c.p]), dead: sols.filter(s => s.state === 'dead').map(s => s.id), bar: doors.map((d, i) => d.barricaded ? i : -1).filter(i => i >= 0) })); }
+function save() { if (!started || dead) return; gmap?.save(); localStorage.setItem(SAVE, JSON.stringify({ g: player.gender, p: [player.pos.x, player.pos.z], hp: player.hp, hu: player.hunger, th: player.thirst, fa: player.fatigue, bl: player.bleed, inv: player.inv, eq: player.equip, k: player.kills, t: gameMin, dl: DAYH, wx: WX, ex: UT.ev.ex || 0, inf: INF, ut: UT, conts: conts.map(c => [c.id, c.items, c.p]), dead: sols.filter(s => s.state === 'dead').map(s => s.id), bar: doors.map((d, i) => d.barricaded ? i : -1).filter(i => i >= 0) })); }
 
 // ---------- main loop ----------
 let started = false, dead = false; const clock = new THREE.Clock(); let acc = 0, saveT = 0, streetT = 0;
@@ -676,7 +679,7 @@ function update(dt: number) {
   for (let i = fx.length - 1; i >= 0; i--) { fx[i].t -= dt; if (fx[i].t <= 0) { scene.remove(fx[i].o); fx.splice(i, 1); } }
   if (dead && player.rig) animate(player.rig, 'death', 0, dt);
   for (const s of sols) if (s.state === 'dead' && s.rig.deadT < 1) animate(s.rig, 'death', 0, dt);
-  if (evac) evac.update(dt, evacOpen());
+  if (evac) evac.update(dt, evacOpen()); if (evac && evacOpen()) gmap?.intel('evac0', evac.pos[0], evac.pos[1], 'evac', '撤離點'); if (started) gmap?.update();
   if (!started || dead) return;
   updateInformant(dt);
   if (evac && evacOpen() && Math.hypot(player.pos.x - evac.pos[0], player.pos.z - evac.pos[1]) < 5) doEvac();
@@ -860,13 +863,16 @@ async function boot() {
   for (const s of sols) if (s.state !== 'dead' && s.pos.distanceTo(player.pos) < 25) { s.pos.x += 40; }
   { let k = 0; for (const cp of checkpoints) for (let g = 0; g < 2; g++) { const s = sols[k++]; if (!s || s.state === 'dead') continue; const p: V2 = [cp[0] + (g ? 2.2 : -2.2), cp[1] + (g ? 1 : -1)]; s.post = p; s.pos.set(p[0], 0, p[1]); s.sector = sectorOf(p[0], p[1]); s.night = false; } }
   checkSectors(true);
+  gmap = new GameMap({ blds: blds as any, roads: roads as any, bounds, SX, SZ, sectorName: SECTOR_LABEL, liberated: () => liberated, player: () => ({ x: player.pos.x, z: player.pos.z, rot: player.mesh ? player.mesh.rotation.y : 0 }), parks: (parks?.clusters || []) as V2[], outposts: () => checkpoints, evac: () => evac ? evac.pos as V2 : null, home: () => start!.c as V2 });
+  if (player.inv.rocradio) mapIntelOutposts('解放軍哨點（國軍情資）');
+  if (MOBILE) { const mb = document.createElement('button'); mb.id = 'mapbtn'; mb.textContent = '🗺'; mb.title = '地圖'; mb.onclick = () => gmap?.toggle(); document.body.appendChild(mb); }
   const btns = $('btns'); $('loadmsg').textContent = `地圖：萬華・西門町（${blds.length} 棟建築，${roads.length} 條街道）`;
   const go = (load: boolean, gender = 'm') => {
     if (load && sv) gender = sv.g || 'm';
     player.gender = gender; player.rig = spawnRig(HERO[gender]); player.mesh = player.rig.root;
     if (load && sv) { player.pos.set(sv.p[0], 0, sv.p[1]);  Object.assign(player, { hp: sv.hp, hunger: sv.hu, thirst: sv.th, fatigue: sv.fa, bleed: sv.bl, inv: sv.inv, equip: sv.eq, kills: sv.k }); gameMin = sv.t; DAYH = sv.dl || 1; if (sv.wx) Object.assign(WX, sv.wx); if (sv.ex) UT.ev.ex = 1; if (sv.inf) INF = sv.inf; if (sv.ut) Object.assign(UT, sv.ut);
       const map = new Map<string, any>(sv.conts.map((c: any) => [c[0], c])); for (const c of conts) { const s = map.get(c.id); if (s) c.items = s[1]; map.delete(c.id); } map.forEach(c => String(c[0]).startsWith('pb') ? makeBucket(c[0], c[2], c[1]) : makeCont(c[0], c[2], 'crate', undefined, c[1])); (sv.bar || []).forEach((i: number) => doors[i] && setBarricade(doors[i])); checkSectors(true); conts.forEach(updateVis); }
-    else { localStorage.removeItem(SAVE); }
+    else { localStorage.removeItem(SAVE); gmap?.reset(); }
     $('title').style.display = 'none'; started = true; lastHp = player.hp; startRainAudio(); { const sp = document.createElement('div'); sp.id = 'speed'; sp.innerHTML = '<span class="st"></span>' + SPEEDS.map((v, i) => `<button data-s="${v}" title="按 ${i + 1}">${v === 1 ? '▶' : v === 3 ? '⏩' : '⏭'} ×${v}</button>`).join('') + `<small>一天 = ${DAYH} 小時</small>`; sp.querySelectorAll('button').forEach(b => (b as HTMLElement).onclick = () => setSpeed(+(b as HTMLElement).dataset.s!)); $('topright').appendChild(sp); renderSpeed(); } log('十月某日清晨，解放軍登陸後三天，台北淪陷。萬華的電燈還亮著，水龍頭還有水——但能撐多久？', '#ffd76a'); log('提示：先搜刮身邊的櫥櫃（E），按 Tab 開背包裝備菜刀。', '#ccc');
   };
   if (sv) { const b = document.createElement('button'); b.textContent = '繼續遊戲'; b.onclick = () => go(true); btns.appendChild(b); }
@@ -878,7 +884,7 @@ async function boot() {
   const h = document.createElement('div'); h.className = 'selh'; h.textContent = sv ? '或建立新的倖存者：' : '選擇你的倖存者：'; btns.appendChild(h); btns.appendChild(dl); btns.appendChild(sel);
   camera.position.copy(player.pos).add(CAM_OFF); camera.lookAt(player.pos);
   addEventListener('beforeunload', save);
-  (window as any).__game = { player, sols, blds, conts, nav, started: () => started, go, vehicles, decay: () => decay, alley: () => alley, facade: () => facade, setSpeed, speed: () => speed, WX, airdrop, makeBucket, noise, dayh: () => DAYH, evac: () => evac && evac.pos, evacOpen, doEvac, INF: () => INF, RV: () => RV, infPos: () => infPos, elderPos: () => elderPos, npcInteract, verifyInf, setMin: (m: number) => { gameMin = m; }, parks: () => parks, simRain: (h: number) => { for (let i = 0; i < h * 20; i++) updateWeather(0.05, 0.05); }, camera, CAM_OFF, setTime: (m: number) => { gameMin = m; }, UT, start: () => start!.c, scene, gm: () => gameMin, tp: (x: number, z: number) => player.pos.set(x, 0, z), damageSol, toggleInv, addItem, armor: () => armor, fpv: () => fpv, recon: () => recon, ROC, roc: () => roc, useItem, testAT: (k: string) => { const a = armor!.list.find(a => !a.dead)!; const dir = a.g.position.clone().sub(player.pos).setY(0).normalize(); fireAT(k, ITEMS[k], dir); return a.hp; }, callSupport, rocCheck, liberate: (n: number) => { for (let i = 0; i < SX * SZ && liberated.size < n; i++) if (!liberated.has(i)) { for (const q of sols) if (q.sector === i) { q.state = 'dead'; q.hp = 0; q.mesh.visible = false; } liberated.add(i); } rocCheck(false); }, lastBlast: () => lastBlast, shells, launchFPV, blast, sim: (n: number, dt = 0.05) => { for (let i = 0; i < n; i++) { update(dt); if (fpv?.active) fpv.update(dt); } }, roadPt: () => { let best: V2 = [player.pos.x, player.pos.z], bd = 1e9; for (const r of roads) if (/primary|secondary|tertiary/.test(r.t)) for (const q of r.p) { const d = Math.hypot(q[0] - player.pos.x, q[1] - player.pos.z); if (d < bd && d > 8 && !bldAt(q[0], q[1])) { bd = d; best = q; } } return best; }, checkpoints: () => checkpoints };
+  (window as any).__game = { map: gmap, player, sols, blds, conts, nav, started: () => started, go, vehicles, decay: () => decay, alley: () => alley, facade: () => facade, setSpeed, speed: () => speed, WX, airdrop, makeBucket, noise, dayh: () => DAYH, evac: () => evac && evac.pos, evacOpen, doEvac, INF: () => INF, RV: () => RV, infPos: () => infPos, elderPos: () => elderPos, npcInteract, verifyInf, setMin: (m: number) => { gameMin = m; }, parks: () => parks, simRain: (h: number) => { for (let i = 0; i < h * 20; i++) updateWeather(0.05, 0.05); }, camera, CAM_OFF, setTime: (m: number) => { gameMin = m; }, UT, start: () => start!.c, scene, gm: () => gameMin, tp: (x: number, z: number) => player.pos.set(x, 0, z), damageSol, toggleInv, addItem, armor: () => armor, fpv: () => fpv, recon: () => recon, ROC, roc: () => roc, useItem, testAT: (k: string) => { const a = armor!.list.find(a => !a.dead)!; const dir = a.g.position.clone().sub(player.pos).setY(0).normalize(); fireAT(k, ITEMS[k], dir); return a.hp; }, callSupport, rocCheck, liberate: (n: number) => { for (let i = 0; i < SX * SZ && liberated.size < n; i++) if (!liberated.has(i)) { for (const q of sols) if (q.sector === i) { q.state = 'dead'; q.hp = 0; q.mesh.visible = false; } liberated.add(i); } rocCheck(false); }, lastBlast: () => lastBlast, shells, launchFPV, blast, sim: (n: number, dt = 0.05) => { for (let i = 0; i < n; i++) { update(dt); if (fpv?.active) fpv.update(dt); } }, roadPt: () => { let best: V2 = [player.pos.x, player.pos.z], bd = 1e9; for (const r of roads) if (/primary|secondary|tertiary/.test(r.t)) for (const q of r.p) { const d = Math.hypot(q[0] - player.pos.x, q[1] - player.pos.z); if (d < bd && d > 8 && !bldAt(q[0], q[1])) { bd = d; best = q; } } return best; }, checkpoints: () => checkpoints };
 }
 boot().catch(e => { console.error(e); $('loadmsg').textContent = '載入失敗：' + e; });
 loop();
