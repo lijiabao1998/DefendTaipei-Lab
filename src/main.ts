@@ -7,6 +7,7 @@ import { Nav, smooth } from './nav';
 import { VehicleSystem, VehicleKind } from './vehicles';
 import { furnish, nightMarket } from './interiors';
 import { buildDecay } from './decay';
+import { buildAlley } from './alley';
 
 // ---------- utils ----------
 let seed = 20261024;
@@ -155,7 +156,7 @@ function buildMap(data: any) {
     }
   }
   roadTex.repeat.set(1, 1);
-  const roadMesh = new THREE.Mesh(mergeGeometries(rg), new THREE.MeshStandardMaterial({ map: roadTex, roughness: 0.95 })); roadMesh.receiveShadow = true; scene.add(roadMesh);
+  const roadMesh = new THREE.Mesh(mergeGeometries(rg), roadMat); roadMesh.receiveShadow = true; scene.add(roadMesh);
   if (lg.length) scene.add(new THREE.Mesh(mergeGeometries(lg), new THREE.MeshBasicMaterial({ color: 0xd8c070 })));
   // buildings
   const pillarG: THREE.BufferGeometry[] = [];
@@ -222,7 +223,7 @@ function buildMap(data: any) {
 }
 
 const ROADW: Record<string, number> = { primary: 16, secondary: 12, tertiary: 9, residential: 6, unclassified: 6, living_street: 5, service: 4, pedestrian: 6, footway: 2.5 };
-let decay: ReturnType<typeof buildDecay> | null = null; let checkpoints: V2[] = [];
+let decay: ReturnType<typeof buildDecay> | null = null; let alley: ReturnType<typeof buildAlley> | null = null; const roadMat = new THREE.MeshStandardMaterial({ map: roadTex, roughness: 0.95 }); let checkpoints: V2[] = [];
 // ---------- street lamps ----------
 const lamps: [number, number, number][] = []; const lampPool: THREE.PointLight[] = []; let lampHeadMat: THREE.MeshStandardMaterial;
 const vehicles = new VehicleSystem(scene);
@@ -498,7 +499,7 @@ function update(dt: number) {
   if (!dayF) sun.position.set(player.pos.x - 30, 70, player.pos.z + 20);
   const fogC = new THREE.Color(0x0c1220).lerp(new THREE.Color(0xa7b0b5), dayF); (scene.fog as THREE.Fog).color.copy(fogC); renderer.setClearColor(fogC);
   hemi.color.setHSL(0.6, 0.5, 0.35 + dayF * 0.45);
-  updateLamps(1 - dayF, dt); decay?.update(dt, 1 - dayF, player.pos.x, player.pos.z);
+  updateLamps(1 - dayF, dt); decay?.update(dt, 1 - dayF, player.pos.x, player.pos.z); alley?.update(dt, 1 - dayF, player.pos.x, player.pos.z); roadMat.roughness = 0.95 - (1 - dayF) * 0.55; roadMat.metalness = (1 - dayF) * 0.35;
   flash.intensity = player.light ? 60 : 0; flash.position.set(player.pos.x, 1.6, player.pos.z); flash.target.position.copy(aimPt);
   // camera
   camera.position.copy(player.pos).add(CAM_OFF); camera.lookAt(player.pos);
@@ -557,6 +558,7 @@ async function boot() {
   if (bestR) nightMarket(bestR.p, bestR.t === 'tertiary' ? 9 : 6, fx, 'nm');
   decay = buildDecay({ scene, rnd, pip, bldAt, addSeg: (q, low) => addSeg(q, low), merge: mergeGeometries, roads, blds, RW: ROADW, center: start.c, R: 140, doors: doors.map(d => d.p) });
   checkpoints = decay.checkpoints;
+  alley = buildAlley({ scene, rnd, pip, bldAt, addSeg: (q, low) => addSeg(q, low), merge: mergeGeometries, roads, blds, RW: ROADW, center: start.c, R: 85, doors: doors.map(d => d.p) });
   // navigation grid (built after all collision geometry exists)
   nav = new Nav(start.c[0] - 170, start.c[1] - 170, start.c[0] + 170, start.c[1] + 170, 0.5); for (const q of segs) nav.markSeg(q.a, q.b, 1);
   spawnSoldiers(new Set(sv?.dead || []));
@@ -582,7 +584,7 @@ async function boot() {
   const h = document.createElement('div'); h.className = 'selh'; h.textContent = sv ? '或建立新的倖存者：' : '選擇你的倖存者：'; btns.appendChild(h); btns.appendChild(sel);
   camera.position.copy(player.pos).add(CAM_OFF); camera.lookAt(player.pos);
   addEventListener('beforeunload', save);
-  (window as any).__game = { player, sols, blds, conts, nav, started: () => started, go, vehicles, decay: () => decay, camera, CAM_OFF, setTime: (m: number) => { gameMin = m; }, tp: (x: number, z: number) => player.pos.set(x, 0, z) };
+  (window as any).__game = { player, sols, blds, conts, nav, started: () => started, go, vehicles, decay: () => decay, alley: () => alley, camera, CAM_OFF, setTime: (m: number) => { gameMin = m; }, tp: (x: number, z: number) => player.pos.set(x, 0, z) };
 }
 boot().catch(e => { console.error(e); $('loadmsg').textContent = '載入失敗：' + e; });
 loop();
