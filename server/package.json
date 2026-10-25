@@ -1,0 +1,3 @@
+{ "name": "defendtaipei-server", "private": true, "type": "module",
+  "scripts": { "dev": "wrangler dev --local --port 8787", "migrate:local": "wrangler d1 migrations apply dt_saves --local", "deploy": "wrangler deploy" },
+  "devDependencies": { "wrangler": "^4.40.0", "@cloudflare/workers-types": "^4.20250101.0", "ws": "^8.18.0" } }

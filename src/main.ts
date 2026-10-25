@@ -410,6 +410,24 @@ const JN = new Set<string>(); const jk = (x: number, z: number) => Math.round(x)
 function buildJunctions() { const cnt = new Map<string, number>(); for (const r of roads) for (const q of r.p) { const k = jk(q[0], q[1]); cnt.set(k, (cnt.get(k) || 0) + 1); } for (const [k, n] of cnt) if (n >= 2) JN.add(k); }
 const traffic = new Traffic({ scene, junction: (x, z) => JN.has(jk(x, z)), green: (ux, uz) => roadT.green(ux, uz), player: () => player.pos, bldAt: (x, z) => bldAt(x, z),
   abandon: (kind, x, z, hd) => { const v = drive.spawn(kind, x, z, hd, Math.random, { key: Math.random() < 0.6 }); if (!SPEC[kind].two) { const c = makeCont('ab' + v.id, [x, z], 'crate', undefined, Math.random() < 0.5 ? { water: 1, snack: 1 } : { tissue: 1, coffee: 1, bandage: 1 }); c.label = '棄置車內的物品'; c.mesh.visible = false; } } });
+// ---- multiplayer glue (v20, local server only) ----
+let net: import('./net').Net | null = null; const MPQ = new URLSearchParams(location.search); let MP: { base: string; code: string } | null = null;
+const remRigs = new Map<string, Rig>(), enRigs = new Map<number, Rig>(); const remPrev = new Map<string, [number, number]>();
+async function startNet() { if (!MP) return; const { Net } = await import('./net'); net = new Net(MP.base, {
+    onStatus: t => { const h = document.getElementById('mphud'); if (h) h.textContent = '🌐 ' + t; },
+    onCorrect: (x, z) => { if (!drive.cur) { player.pos.x = x; player.pos.z = z; } },
+    onLog: l => { const m = l[l.length - 1]; if (m) log('🌐 ' + m, '#8cf'); } });
+  const hud = document.createElement('div'); hud.id = 'mphud'; document.body.appendChild(hud); (window as any).__game.net = net;
+  try { await net.join(MP.code, { name: ROLE.names[player.rig.f ? 1 : 0], role: ROLE.id, g: player.rig.f ? 'f' : 'm', x: player.pos.x, z: player.pos.z }); } catch (e) { hud.textContent = '🌐 連線失敗：' + (e as Error).message; } }
+function netFrame(dt: number) { if (!net || !net.s) return; net.update(dt, player.pos.x, player.pos.z, !!drive.cur); const s = net.s;
+  for (const p of Object.values(s.players)) { if (p.id === net.you) continue; let r = remRigs.get(p.id); if (!r) { const rl = roleById(p.role); r = makeRig({ gender: p.g, ...rl.look[p.g], outfit: rl.id }); scene.add(r.root); remRigs.set(p.id, r); }
+    const q = net.remote(p.id) || [p.x, p.z]; const pv = remPrev.get(p.id) || q; const sp = Math.hypot(q[0] - pv[0], q[1] - pv[1]) / Math.max(dt, 1e-3); remPrev.set(p.id, q);
+    r.root.position.set(q[0], 0, q[1]); if (sp > 0.2) r.root.rotation.y = Math.atan2(q[0] - pv[0], q[1] - pv[1]); r.root.visible = p.on; animate(r, p.hp <= 0 ? 'death' : sp > 4 ? 'run' : sp > 0.3 ? 'walk' : 'idle', sp, dt); }
+  for (const [id, r] of remRigs) if (!s.players[id]) { scene.remove(r.root); remRigs.delete(id); }
+  for (const e of s.enemies) { let r = enRigs.get(e.id); if (!r) { r = makeRig({ gender: 'm', hair: 0x111111, top: 0x4c5733, bottom: 0x4c5733, shoes: 0x111111, soldier: true }); scene.add(r.root); enRigs.set(e.id, r); }
+    const o = r.root.position; const dx = e.x - o.x, dz = e.z - o.z; const sp = Math.hypot(dx, dz) / Math.max(dt, 1e-3); o.x += dx * Math.min(1, dt * 10); o.z += dz * Math.min(1, dt * 10); if (Math.hypot(dx, dz) > 0.02) r.root.rotation.y = Math.atan2(dx, dz); animate(r, e.hp <= 0 ? 'death' : sp > 2 ? 'run' : sp > 0.2 ? 'walk' : 'idle', Math.min(sp, 4), dt); }
+  const h = document.getElementById('mphud'); if (h && net.status.startsWith('房間')) h.textContent = `🌐 ${net.status}｜${Object.values(s.players).filter(p => p.on).length}/4 人｜tick ${s.tick}｜${(net.bytes / 1024).toFixed(0)} kB 收`; }
+function netAttack() { if (!net?.s) return; let best = -1, bd = 1.9; for (const e of net.s.enemies) { if (e.hp <= 0) continue; const d = Math.hypot(e.x - player.pos.x, e.z - player.pos.z); if (d < bd) { bd = d; best = e.id; } } if (best >= 0) net.cmd({ t: 'attack', target: best } as any); }
 const WRECK_LOOT: [string, number][][] = [[['water', 1], ['snack', 1]], [['bandage', 1], ['tissue', 1]], [['gas', 2]], [['patch', 1], ['hose', 1]], [['coffee', 1], ['noodle', 1]], [['carbat', 1]]];
 function spawnDrivables(c: V2) { let sd = 977; const r = () => (sd = (sd * 16807) % 2147483647) / 2147483647; let n = 0, bus = 0, gb = 0, dock = 0;
   const segs: [number, number, number, number, number][] = []; for (const rd of roads) { const w = ROADW[rd.t.replace('_link', '')] ?? 3; if (w < 4) continue; for (let i = 0; i < rd.p.length - 1; i++) { const [ax, az] = rd.p[i], [bx, bz] = rd.p[i + 1]; const mx = (ax + bx) / 2, mz = (az + bz) / 2; const d = Math.hypot(mx - c[0], mz - c[1]); if (d < 190 && Math.hypot(bx - ax, bz - az) > 8) segs.push([ax, az, bx, bz, w]); } }
@@ -648,7 +666,7 @@ function shove() {
 }
 function playerAttack() {
   const k = player.equip; const d = k ? ITEMS[k] : { dmg: 8, range: 1.1, noise: 2, cd: 0.5, kind: 'melee' } as any;
-  if (player.cd > 0) return; player.cd = d.cd; if (d.kind === 'gun') player.rig.shootT = 0.14; else player.rig.meleeT = 0.45;
+  if (player.cd > 0) return; netAttack(); player.cd = d.cd; if (d.kind === 'gun') player.rig.shootT = 0.14; else player.rig.meleeT = 0.45;
   const dir = new THREE.Vector3(aimPt.x - player.pos.x, 0, aimPt.z - player.pos.z).normalize();
   if (d.kind === 'gun') {
     if (!player.inv[d.ammo]) { log('沒有子彈了', '#f99'); player.cd = 0.5; return; }
@@ -749,7 +767,7 @@ function update(dt: number) {
     const jm = Math.min(1, Math.hypot(joy.x, joy.y)); if (jm > 0.12) mv.addScaledVector(f, -joy.y).addScaledVector(r, joy.x);
     drive.update(dt, mv, UT.power); const v = drive.cur; if (v) { player.pos.set(v.pos.x, 0, v.pos.z); player.mesh.position.set(v.pos.x, v.s.seatY - 0.45, v.pos.z); player.mesh.rotation.y = v.hd; player.moving = 0; player.vel.set(0, 0, 0); } }
   else drive.update(dt, new THREE.Vector3(), UT.power);
-  roadT.update(player.pos.x, player.pos.z, dt); traffic.update(dt);
+  roadT.update(player.pos.x, player.pos.z, dt); traffic.update(dt); netFrame(dt);
   if (drive.cur) { const v = drive.cur; const b = roadT.barrierAt(v.pos.x, v.pos.z, v.s.two ? 1.2 : 2.0); if (b) { if (Math.abs(v.v) > 6 && !v.s.two) { roadT.clear(b.key, b.id); v.v *= 0.5; v.eng = Math.max(0, v.eng - 0.08); noise(v.pos.x, v.pos.z, 30); log('💥 撞開路障！引擎受損', '#fc8'); } else { v.pos.x -= Math.sin(v.hd) * Math.sign(v.v) * 0.3; v.pos.z -= Math.cos(v.hd) * Math.sign(v.v) * 0.3; v.v = 0; } }
     const w = roadT.wreckNear(v.pos.x, v.pos.z, v.s.two ? 1.6 : 2.6); if (w && Math.abs(v.v) > 0.5) { v.pos.x -= Math.sin(v.hd) * Math.sign(v.v) * 0.4; v.pos.z -= Math.cos(v.hd) * Math.sign(v.v) * 0.4; if (Math.abs(v.v) > 8) { v.eng = Math.max(0, v.eng - 0.1); log('💥 撞上廢棄車！', '#fc8'); } v.v = 0; } }
   else { const b = roadT.barrierAt(player.pos.x, player.pos.z, 1.1); if (b) { const dx = player.pos.x - b.x, dz = player.pos.z - b.z, L = Math.hypot(dx, dz) || 1; player.pos.x = b.x + dx / L * 1.1; player.pos.z = b.z + dz / L * 1.1; }
@@ -976,12 +994,19 @@ async function boot() {
     if (load && sv) { player.pos.set(sv.p[0], 0, sv.p[1]);  Object.assign(player, { hp: sv.hp, hunger: sv.hu, thirst: sv.th, fatigue: sv.fa, bleed: sv.bl, inv: sv.inv, equip: sv.eq, kills: sv.k }); gameMin = sv.t; DAYH = sv.dl || 1; if (sv.wx) Object.assign(WX, sv.wx); if (sv.ex) UT.ev.ex = 1; if (sv.inf) INF = sv.inf; if (sv.ut) Object.assign(UT, sv.ut);
       const map = new Map<string, any>(sv.conts.map((c: any) => [c[0], c])); for (const c of conts) { const s = map.get(c.id); if (s) c.items = s[1]; map.delete(c.id); } map.forEach(c => String(c[0]).startsWith('pb') ? makeBucket(c[0], c[2], c[1]) : makeCont(c[0], c[2], 'crate', undefined, c[1])); (sv.bar || []).forEach((i: number) => doors[i] && setBarricade(doors[i])); checkSectors(true); conts.forEach(updateVis); }
     else { localStorage.removeItem(SAVE); gmap?.reset(); roadT.reset(); player.inv = { ...ROLE.inv }; spawnRole(ROLE, skipIntro); }
+    if (MP) startNet();
     $('title').style.display = 'none'; started = true; { const mb = document.getElementById('mapbtn'); if (mb) mb.style.display = ''; } lastHp = player.hp; startRainAudio(); { const sp = document.createElement('div'); sp.id = 'speed'; sp.innerHTML = '<span class="st"></span>' + SPEEDS.map((v, i) => `<button data-s="${v}" title="按 ${i + 1}">${v === 1 ? '▶' : v === 3 ? '⏩' : '⏭'} ×${v}</button>`).join('') + `<small>一天 = ${DAYH} 小時</small>`; sp.querySelectorAll('button').forEach(b => (b as HTMLElement).onclick = () => setSpeed(+(b as HTMLElement).dataset.s!)); $('topright').appendChild(sp); renderSpeed(); } PRO.on || log('十月某日清晨，解放軍登陸後三天，台北淪陷。萬華的電燈還亮著，水龍頭還有水——但能撐多久？', '#ffd76a'); log('提示：先搜刮身邊的櫥櫃（E），按 Tab 開背包裝備菜刀。', '#ccc');
   };
   if (sv) { const b = document.createElement('button'); b.textContent = '繼續遊戲'; b.onclick = () => go(true); btns.appendChild(b); }
   const sel = document.createElement('div'); sel.id = 'charsel';
   let selG: 'm' | 'f' = 'm'; let skipI = false;
   const gsw = document.createElement('div'); gsw.id = 'gsel'; gsw.innerHTML = `<button data-x="m" class="on">男</button><button data-x="f">女</button><label><input type="checkbox" id="skipintro"> 跳過開場</label>`;
+  const mpw = document.createElement('div'); mpw.id = 'mpsel'; const defB = MPQ.get('mp') || 'http://localhost:8787';
+  mpw.innerHTML = `<span>🌐 多人連線（實驗・2–4 人）：</span><input id="mpbase" value="${defB}" size="22"><button id="mpnew">建立房間</button><input id="mpcode" placeholder="房間代碼" maxlength="5" size="6" value="${MPQ.get('room') || ''}"><button id="mpjoin">加入</button><em id="mpmsg"></em>`;
+  const mpMsg = (t: string) => { (mpw.querySelector('#mpmsg') as HTMLElement).textContent = t; };
+  (mpw.querySelector('#mpnew') as HTMLElement).onclick = async () => { const base = (mpw.querySelector('#mpbase') as HTMLInputElement).value.replace(/\/$/, ''); mpMsg('建立中…'); try { const { Net } = await import('./net'); const code = await new Net(base).create(); (mpw.querySelector('#mpcode') as HTMLInputElement).value = code; MP = { base, code }; mpMsg(`房間 ${code} 已建立，選角色開始；把代碼給朋友`); } catch (e) { mpMsg('伺服器連不上：' + (e as Error).message); } };
+  (mpw.querySelector('#mpjoin') as HTMLElement).onclick = () => { const base = (mpw.querySelector('#mpbase') as HTMLInputElement).value.replace(/\/$/, ''); const code = (mpw.querySelector('#mpcode') as HTMLInputElement).value.trim().toUpperCase(); if (!/^[A-Z2-9]{5}$/.test(code)) return mpMsg('代碼是 5 碼'); MP = { base, code }; mpMsg(`將加入 ${code}，選角色開始`); };
+  if (MPQ.get('room')) MP = { base: defB, code: MPQ.get('room')!.toUpperCase() };
   const drawSel = () => { sel.innerHTML = ROLES.map(r => { const o = r.look[selG]; return `<div class="ch" data-g="${selG}" data-r="${r.id}"><img class="pv" alt="" src="${rolePortrait(r.id, selG)}"><b>${r.names[selG === 'm' ? 0 : 1]}・${r.name}</b><small>${selG === 'm' ? '男' : '女'}・${r.age[selG === 'm' ? 0 : 1]} 歲<br>${r.blurb}<br><em>${r.perks.join('・')}</em></small></div>`; }).join('');
     sel.querySelectorAll('.ch').forEach(el => (el as HTMLElement).onclick = () => go(false, selG, (el as HTMLElement).dataset.r!, skipI)); };
   gsw.querySelectorAll('button').forEach(b => (b as HTMLElement).onclick = () => { selG = (b as HTMLElement).dataset.x as 'm' | 'f'; gsw.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); drawSel(); });
@@ -989,7 +1014,7 @@ async function boot() {
   drawSel(); (window as any).__selG = (g: 'm' | 'f') => { selG = g; drawSel(); };
   const dl = document.createElement('div'); dl.id = 'daylen'; dl.innerHTML = '<span>新遊戲・一天長度（現實時間）：</span>' + [1, 2, 4].map(x => `<button data-h="${x}" class="${x === 1 ? 'on' : ''}">${x} 小時${x === 1 ? '（預設）' : ''}</button>`).join('');
   dl.querySelectorAll('button').forEach(b => (b as HTMLElement).onclick = () => { DAYH = +(b as HTMLElement).dataset.h!; dl.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); });
-  const h = document.createElement('div'); h.className = 'selh'; h.textContent = sv ? '或建立新的倖存者：' : '選擇你的倖存者：'; btns.appendChild(h); btns.appendChild(dl); btns.appendChild(gsw); btns.appendChild(sel);
+  const h = document.createElement('div'); h.className = 'selh'; h.textContent = sv ? '或建立新的倖存者：' : '選擇你的倖存者：'; btns.appendChild(h); btns.appendChild(dl); btns.appendChild(gsw); btns.appendChild(sel); btns.appendChild(mpw);
   camera.position.copy(player.pos).add(CAM_OFF); camera.lookAt(player.pos);
   addEventListener('beforeunload', save);
   (window as any).__game = { roadT, traffic, drive, PRO, role: () => ROLE, endPrologue: () => endPrologue(), map: gmap, player, sols, blds, conts, nav, started: () => started, go, vehicles, decay: () => decay, alley: () => alley, facade: () => facade, setSpeed, speed: () => speed, WX, airdrop, makeBucket, noise, dayh: () => DAYH, evac: () => evac && evac.pos, evacOpen, doEvac, INF: () => INF, RV: () => RV, infPos: () => infPos, elderPos: () => elderPos, npcInteract, verifyInf, setMin: (m: number) => { gameMin = m; }, parks: () => parks, simRain: (h: number) => { for (let i = 0; i < h * 20; i++) updateWeather(0.05, 0.05); }, camera, CAM_OFF, setTime: (m: number) => { gameMin = m; }, UT, start: () => start!.c, scene, gm: () => gameMin, tp: (x: number, z: number) => player.pos.set(x, 0, z), damageSol, toggleInv, addItem, armor: () => armor, fpv: () => fpv, recon: () => recon, ROC, roc: () => roc, useItem, testAT: (k: string) => { const a = armor!.list.find(a => !a.dead)!; const dir = a.g.position.clone().sub(player.pos).setY(0).normalize(); fireAT(k, ITEMS[k], dir); return a.hp; }, callSupport, rocCheck, liberate: (n: number) => { for (let i = 0; i < SX * SZ && liberated.size < n; i++) if (!liberated.has(i)) { for (const q of sols) if (q.sector === i) { q.state = 'dead'; q.hp = 0; q.mesh.visible = false; } liberated.add(i); } rocCheck(false); }, lastBlast: () => lastBlast, shells, launchFPV, blast, sim: (n: number, dt = 0.05) => { for (let i = 0; i < n; i++) { update(dt); if (fpv?.active) fpv.update(dt); } }, roadPt: () => { let best: V2 = [player.pos.x, player.pos.z], bd = 1e9; for (const r of roads) if (/primary|secondary|tertiary/.test(r.t)) for (const q of r.p) { const d = Math.hypot(q[0] - player.pos.x, q[1] - player.pos.z); if (d < bd && d > 8 && !bldAt(q[0], q[1])) { bd = d; best = q; } } return best; }, checkpoints: () => checkpoints };

@@ -88,3 +88,5 @@ body.mobile #gmap .mhint{display:none}body.mobile #gmap .mleg{font-size:10px;bot
 body.mobile #charsel{gap:8px}body.mobile #charsel .ch{width:44%;padding:8px}body.mobile #charsel .ch small{font-size:10px}
 #wake{position:fixed;inset:0;z-index:45;background:#000;color:#ffd27a;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:32px;transition:opacity 1.5s}#wake small{color:#ccb;font-size:15px;margin-top:10px}#wake.out{opacity:0;pointer-events:none}
 #skipbtn{position:fixed;z-index:46;right:12px;bottom:calc(14px + env(safe-area-inset-bottom));padding:6px 14px;background:rgba(20,20,20,.8);color:#ffd27a;border:1px solid #c9a35a;border-radius:6px}
+#mpsel{margin-top:10px;font-size:13px;color:#bcd;display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap}#mpsel input{background:#111;color:#eee;border:1px solid #556;padding:4px 6px;border-radius:4px}#mpsel button{padding:4px 10px}#mpsel em{color:#8cf;font-style:normal}
+#mphud{position:fixed;left:50%;top:8px;transform:translateX(-50%);z-index:30;background:rgba(10,20,30,.75);color:#8cf;font-size:12px;padding:4px 10px;border-radius:6px;pointer-events:none}

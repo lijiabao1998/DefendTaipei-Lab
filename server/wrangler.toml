@@ -1,0 +1,25 @@
+# DefendTaipei multiplayer backend (local-only until an account/token is provided).
+name = "defendtaipei-mp"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+
+[[durable_objects.bindings]]
+name = "ROOM"
+class_name = "Room"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "dt_saves"
+database_id = "00000000-0000-0000-0000-000000000000" # placeholder: replace with `wrangler d1 create dt_saves` output before deploy
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "ARCHIVE"
+bucket_name = "dt-room-archive"
+
+[vars]
+ALLOWED_ORIGINS = "https://lijiabao1998.github.io,http://localhost:4173,http://localhost:4180,http://localhost:5173"
