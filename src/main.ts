@@ -4,6 +4,7 @@ import { buildFacade } from './facade';
 import { buildParks } from './park';
 import { ArmorSystem, type ArmorKind } from './armor';
 import { FPV, Recon, boom } from './drone';
+import { RocSystem, ROC_NAME, type RocKind } from './roc';
 import { makeShack, setShackNight } from './rooftin';
 let facade: ReturnType<typeof buildFacade> | null = null;
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -173,6 +174,52 @@ function setupRecon(c: V2) { const cs: V2[] = checkpoints.slice(0, 2).map(q => [
   recon = new Recon(scene, { player: () => player.pos, log, hidden: () => { const P = player.pos; return !!bldAt(P.x, P.z) || [[1.6, 0], [-1.6, 0], [0, 1.6], [0, -1.6]].some(([dx, dz]) => bldAt(P.x + dx, P.z + dz)); },
     spotted: (p) => { log('⚠ 解放軍偵察無人機發現你！砲擊與巡邏隊正趕來——快躲進騎樓或室內！', '#f66'); slowDown('被無人機發現'); for (let i = 0; i < 4; i++) shells.push({ t: 6 + i * 1.3, p: [p[0] + (Math.random() - 0.5) * 14, p[1] + (Math.random() - 0.5) * 14] }); sols.filter(s => s.state !== 'dead' && !s.post).sort((a, b) => Math.hypot(a.pos.x - p[0], a.pos.z - p[1]) - Math.hypot(b.pos.x - p[0], b.pos.z - p[1])).slice(0, 3).forEach(s => { s.state = 'investigate'; s.target = p; s.timer = 300; }); } }, cs); }
 function updateShells(dt: number) { for (let i = shells.length - 1; i >= 0; i--) { const s = shells[i]; s.t -= dt; if (s.t > 0) continue; shells.splice(i, 1); const p = new THREE.Vector3(s.p[0], 0.5, s.p[1]); boom(scene, p, 1.4); noise(p.x, p.z, 60); const dp = Math.hypot(player.pos.x - p.x, player.pos.z - p.z); if (dp < 7 && !bldAt(player.pos.x, player.pos.z)) { player.hp -= 55 * (1 - dp / 7); player.rig.hurtT = 0.4; if (!player.bleed) { player.bleed = true; log('被砲彈破片擊中，流血了！', '#f66'); } } } }
+// ---------- 國軍 (ROC) support: weapons unlock, radio call-in, final counter-offensive ----------
+const ROC = { unlocked: false, cd: 0, offensive: false, ended: false, n: 0 }; let roc: RocSystem | null = null; let mainRoads: { p: V2[]; t: string; n: string }[] = [];
+const ROC_PRESETS: Record<string, number>[] = [{ t91: 1, stanag: 2, a556n: 30, bandage: 2 }, { t65k2: 1, stanag: 1, a556n: 40, kestrel: 1, r67: 2 }, { t75saw: 1, a556n: 120, at4: 1 }, { t93: 1, a762n: 10, t75p: 1, a9: 15 }];
+function fireAT(k: string, d: typeof ITEMS[string], dir: THREE.Vector3) { const P = player.pos; let end = P.clone().addScaledVector(dir, d.range!), hitA: any = null;
+  if (armor) for (const a of armor.list) { if (a.dead) continue; const to = a.g.position.clone().sub(P); to.y = 0; const t = to.dot(dir); if (t > 0 && t < d.range! && to.clone().sub(dir.clone().multiplyScalar(t)).length() < 2.6 && (k === 'jav' || los([P.x, P.z], [a.g.position.x, a.g.position.z]))) { hitA = a; end = a.g.position.clone(); break; } }
+  if (!hitA) { for (let t = 2; t < d.range!; t += 1) { const q = P.clone().addScaledVector(dir, t); if (bldAt(q.x, q.z)) { end = q; break; } } }
+  tracer(P, end); const e = end.clone().setY(1.4); boom(scene, e, 1.2); noise(e.x, e.z, 50);
+  if (hitA) armor!.hit(hitA.g.position.x, hitA.g.position.z, d.at!, true);
+  for (const s of sols) if (s.state !== 'dead' && Math.hypot(s.pos.x - e.x, s.pos.z - e.z) < 4.5) damageSol(s, d.dmg!, true);
+  if (k === 'at4') { delete player.inv.at4; player.equip = ''; log('AT4 已射出——空筒拋棄', '#ccc'); } else if (k === 'jav') log('標槍飛彈頂部攻擊！', '#ffd76a'); }
+function rocTargets() { const T: { x: number; z: number; kind: 'armor' | 'sol' | 'post'; ref: unknown }[] = [];
+  if (armor) for (const a of armor.list) if (!a.dead) T.push({ x: a.g.position.x, z: a.g.position.z, kind: 'armor', ref: a });
+  checkpoints.forEach((c, i) => { if (sols.some(s => s.state !== 'dead' && Math.hypot(s.pos.x - c[0], s.pos.z - c[1]) < 15)) T.push({ x: c[0], z: c[1], kind: 'post', ref: i }); });
+  for (const s of sols) if (s.state !== 'dead') T.push({ x: s.pos.x, z: s.pos.z, kind: 'sol', ref: s }); return T; }
+function setupRoc() { const len = (r: { p: V2[] }) => r.p.reduce((a, q, i) => i ? a + Math.hypot(q[0] - r.p[i - 1][0], q[1] - r.p[i - 1][1]) : 0, 0);
+  mainRoads = roads.filter(r => (/^(primary|secondary|trunk)/.test(r.t) || /西園路|環河南路|和平西路|康定路|中華路|艋舺大道/.test(r.n || '')) && r.p.length >= 2 && len(r) > 60);
+  roc = new RocSystem(scene, { targets: rocTargets, los: (a, b) => los(a, b), log, fire: (t, from) => { const to = new THREE.Vector3(t.x, 1.2, t.z); tracer(from, to); boom(scene, to, t.kind === 'sol' ? 0.6 : 1.3); noise(t.x, t.z, 50);
+      if (t.kind === 'armor') { const a = t.ref as any; if (armor && !a.dead) { armor.hit(a.g.position.x, a.g.position.z, 120, true); } }
+      else if (t.kind === 'post') { for (const s of sols) if (s.state !== 'dead' && Math.hypot(s.pos.x - t.x, s.pos.z - t.z) < 15 && Math.random() < 0.6) damageSol(s, 300, true); log('國軍砲火摧毀了佔領軍據點！', '#9cf'); }
+      else damageSol(t.ref as Sol, 300, true);
+      const dp = Math.hypot(player.pos.x - t.x, player.pos.z - t.z); if (dp < 3.5) { player.hp -= 25; player.rig.hurtT = 0.3; }
+      checkSectors(); } }); }
+function routeNear(r: { p: V2[] }, x: number, z: number): V2[] { const a = r.p[0], b = r.p[r.p.length - 1]; return Math.hypot(a[0] - x, a[1] - z) > Math.hypot(b[0] - x, b[1] - z) ? r.p.slice() : r.p.slice().reverse(); }
+function nearestRoad(x: number, z: number, name?: RegExp) { let best = mainRoads[0], bd = 1e9; for (const r of mainRoads) { if (name && !name.test(r.n || '')) continue; for (const q of r.p) { const d = Math.hypot(q[0] - x, q[1] - z); if (d < bd) { bd = d; best = r; } } } return best; }
+function callSupport() { if (!roc) return; if (ROC.cd > 0) { log(`📻 「收到，支援單位整補中——${Math.ceil(ROC.cd)} 秒後再呼叫。」`, '#ccc'); return; }
+  ROC.cd = 240; const P = player.pos; noise(P.x, P.z, 70); sols.filter(s => s.state !== 'dead' && !s.post).sort((a, b) => Math.hypot(a.pos.x - P.x, a.pos.z - P.z) - Math.hypot(b.pos.x - P.x, b.pos.z - P.z)).slice(0, 4).forEach(s => { s.state = 'investigate'; s.target = [P.x, P.z]; s.timer = 300; });
+  const kind: RocKind = (['cm32', 'cm11', 'm1a2t'] as RocKind[])[ROC.n++ % 3]; const r = nearestRoad(P.x, P.z); roc.spawn(kind, routeNear(r, P.x, P.z), 150, 8);
+  log(`📻 聯絡官：「${ROC_NAME[kind]} 8 秒後沿 ${r.n || '主要道路'} 推進！」——通話聲引來了巡邏隊`, '#9cf'); phone('📻 國軍無線電', `${ROC_NAME[kind]} 正沿 ${r.n || '主要道路'} 推進支援，冷卻 4 分鐘。`); slowDown('呼叫支援'); }
+function rocCheck(silent: boolean) { if (!started && !silent) return;
+  if (!ROC.unlocked && liberated.size >= 2) { ROC.unlocked = true; if (!silent) {
+    phone('📻 地下電台「自由之聲」', '國軍特戰部隊已在萬華外圍活動！他們在幾個被奪回的據點留下了補給——留意國軍武器與空投。有人看到一名受傷的聯絡官倒在附近，他身上有無線電。');
+    log('📻 自由之聲：國軍特戰部隊就在附近！據點與空投開始出現國軍武器', '#9cf'); slowDown('國軍消息'); }
+    checkpoints.slice(0, 4).forEach((c, i) => { const p: V2 = [c[0] + 3, c[1] + 3]; const ct = makeCont('roc' + i, p, 'crate', undefined, ROC_PRESETS[i % ROC_PRESETS.length]); ct.label = '國軍補給箱'; });
+    let lp: V2 = [player.pos.x + 14, player.pos.z + 10]; for (let k = 0; k < 40 && bldAt(lp[0], lp[1]); k++) lp = [player.pos.x + 14 + k * 1.5, player.pos.z + 10 - k];
+    const li = makeCont('liaison', lp, 'crate', undefined, { rocradio_b: 1, t75p: 1, a9: 15, bandage: 1 }); li.label = '受傷聯絡官的背包'; (ROC as any).liaison = lp; }
+  if (ROC.unlocked && !ROC.offensive && liberated.size >= SX * SZ - 2 && roc && !silent) { ROC.offensive = true; const rest = [...Array(SX * SZ).keys()].filter(i => !liberated.has(i));
+    const r = nearestRoad(player.pos.x, player.pos.z, /西園路/) || mainRoads[0]; const route = r.p.length > 1 ? (r.p[0][1] > r.p[r.p.length - 1][1] ? r.p.slice() : r.p.slice().reverse()) : r.p; (ROC as any).col = route;
+    (['m1a2t', 'm1a2t', 'cm11', 'cm32'] as RocKind[]).forEach((kd, i) => roc!.spawn(kd, route, 99999, i * 3.5));
+    phone('📻 國軍無線電', `全面反攻開始！國軍戰車縱隊開進 ${r.n || '西園路'}，目標：最後的佔領軍據點（${rest.map(SECTOR_LABEL).join('、')}）。`); log(`🎖 國軍反攻！M1A2T、勇虎、雲豹縱隊開進 ${r.n || '西園路'}——奪回最後的據點！`, '#ffd76a'); slowDown('國軍反攻'); }
+  if (ROC.offensive && !ROC.ended && liberated.size >= SX * SZ && !silent) { ROC.ended = true; rocEnding(); } }
+let rocCine: { t: number; T: number } | null = null;
+function rocEnding() { UT.ev.win = 1; save(); closePanel(); setSpeed(1); started = false; const ov = document.createElement('div'); ov.id = 'roccine'; ov.innerHTML = '<div class="lb t"></div><div class="lb b"></div><div class="ttl">奪回萬華</div><div class="sub">國軍戰車縱隊・西園路</div>'; document.body.appendChild(ov); rocCine = { t: 0, T: 11 }; }
+function rocCineStep(dt: number) { const c = rocCine!; c.t += dt; const lead = roc?.list[0]?.g.position || player.pos; const a = 0.6 + c.t * 0.18, r = 26 - c.t * 0.8, h = 9 + Math.sin(c.t * 0.4) * 3;
+  camera.position.set(lead.x + Math.cos(a) * r, h, lead.z + Math.sin(a) * r); camera.lookAt(lead.x, 2, lead.z); roc?.update(dt);
+  if (c.t > c.T) { rocCine = null; document.getElementById('roccine')?.remove(); const day = Math.floor(gameMin / 1440) + 1; const d = document.createElement('div'); d.id = 'evacend'; d.className = 'win';
+    d.innerHTML = `<h1>奪回萬華</h1><h2>結局：國軍與萬華的街坊並肩，把佔領軍趕出了艋舺。</h2><table><tr><td>存活天數</td><td>${day} 天</td></tr><tr><td>奪回街區</td><td>${liberated.size} / ${SX * SZ}</td></tr><tr><td>擊倒佔領軍</td><td>${player.kills}</td></tr><tr><td>擊毀裝甲</td><td>${armor ? armor.list.filter(a => a.dead).length : 0}</td></tr></table><p>另有兩種結局：搭直升機或小艇撤離至福特號航空母艦。</p><button onclick="location.reload()">再玩一次</button>`; document.body.appendChild(d); } }
 // ---------- PLA armour on main roads ----------
 let armor: ArmorSystem | null = null;
 function setupArmor(c: V2) { armor = new ArmorSystem(scene, { canSee: (ax, az, bx, bz) => !bldAt(bx, bz) && los([ax, az], [bx, bz]), hurt: (dmg) => { if (player.sleeping) player.sleeping = false; player.rig.hurtT = 0.35; player.rig.hurtSide = 1; player.stun = 0.25; player.hp -= dmg; if (!player.bleed && Math.random() < 0.35) { player.bleed = true; log('你被機槍擊中，流血了！', '#f66'); } },
@@ -426,7 +473,7 @@ function updateInformant(dt: number) { if (!infRig) return; const P = player.pos
     if (INF.saw && trapSols.every(s => s.state === 'dead')) { INF.esc = 1; log('伏兵全滅。叛徒線人逃回街區躲了起來……', '#ffd27a'); INF.hid = freeNear([infPos[0] + 30, infPos[1] - 20]); infPos = INF.hid; infRig.root.position.set(infPos[0], 0, infPos[1]); } }
 }
 function airdrop(at?: V2) { let p: V2 | null = at || null; for (let k = 0; !p && k < 200; k++) { const a = rnd() * Math.PI * 2, d = 45 + rnd() * 30; const q: V2 = [player.pos.x + Math.cos(a) * d, player.pos.z + Math.sin(a) * d]; if (!bldAt(q[0], q[1]) && !bldAt(q[0] + 1.5, q[1]) && !bldAt(q[0], q[1] + 1.5)) p = q; } if (!p) return;
-  (UT as any).ad = p; dropCont = makeCont('airdrop', p, 'crate', undefined, { medkit: 2, ration: 4, water: 4, bandage: 3, pistol: 1, a9: 24, can: 3, fpv: 1 }); dropCont.label = '空投物資箱'; dropCont.mesh.scale.set(1.6, 2.4, 1.6); dropCont.mesh.position.y = 0.48;
+  (UT as any).ad = p; dropCont = makeCont('airdrop', p, 'crate', undefined, { medkit: 2, ration: 4, water: 4, bandage: 3, pistol: 1, a9: 24, can: 3, fpv: 1, ...(ROC.unlocked ? { t91: 1, stanag: 2, a556n: 30, at4: 1, ...(Math.random() < 0.25 ? { jav: 1, javm: 1 } : {}) } : {}) }); dropCont.label = '空投物資箱'; dropCont.mesh.scale.set(1.6, 2.4, 1.6); dropCont.mesh.position.y = 0.48;
   const N = 160; const g = new THREE.BufferGeometry(); const pp = new Float32Array(N * 3); for (let i = 0; i < N; i++) pp.set([p[0] + (Math.random() - 0.5), Math.random() * 14, p[1] + (Math.random() - 0.5)], i * 3); g.setAttribute('position', new THREE.BufferAttribute(pp, 3));
   smoke = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xff3a2a, size: 1.6, transparent: true, opacity: 0.55, depthWrite: false })); smoke.frustumCulled = false; scene.add(smoke);
   // PLA contests the drop: nearest active patrols head there
@@ -481,6 +528,8 @@ function addItem(k: string, n = 1) { player.inv[k] = (player.inv[k] || 0) + n; }
 function useItem(k: string) {
   const d = ITEMS[k]; if (!player.inv[k]) return;
   if (d.kind === 'melee' || d.kind === 'gun') { player.equip = player.equip === k ? '' : k; log(player.equip ? `裝備了 ${d.name}` : '收起武器'); }
+  else if (k === 'rocradio_b') { const ok = player.inv.lipo && (player.inv.vtx || player.inv.lipo >= 2); if (!ok) { log('修理需要：鋰電池＋圖傳模組（或 2 顆鋰電池）', '#f99'); return; } const use = player.inv.vtx ? ['lipo', 'vtx'] : ['lipo', 'lipo']; for (const q of use) { if (--player.inv[q] <= 0) delete player.inv[q]; } delete player.inv[k]; addItem('rocradio', 1); log('📻 無線電修好了！可以呼叫國軍裝甲支援（通話會引來巡邏）', '#9f9'); }
+  else if (k === 'rocradio') { callSupport(); closePanel(); }
   else if (k === 'fpv') { if (bldAt(player.pos.x, player.pos.z)) { log('在室內無法起飛，先到戶外', '#f99'); return; } if (--player.inv[k] <= 0) delete player.inv[k]; closePanel(); launchFPV(); }
   else if (k === 'frame') { const need: Record<string, number> = { frame: 1, dmotor: 4, lipo: 1, vtx: 1, grenade: 1 }; const miss = Object.entries(need).filter(([q, n]) => (player.inv[q] || 0) < n).map(([q, n]) => `${ITEMS[q].name}×${n - (player.inv[q] || 0)}`); if (miss.length) { log('還缺：' + miss.join('、'), '#f99'); return; } for (const [q, n] of Object.entries(need)) { player.inv[q] -= n; if (player.inv[q] <= 0) delete player.inv[q]; } addItem('fpv', 1); log('組好了一架 FPV 自殺無人機！', '#9f9'); }
   else if (d.mag && d.ammo) { player.inv[d.ammo] = (player.inv[d.ammo] || 0) + d.mag; if (--player.inv[k] <= 0) delete player.inv[k]; log(`退出 ${d.mag} 發 ${ITEMS[d.ammo].name}`); }
@@ -560,6 +609,7 @@ function playerAttack() {
     if (!player.inv[d.ammo]) { log('沒有子彈了', '#f99'); player.cd = 0.5; return; }
     if (--player.inv[d.ammo] <= 0) delete player.inv[d.ammo];
     noise(player.pos.x, player.pos.z, d.noise);
+    if (d.at) { fireAT(k, d, dir); return; }
     let hit: Sol | null = null, hd = d.range;
     for (const s of sols) { if (s.state === 'dead') continue; const to = s.pos.clone().sub(player.pos); const t = to.dot(dir); if (t < 0 || t > hd) continue; const perp = to.clone().sub(dir.clone().multiplyScalar(t)).length(); if (perp < 0.55 && los([player.pos.x, player.pos.z], [s.pos.x, s.pos.z])) { hit = s; hd = t; } }
     tracer(player.pos, player.pos.clone().add(dir.clone().multiplyScalar(hd)));
@@ -580,6 +630,7 @@ function damageSol(s: Sol, dmg: number, stealth: boolean) {
 const liberated = new Set<number>();
 function checkSectors(silent = false) {
   for (let i = 0; i < SX * SZ; i++) { if (liberated.has(i)) continue; const alive = sols.filter(s => s.sector === i && s.state !== 'dead').length; const total = sols.filter(s => s.sector === i).length; if (total > 0 && alive === 0) { liberated.add(i); if (!silent) log(`★ ${SECTOR_LABEL(i)} 街區已奪回！`, '#7fff7f'); } }
+  rocCheck(silent);
 }
 
 // ---------- save ----------
@@ -646,7 +697,7 @@ function update(dt: number) {
   if (player.bleed) player.hp -= dt * 0.6;
   if (player.hunger > 50 && player.thirst > 50 && !player.bleed) player.hp = Math.min(100, player.hp + gm * 6);
   if (player.hp <= 0) return die();
-  vehicles.update(dt); if (armor && started) armor.update(dt); if (recon && started) recon.update(dt, performance.now() / 1000); updateShells(dt);
+  vehicles.update(dt); if (armor && started) armor.update(dt); if (recon && started) recon.update(dt, performance.now() / 1000); if (roc && started) roc.update(dt); ROC.cd = Math.max(0, ROC.cd - dt); updateShells(dt);
   player.cd -= dt;
   // movement
   if (!player.sleeping && !fpv?.active) {
@@ -767,7 +818,7 @@ function die() {
   const t = $('title'); t.style.display = 'flex'; const day = Math.floor(gameMin / 1440) + 1;
   t.innerHTML = `<h1 style="color:#c33">你陣亡了</h1><h2>這就是你的結局。</h2><p>你在淪陷的台北撐過了 ${day} 天，擊倒 ${player.kills} 名佔領軍，奪回了 ${liberated.size} 個街區。</p><button onclick="location.reload()">重新開始（新的倖存者）</button>`;
 }
-function loop() { const dt = Math.min(clock.getDelta(), 0.05); if (cine.on) { requestAnimationFrame(loop); return; } update(dt); if (fpv?.active) { fpv.update(dt); renderer.render(scene, fpv.active ? fpv.cam : camera); } else renderer.render(scene, camera); requestAnimationFrame(loop); }
+function loop() { const dt = Math.min(clock.getDelta(), 0.05); if (cine.on) { requestAnimationFrame(loop); return; } if (rocCine) { rocCineStep(dt); renderer.render(scene, camera); requestAnimationFrame(loop); return; } update(dt); if (fpv?.active) { fpv.update(dt); renderer.render(scene, fpv.active ? fpv.cam : camera); } else renderer.render(scene, camera); requestAnimationFrame(loop); }
 
 // ---------- boot ----------
 async function boot() {
@@ -795,7 +846,7 @@ async function boot() {
   if (bestR) nightMarket(bestR.p, bestR.t === 'tertiary' ? 9 : 6, fx, 'nm');
   setupArmor(start!.c as V2);
   decay = buildDecay({ scene, rnd, pip, bldAt, addSeg: (q, low) => addSeg(q, low), merge: mergeGeometries, roads, blds, RW: ROADW, center: start.c, R: 140, doors: doors.map(d => d.p) });
-  checkpoints = decay.checkpoints; setupRecon(start!.c as V2);
+  checkpoints = decay.checkpoints; setupRecon(start!.c as V2); setupRoc();
   alley = buildAlley({ poles: decay.polePos, scene, rnd, pip, bldAt, addSeg: (q, low) => addSeg(q, low), merge: mergeGeometries, roads, blds, RW: ROADW, center: start.c, R: 85, doors: doors.map(d => d.p) });
   facade = buildFacade({ scene, pip, bldAt, merge: mergeGeometries, roads, blds, RW: ROADW, center: start.c, R: 110 }); console.log('facade', JSON.stringify(facade.stats)); parks = buildParks({ scene, bldAt, merge: mergeGeometries, addSeg: (q, low) => addSeg(q, low), roadDist, center: start.c, R: 110 }); console.log('parks', JSON.stringify(parks));
   // navigation grid (built after all collision geometry exists)
@@ -829,7 +880,7 @@ async function boot() {
   const h = document.createElement('div'); h.className = 'selh'; h.textContent = sv ? '或建立新的倖存者：' : '選擇你的倖存者：'; btns.appendChild(h); btns.appendChild(dl); btns.appendChild(sel);
   camera.position.copy(player.pos).add(CAM_OFF); camera.lookAt(player.pos);
   addEventListener('beforeunload', save);
-  (window as any).__game = { player, sols, blds, conts, nav, started: () => started, go, vehicles, decay: () => decay, alley: () => alley, facade: () => facade, setSpeed, speed: () => speed, WX, airdrop, makeBucket, noise, dayh: () => DAYH, evac: () => evac && evac.pos, evacOpen, doEvac, INF: () => INF, RV: () => RV, infPos: () => infPos, elderPos: () => elderPos, npcInteract, verifyInf, setMin: (m: number) => { gameMin = m; }, parks: () => parks, simRain: (h: number) => { for (let i = 0; i < h * 20; i++) updateWeather(0.05, 0.05); }, camera, CAM_OFF, setTime: (m: number) => { gameMin = m; }, UT, start: () => start!.c, scene, gm: () => gameMin, tp: (x: number, z: number) => player.pos.set(x, 0, z), damageSol, toggleInv, addItem, armor: () => armor, fpv: () => fpv, recon: () => recon, lastBlast: () => lastBlast, shells, launchFPV, blast, sim: (n: number, dt = 0.05) => { for (let i = 0; i < n; i++) { update(dt); if (fpv?.active) fpv.update(dt); } }, roadPt: () => { let best: V2 = [player.pos.x, player.pos.z], bd = 1e9; for (const r of roads) if (/primary|secondary|tertiary/.test(r.t)) for (const q of r.p) { const d = Math.hypot(q[0] - player.pos.x, q[1] - player.pos.z); if (d < bd && d > 8 && !bldAt(q[0], q[1])) { bd = d; best = q; } } return best; }, checkpoints: () => checkpoints };
+  (window as any).__game = { player, sols, blds, conts, nav, started: () => started, go, vehicles, decay: () => decay, alley: () => alley, facade: () => facade, setSpeed, speed: () => speed, WX, airdrop, makeBucket, noise, dayh: () => DAYH, evac: () => evac && evac.pos, evacOpen, doEvac, INF: () => INF, RV: () => RV, infPos: () => infPos, elderPos: () => elderPos, npcInteract, verifyInf, setMin: (m: number) => { gameMin = m; }, parks: () => parks, simRain: (h: number) => { for (let i = 0; i < h * 20; i++) updateWeather(0.05, 0.05); }, camera, CAM_OFF, setTime: (m: number) => { gameMin = m; }, UT, start: () => start!.c, scene, gm: () => gameMin, tp: (x: number, z: number) => player.pos.set(x, 0, z), damageSol, toggleInv, addItem, armor: () => armor, fpv: () => fpv, recon: () => recon, ROC, roc: () => roc, useItem, testAT: (k: string) => { const a = armor!.list.find(a => !a.dead)!; const dir = a.g.position.clone().sub(player.pos).setY(0).normalize(); fireAT(k, ITEMS[k], dir); return a.hp; }, callSupport, rocCheck, liberate: (n: number) => { for (let i = 0; i < SX * SZ && liberated.size < n; i++) if (!liberated.has(i)) { for (const q of sols) if (q.sector === i) { q.state = 'dead'; q.hp = 0; q.mesh.visible = false; } liberated.add(i); } rocCheck(false); }, lastBlast: () => lastBlast, shells, launchFPV, blast, sim: (n: number, dt = 0.05) => { for (let i = 0; i < n; i++) { update(dt); if (fpv?.active) fpv.update(dt); } }, roadPt: () => { let best: V2 = [player.pos.x, player.pos.z], bd = 1e9; for (const r of roads) if (/primary|secondary|tertiary/.test(r.t)) for (const q of r.p) { const d = Math.hypot(q[0] - player.pos.x, q[1] - player.pos.z); if (d < bd && d > 8 && !bldAt(q[0], q[1])) { bd = d; best = q; } } return best; }, checkpoints: () => checkpoints };
 }
 boot().catch(e => { console.error(e); $('loadmsg').textContent = '載入失敗：' + e; });
 loop();

@@ -1,4 +1,4 @@
-export type ItemDef = { name: string; w: number; kind: 'food'|'drink'|'med'|'melee'|'gun'|'ammo'|'tool'; hunger?: number; thirst?: number; fatigue?: number; hp?: number; stopBleed?: boolean; dmg?: number; range?: number; ammo?: string; noise?: number; cd?: number; desc?: string; cal?: string; cap?: number; mag?: number };
+export type ItemDef = { name: string; w: number; kind: 'food'|'drink'|'med'|'melee'|'gun'|'ammo'|'tool'; hunger?: number; thirst?: number; fatigue?: number; hp?: number; stopBleed?: boolean; dmg?: number; range?: number; ammo?: string; noise?: number; cd?: number; desc?: string; cal?: string; at?: number; roc?: boolean; cap?: number; mag?: number };
 // All brand names are parodies / fictional.
 export const ITEMS: Record<string, ItemDef> = {
   can: { name: '肉醬罐頭', w: 0.4, kind: 'food', hunger: 30 },
@@ -52,6 +52,22 @@ export const ITEMS: Record<string, ItemDef> = {
   grenade: { name: '制式手榴彈', w: 0.6, kind: 'tool', desc: '解放軍制式破片手榴彈（投擲功能尚未開放）' },
   helmet: { name: '解放軍凱夫拉頭盔', w: 1.4, kind: 'tool', desc: '可防破片（防護功能尚未開放）' },
   vest: { name: '解放軍防彈背心', w: 4.5, kind: 'tool', desc: '插板式防彈背心（防護功能尚未開放）' },
+  // ---- 國軍 (ROC Army) — calibres per public sources (see CREDITS.md). 5.56×45mm NATO ≠ PLA 5.8×42mm.
+  a556n: { name: '5.56×45mm NATO 步槍彈', w: 0.012, kind: 'ammo', cal: '5.56×45mm NATO', roc: true, desc: '國軍步槍／機槍用彈，與解放軍 5.8×42mm 不通用' },
+  a762n: { name: '7.62×51mm NATO 狙擊彈', w: 0.025, kind: 'ammo', cal: '7.62×51mm NATO', roc: true },
+  stanag: { name: 'T91 彈匣（30 發）', w: 0.45, kind: 'tool', ammo: 'a556n', mag: 30, cal: '5.56×45mm NATO', roc: true, desc: '使用：退出 30 發 5.56 NATO；T91/T65K2/T75 通用彈藥' },
+  t91: { name: 'T91 戰鬥步槍', w: 3.17, kind: 'gun', dmg: 62, range: 46, ammo: 'a556n', cap: 30, noise: 55, cd: 0.14, cal: '5.56×45mm NATO', roc: true, desc: '國軍制式步槍（空槍 3.17 kg）' },
+  t65k2: { name: 'T65K2 步槍', w: 3.31, kind: 'gun', dmg: 60, range: 44, ammo: 'a556n', cap: 30, noise: 55, cd: 0.16, cal: '5.56×45mm NATO', roc: true, desc: '前代制式步槍（3.31 kg）' },
+  t75saw: { name: 'T75 班用機槍', w: 7.5, kind: 'gun', dmg: 58, range: 50, ammo: 'a556n', cap: 200, noise: 65, cd: 0.08, cal: '5.56×45mm NATO', roc: true, desc: '班用輕機槍（7.5 kg），彈鏈或彈匣供彈' },
+  t93: { name: 'T93 狙擊槍', w: 6.2, kind: 'gun', dmg: 160, range: 75, ammo: 'a762n', cap: 5, noise: 70, cd: 1.3, cal: '7.62×51mm NATO', roc: true, desc: '手動槍機狙擊槍，有效射程 800 m 以上（重量約值）' },
+  t75p: { name: 'T75 手槍', w: 0.96, kind: 'gun', dmg: 34, range: 20, ammo: 'a9', cap: 15, noise: 40, cd: 0.3, cal: '9×19mm', roc: true, desc: '國軍制式手槍（重量約值）' },
+  r67: { name: '紅隼火箭彈', w: 1.6, kind: 'ammo', cal: '67mm', roc: true },
+  kestrel: { name: '紅隼 反裝甲火箭', w: 5, kind: 'gun', dmg: 90, range: 60, ammo: 'r67', cap: 1, noise: 80, cd: 2.5, at: 120, cal: '67mm', roc: true, desc: '國造肩射反裝甲火箭（5 kg，HEAT 射程 400 m），可重複裝填' },
+  at4: { name: 'AT4 反裝甲火箭', w: 6.7, kind: 'gun', dmg: 90, range: 55, ammo: 'at4', cap: 1, noise: 85, cd: 2, at: 140, cal: '84mm', roc: true, desc: '一次性無後座力火箭（6.7 kg），射後即拋' },
+  jav: { name: '標槍飛彈（Javelin）', w: 22, kind: 'gun', dmg: 120, range: 130, ammo: 'javm', cap: 1, noise: 85, cd: 4, at: 220, cal: '127mm', roc: true, desc: '稀有。射後不理、頂部攻擊，可越過障礙擊中裝甲車頂' },
+  javm: { name: '標槍飛彈彈筒', w: 11, kind: 'ammo', cal: '127mm', roc: true },
+  rocradio_b: { name: '損壞的國軍野戰無線電', w: 3, kind: 'tool', desc: '使用：用鋰電池＋圖傳模組零件修好（或 2 顆鋰電池）' },
+  rocradio: { name: '國軍野戰無線電', w: 3, kind: 'tool', desc: '使用：呼叫國軍裝甲支援（冷卻中無法使用）。通話聲會引來巡邏！' },
   fpv: { name: 'FPV 自殺無人機', w: 1.1, kind: 'tool', desc: '一次性。使用：起飛進入第一人稱操控，撞擊即引爆；從上方撞擊裝甲車頂可擊毀' },
   frame: { name: '碳纖維機架（5 吋）', w: 0.2, kind: 'tool', desc: '使用：組裝 FPV（需 4 顆無刷馬達＋鋰電池＋圖傳模組＋手榴彈）' },
   dmotor: { name: '無刷馬達', w: 0.04, kind: 'tool', desc: 'FPV 零件，需要 4 顆' },

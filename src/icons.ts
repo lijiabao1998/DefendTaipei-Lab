@@ -76,6 +76,18 @@ const DRAW: Record<string, (c: C) => void> = {
   qbz95: c => gunIco(c, { bull: true, mag: 'curve', label: 'QBZ-95-1' }),
   qbu191: c => gunIco(c, { mag: 'curve', scope: true, len: 1.1, bipod: true, label: 'QBU-191' }),
   qbu88: c => gunIco(c, { bull: true, mag: 'box', scope: true, len: 1.1, bipod: true, label: 'QBU-88' }),
+  t91: c => gunIco(c, { mag: 'curve', col: '#5a5a52', label: 'T91' }), t65k2: c => gunIco(c, { mag: 'curve', col: '#6a6a5a', label: 'T65K2' }), t75saw: c => gunIco(c, { mag: 'belt', bipod: true, len: 1.1, col: '#5a5a52', label: 'T75 SAW' }),
+  t93: c => gunIco(c, { mag: 'box', scope: true, bipod: true, len: 1.15, col: '#5a5a52', label: 'T93' }), t75p: c => gunIco(c, { pistol: true, col: '#5a5a52', label: 'T75' }),
+  kestrel: c => tube(c, '#3e4a2e', '紅隼'), at4: c => tube(c, '#5a5a3a', 'AT4'), jav: c => tube(c, '#4b5a38', 'Javelin', true),
+  r67: c => tube(c, '#6a6a4a', '67mm'), javm: c => tube(c, '#4b5a38', '彈筒'), stanag: c => magIco(c, 'T91 彈匣', '30', '#1e1e1e'),
+  a556n: c => { for (let i = 0; i < 6; i++) { c.fillStyle = '#c9a23a'; rr(c, 22 + i * 14, 30, 9, 56, 4); c.fill(); } c.fillStyle = '#fff'; c.font = 'bold 14px sans-serif'; c.textAlign = 'center'; c.fillText('5.56 NATO', 64, 108); },
+  a762n: c => { for (let i = 0; i < 4; i++) { c.fillStyle = '#c9a23a'; rr(c, 26 + i * 20, 22, 12, 70, 5); c.fill(); } c.fillStyle = '#fff'; c.font = 'bold 14px sans-serif'; c.textAlign = 'center'; c.fillText('7.62 NATO', 64, 110); },
+  rocradio_b: c => radioIco(c, true), rocradio: c => radioIco(c, false),
+  fpv: c => { c.strokeStyle = '#222'; c.lineWidth = 8; c.beginPath(); c.moveTo(26, 26); c.lineTo(102, 102); c.moveTo(102, 26); c.lineTo(26, 102); c.stroke(); for (const [x, y] of [[26, 26], [102, 26], [26, 102], [102, 102]]) { c.fillStyle = 'rgba(150,150,150,.5)'; c.beginPath(); c.arc(x, y, 20, 0, 7); c.fill(); c.fillStyle = '#333'; c.beginPath(); c.arc(x, y, 6, 0, 7); c.fill(); } c.fillStyle = '#3e4a2e'; rr(c, 48, 50, 32, 30, 5); c.fill(); c.fillStyle = '#c33'; c.fillRect(56, 80, 16, 10); },
+  frame: c => { c.strokeStyle = '#111'; c.lineWidth = 9; c.beginPath(); c.moveTo(26, 26); c.lineTo(102, 102); c.moveTo(102, 26); c.lineTo(26, 102); c.stroke(); c.fillStyle = '#222'; rr(c, 48, 48, 32, 32, 4); c.fill(); },
+  dmotor: c => { c.fillStyle = '#555'; c.beginPath(); c.arc(64, 64, 30, 0, 7); c.fill(); c.fillStyle = '#c33'; c.beginPath(); c.arc(64, 64, 22, 0, 7); c.fill(); c.fillStyle = '#ddd'; c.beginPath(); c.arc(64, 64, 6, 0, 7); c.fill(); },
+  lipo: c => { c.fillStyle = '#2a4a8a'; rr(c, 20, 40, 88, 48, 6); c.fill(); c.fillStyle = '#fff'; c.font = 'bold 16px sans-serif'; c.textAlign = 'center'; c.fillText('4S LiPo', 64, 70); c.fillStyle = '#d33'; c.fillRect(100, 50, 18, 6); },
+  vtx: c => { c.fillStyle = '#1a6a3a'; rr(c, 30, 46, 50, 40, 4); c.fill(); c.fillStyle = '#222'; c.beginPath(); c.arc(96, 66, 14, 0, 7); c.fill(); c.fillStyle = '#448'; c.beginPath(); c.arc(96, 66, 7, 0, 7); c.fill(); c.strokeStyle = '#aaa'; c.lineWidth = 3; c.beginPath(); c.moveTo(40, 46); c.lineTo(34, 16); c.stroke(); },
   qsz92: c => gunIco(c, { pistol: true, label: 'QSZ-92' }),
   qjy88: c => gunIco(c, { mag: 'belt', bipod: true, len: 1.1, label: 'QJY-88' }),
   qcw05: c => gunIco(c, { bull: true, mag: 'box', supp: true, len: 0.75, label: 'QCW-05' }),
@@ -90,6 +102,9 @@ const DRAW: Record<string, (c: C) => void> = {
   plank: c => { c.save(); c.translate(64, 64); c.rotate(-0.5); c.fillStyle = '#b07a44'; c.fillRect(-56, -14, 112, 28); c.strokeStyle = '#7a5028'; c.lineWidth = 2; for (let i = -3; i < 4; i++) { c.beginPath(); c.moveTo(-56, i * 4); c.bezierCurveTo(-20, i * 4 + 4, 20, i * 4 - 4, 56, i * 4); c.stroke(); } c.restore(); },
   hammer: c => { c.save(); c.translate(64, 64); c.rotate(-0.6); c.fillStyle = '#8a5a2c'; c.fillRect(-5, -20, 10, 76); c.fillStyle = '#555'; c.fillRect(-26, -40, 46, 20); c.fillStyle = '#888'; c.fillRect(-26, -40, 46, 6); c.restore(); },
 };
+function tube(c: C, col: string, label: string, clu = false) { c.save(); c.translate(64, 64); c.rotate(-0.5); c.fillStyle = col; rr(c, -56, -11, 112, 22, 8); c.fill(); c.fillStyle = '#222'; c.fillRect(-10, 11, 8, 18); if (clu) { c.fillStyle = '#333'; rr(c, -20, -34, 40, 24, 4); c.fill(); } c.restore(); c.fillStyle = '#fff'; c.font = 'bold 15px sans-serif'; c.textAlign = 'center'; c.fillText(label, 64, 118); }
+function radioIco(c: C, broken: boolean) { c.fillStyle = '#4b5a38'; rr(c, 26, 34, 76, 70, 6); c.fill(); c.fillStyle = '#222'; c.fillRect(36, 46, 30, 18); c.strokeStyle = '#333'; c.lineWidth = 4; c.beginPath(); c.moveTo(88, 34); c.lineTo(96, 6); c.stroke(); for (let i = 0; i < 3; i++) { c.fillStyle = '#aaa'; c.beginPath(); c.arc(44 + i * 18, 84, 5, 0, 7); c.fill(); }
+  if (broken) { c.strokeStyle = '#e33'; c.lineWidth = 5; c.beginPath(); c.moveTo(30, 100); c.lineTo(98, 38); c.stroke(); } }
 const cache: Record<string, { canvas: HTMLCanvasElement; url?: string; tex?: THREE.Texture }> = {};
 export function iconCanvas(id: string) {
   if (!cache[id]) { const cv = document.createElement('canvas'); cv.width = cv.height = S; const c = cv.getContext('2d')!; (DRAW[id] || (c => box(c, '#777', id, '')))(c); cache[id] = { canvas: cv }; }

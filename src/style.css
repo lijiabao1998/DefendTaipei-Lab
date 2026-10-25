@@ -70,3 +70,8 @@ body.fpvon canvas:not(#fpv canvas){image-rendering:pixelated;filter:saturate(1.3
 .fstick.l{left:18px}.fstick.r{right:18px}.fknob{position:absolute;left:37px;top:37px;width:56px;height:56px;border-radius:50%;background:rgba(120,200,255,.7)}
 body.mobile #fpv .osd span{font-size:11px}
 body.mobile #fpv .tc{top:11%}
+#roccine{position:fixed;inset:0;pointer-events:none;z-index:65}#roccine .lb{position:absolute;left:0;right:0;height:11%;background:#000}#roccine .t{top:0}#roccine .b{bottom:0}
+#roccine .ttl{position:absolute;left:0;right:0;bottom:16%;text-align:center;font:900 64px/1 "Noto Serif TC",serif;color:#f3ead2;letter-spacing:.3em;text-shadow:0 2px 18px #000;animation:fin 3s}
+#roccine .sub{position:absolute;left:0;right:0;bottom:12%;text-align:center;font:16px sans-serif;color:#cbb;letter-spacing:.2em;animation:fin 4s}
+#evacend.win{background:radial-gradient(#2a1c10,#000)}#evacend.win h1{color:#ffd76a;font-size:40px;letter-spacing:.2em}
+body:has(#roccine) #hud,body:has(#roccine) #log,body:has(#roccine) #phone{display:none}
