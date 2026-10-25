@@ -76,11 +76,11 @@ export function makeRig(o: RigOpts): Rig {
     cl(head, new THREE.TorusGeometry(0.115, 0.01, 4, 18), 0x3e4828, [0, 0.105, -0.01], [Math.PI / 2, 0, 0], [0.98, 1.08, 1]);
     cl(head, box(0.15, 0.035, 0.05), 0x1c1c1c, [0, 0.135, 0.095]); cl(head, box(0.2, 0.012, 0.02), 0x1c1c1c, [0, 0.13, 0.03]); // goggles on helmet
     cl(head, box(0.012, 0.09, 0.012), 0x222222, [-0.085, 0.04, 0.02]); cl(head, box(0.012, 0.09, 0.012), 0x222222, [0.085, 0.04, 0.02]); // chin strap
-  } else {
+  } else if (o.outfit !== 'courier' && o.outfit !== 'tech') {
     cl(head, new THREE.SphereGeometry(0.106, 16, 10, 0, Math.PI * 2, 0, f ? Math.PI * 0.6 : Math.PI * 0.5), o.hair, [0, 0.09, -0.012], [-0.3, 0, 0], [0.9, 1.05, 1]);
     if (f) { cl(head, lathe([[0.1, 0.12], [0.108, 0.04], [0.1, -0.06], [0.08, -0.1]], 14, Math.PI * 0.55, Math.PI * 0.9), o.hair, [0, 0.03, -0.012]); cl(head, box(0.15, 0.03, 0.04), o.hair, [0, 0.16, 0.06], [0.4, 0, 0]); }
   }
-  let tail: J | undefined; if (f && !S) { tail = jt(head, 0, 0.12, -0.1); cl(tail, sph(0.03), o.hair, [0, 0, 0]); cl(tail, cap(0.032, 0.12), o.hair, [0, -0.09, -0.01]); cl(tail, sph(0.022), o.hair, [0, -0.18, -0.01]); }
+  let tail: J | undefined; if (f && !S && o.outfit !== 'courier' && o.outfit !== 'tech') { tail = jt(head, 0, 0.12, -0.1); cl(tail, sph(0.03), o.hair, [0, 0, 0]); cl(tail, cap(0.032, 0.12), o.hair, [0, -0.09, -0.01]); cl(tail, sph(0.022), o.hair, [0, -0.18, -0.01]); }
   // arms
   const armC = S ? o.top : o.jacket ?? o.top;
   const mkArm = (sd: number) => {
