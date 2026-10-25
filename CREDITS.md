@@ -47,3 +47,12 @@ Weights marked 約值 in-game (T93, T75 pistol) are approximations. Vehicle and 
 - Betaflight rate formula (RC rate / super rate / expo) — https://github.com/betaflight/betaflight (GPL-3.0; formula reimplemented, no code copied).
 - Ground effect approximation T/T∞ = 1/(1 − (R/4z)²) (Cheeseman & Bennett, 1955).
 - 5.8 GHz free-space path loss — https://en.wikipedia.org/wiki/Free-space_path_loss
+
+## v14b rooftop references (layout study only; no images used in-game)
+- Wikimedia Commons, "Taipei-rooftop-additions.jpg" (aerial; per-lot full-roof gable canopies in mixed teal/red/blue/grey) — https://commons.wikimedia.org/wiki/File:Taipei-rooftop-additions.jpg
+- Wikimedia Commons, "Taipei-apartments-with-rooftop-additions.jpg" (stacked/set-back additions on 公寓) — https://commons.wikimedia.org/wiki/File:Taipei-apartments-with-rooftop-additions.jpg
+- Wikimedia Commons, Category:Rooftop expansions in Taiwan — https://commons.wikimedia.org/wiki/Category:Rooftop_expansions_in_Taiwan
+- EBC news, 萬華西園路 old building rooftop addition (aerial) — https://news.ebc.net.tw/news/society/488006
+- Google Earth view of Taipei 鐵皮屋/頂加 (巴哈姆特) — https://home.gamer.com.tw/artwork.php?sn=2897677
+- Taipei City Construction Management Office on illegal rooftop construction — https://english.cmo.gov.taipei/News_Content.aspx?n=861D2DD384505EB9&s=E57FD5AACB11B25B&sms=EFA85B94A44F5A29
+- 應用高解像力遙測影像於台北市建物屋頂加蓋物之監測 (Airiti) — https://www.airitilibrary.com/Article/Detail/18145388-200510-x-3-15-26-a

@@ -5,7 +5,7 @@ import { buildParks } from './park';
 import { ArmorSystem, type ArmorKind } from './armor';
 import { FPV, Recon, boom } from './drone';
 import { RocSystem, ROC_NAME, type RocKind } from './roc';
-import { makeShack, setShackNight } from './rooftin';
+import { placeRooftop, dressRoof, pickRoofMat, setShackNight } from './rooftin';
 let facade: ReturnType<typeof buildFacade> | null = null;
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { ITEMS, LOOT } from './items';
@@ -309,15 +309,13 @@ function buildMap(data: any) {
     b.walls = new THREE.Mesh(mergeGeometries(wg), wallMats[mi]); b.walls.castShadow = true; b.walls.receiveShadow = true; group.add(b.walls);
     const shape = new THREE.Shape(pts.map(p => new THREE.Vector2(p[0], p[1])));
     const rgeo = new THREE.ShapeGeometry(shape); rgeo.rotateX(Math.PI / 2);
-    const roof = new THREE.Mesh(rgeo, roofMat); roof.position.y = h; roof.castShadow = true; b.roof.add(roof);
+    const roof = new THREE.Mesh(rgeo, pickRoofMat(() => hh(9))); roof.position.y = h; roof.castShadow = true; b.roof.add(roof);
     const fl = new THREE.Mesh(rgeo, floorMat); fl.position.y = 0.03; fl.receiveShadow = true; group.add(fl); b.floor = fl;
     // rooftop additions 頂樓加蓋 + water tanks
     if (A > 40 && rnd() < 0.55 || A > 30 && hh(3) < (lv <= 3 ? 0.6 : 0)) {
-      const sx = (b.maxx - b.minx) * 0.4, sz = (b.maxz - b.minz) * 0.4;
-      { let sd = Math.floor(hh(7) * 1e6) + 1; const pr = () => (sd = (sd * 16807) % 2147483647) / 2147483647; const bw = b.maxx - b.minx, bd = b.maxz - b.minz; const cover = 0.45 + pr() * 0.5;
-        for (let k = 0; k < 5; k++) { const f = cover * (1 - k * 0.12); const sw = Math.max(3, bw * f), sdp = Math.max(3, bd * f); const ox = (pr() - 0.5) * (bw - sw) * 0.8, oz = (pr() - 0.5) * (bd - sdp) * 0.8; const qx = cx + ox, qz = cz + oz;
-          if ([[-1, -1], [1, -1], [1, 1], [-1, 1]].every(([a2, c2]) => pip([qx + a2 * (sw / 2 + 0.4), qz + c2 * (sdp / 2 + 0.4)], pts))) { const sh = makeShack(sw, sdp, pr); sh.position.set(qx, h, qz); b.roof.add(sh); break; } } }
+      { let sd = Math.floor(hh(7) * 1e6) + 1; const pr = () => (sd = (sd * 16807) % 2147483647) / 2147483647; placeRooftop(b.roof, pts as any, h, pr, pip as any); }
     }
+    { let sd = Math.floor(hh(8) * 1e6) + 7; const pr = () => (sd = (sd * 16807) % 2147483647) / 2147483647; dressRoof(b.roof, pts as any, h, pr, pip as any, A > 25); }
     const tq = rnd(); if (tq < 0.5 || hh(4) < (lv <= 3 ? 0.5 : 0)) { const st = lv <= 3 ? 1.6 : 0; const t = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 1.4, 10), tankMat); const tp: V2 = tq < 0.5 ? [cx + (rnd() - 0.5) * 2, cz + (rnd() - 0.5) * 2] : [cx + (hh(5) - 0.5) * 2, cz + (hh(6) - 0.5) * 2]; if (pip(tp, pts)) { t.position.set(tp[0], h + 0.7 + st, tp[1]); t.castShadow = true; b.roof.add(t); if (st) for (const [ox, oz] of [[-0.45, -0.45], [0.45, -0.45], [0.45, 0.45], [-0.45, 0.45]]) { const lg = new THREE.Mesh(new THREE.BoxGeometry(0.07, st, 0.07), tinMat); lg.position.set(tp[0] + ox, h + st / 2, tp[1] + oz); b.roof.add(lg); } } }
     group.add(b.roof);
     blds.push(b);

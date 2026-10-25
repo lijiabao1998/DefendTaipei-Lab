@@ -24,13 +24,14 @@ const col = (g: THREE.BufferGeometry, c: number) => { const n = g.attributes.pos
 const B = (w: number, h: number, d: number, x: number, y: number, z: number, c: number, ry = 0) => { const g = new THREE.BoxGeometry(w, h, d); if (ry) g.rotateY(ry); g.translate(x, y, z); g.deleteAttribute('uv'); return col(g, c); };
 const strip = (g: THREE.BufferGeometry) => { const n = g.index ? g.toNonIndexed() : g; for (const k of Object.keys(n.attributes)) if (!['position', 'normal', 'uv', 'color'].includes(k)) n.deleteAttribute(k); return n; };
 
-export function makeShack(W: number, D: number, rnd: () => number) {
-  const g = new THREE.Group(); const H = 2.5 + rnd() * 0.4; const wallI = pickMat(rnd()), roofI = rnd() < 0.6 ? wallI : pickMat(rnd());
+export type ShackOpt = { H?: number; open?: boolean; kind?: number };
+export function makeShack(W: number, D: number, rnd: () => number, o: ShackOpt = {}) {
+  const g = new THREE.Group(); const H = o.H ?? 2.5 + rnd() * 0.4; const wallI = pickMat(rnd()), roofI = rnd() < 0.6 ? wallI : pickMat(rnd());
   const walls: THREE.BufferGeometry[] = [], roofs: THREE.BufferGeometry[] = [], det: THREE.BufferGeometry[] = [], glass: THREE.BufferGeometry[] = [];
   // walls: 4 planes with ribs vertical (u along wall, v up) -> ribs run vertically
   const wall = (len: number, ry: number, ox: number, oz: number) => { const p = new THREE.PlaneGeometry(len, H); uvMeters(p, 'xy'); p.translate(0, H / 2, 0); p.rotateY(ry); p.translate(ox, 0, oz); walls.push(p); };
-  wall(W, 0, 0, D / 2); wall(W, Math.PI, 0, -D / 2); wall(D, Math.PI / 2, W / 2, 0); wall(D, -Math.PI / 2, -W / 2, 0);
-  const kind = rnd(); const ov = 0.35; const long = W >= D; const L = (long ? W : D) + ov * 2, S = (long ? D : W) + ov * 2;
+  if (!o.open) { wall(W, 0, 0, D / 2); wall(W, Math.PI, 0, -D / 2); wall(D, Math.PI / 2, W / 2, 0); wall(D, -Math.PI / 2, -W / 2, 0); }
+  const kind = o.kind ?? rnd(); const ov = 0.35; const long = W >= D; const L = (long ? W : D) + ov * 2, S = (long ? D : W) + ov * 2;
   const rot = (geo: THREE.BufferGeometry) => { if (!long) geo.rotateY(Math.PI / 2); return geo; };
   let ridge = 0;
   if (kind < 0.45) { // gable (雙斜)
@@ -53,7 +54,8 @@ export function makeShack(W: number, D: number, rnd: () => number) {
   det.push(rot(B(L, 0.1, 0.12, 0, H - 0.02, S / 2 - 0.06, 0x9a9e9a)), rot(B(L, 0.1, 0.12, 0, H - 0.02, -S / 2 + 0.06, 0x9a9e9a)));
   det.push(B(0.08, H, 0.08, W / 2 + 0.06, H / 2, D / 2 + 0.06, 0x8a8e8a));
   // corner trims
-  for (const [x, z] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) det.push(B(0.07, H, 0.07, x * W / 2, H / 2, z * D / 2, 0xb8bab4));
+  if (!o.open) for (const [x, z] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) det.push(B(0.07, H, 0.07, x * W / 2, H / 2, z * D / 2, 0xb8bab4));
+  if (o.open) { for (const [x, z] of [[1, 1], [1, -1], [-1, 1], [-1, -1], [0, 1], [0, -1]]) det.push(B(0.09, H, 0.09, x * (W / 2 - 0.1), H / 2, z * (D / 2 - 0.1), 0x6a6e6a)); } else {
   // door on front (+z) + aluminium windows w/ 鐵窗 bars
   const dx = (rnd() - 0.5) * (W - 1.4); det.push(B(0.85, 2.0, 0.05, dx, 1.0, D / 2 + 0.03, [0x6a5040, 0x8a8a84, 0x3a5a6a][Math.floor(rnd() * 3)]), B(0.06, 0.06, 0.06, dx + 0.32, 1.0, D / 2 + 0.07, 0xd0c080));
   const win = (cx: number, face: number, ww: number) => { const z = face * (D / 2 + 0.04), sx = face; glass.push(B(ww, 0.9, 0.02, cx, 1.55, z, 0)); det.push(B(ww + 0.08, 0.05, 0.05, cx, 2.02, z, 0xd8dcdc), B(ww + 0.08, 0.05, 0.05, cx, 1.08, z, 0xd8dcdc), B(0.05, 0.95, 0.05, cx - ww / 2, 1.55, z, 0xd8dcdc), B(0.05, 0.95, 0.05, cx + ww / 2, 1.55, z, 0xd8dcdc), B(0.03, 0.9, 0.03, cx, 1.55, z, 0xd8dcdc));
@@ -61,6 +63,7 @@ export function makeShack(W: number, D: number, rnd: () => number) {
   const nw = Math.max(1, Math.floor((W - 1.6) / 1.8)); for (let i = 0; i < nw; i++) { const x = -W / 2 + 0.9 + (i + 0.5) * (W - 1.8) / nw; if (Math.abs(x - dx) > 1.0) win(x, 1, 1.0); } if (rnd() < 0.7) win((rnd() - 0.5) * (W - 1.6), -1, 1.1);
   // patched panels (different colour)
   for (let i = 0; i < 2; i++) if (rnd() < 0.6) det.push(B(0.6 + rnd() * 0.8, 0.6 + rnd() * 0.9, 0.03, (rnd() - 0.5) * (W - 1), 0.5 + rnd() * 1.4, -D / 2 - 0.03, [0x8a5038, 0xb0aaa0, 0x5a7a74][Math.floor(rnd() * 3)]));
+  }
   // AC unit on wall, stainless tank on stand, laundry poles, pots, antenna
   if (rnd() < 0.7) det.push(B(0.8, 0.55, 0.3, W / 2 + 0.2, 1.9, (rnd() - 0.5) * (D - 1), 0xe0ddd2, Math.PI / 2));
   if (rnd() < 0.6) { const tx = (rnd() - 0.5) * W * 0.5, tz = (rnd() - 0.5) * D * 0.4, ty = H + ridge + 0.1; const t = new THREE.CylinderGeometry(0.5, 0.5, 1.1, 12); t.rotateZ(Math.PI / 2); t.translate(tx, ty + 0.9, tz); t.deleteAttribute('uv'); det.push(col(t, 0xd4d8da)); for (const [a, b] of [[-0.4, -0.3], [0.4, -0.3], [-0.4, 0.3], [0.4, 0.3]]) det.push(B(0.05, 0.4, 0.05, tx + a, ty + 0.2, tz + b, 0x707470)); }
@@ -74,4 +77,98 @@ export function makeShack(W: number, D: number, rnd: () => number) {
   for (const a of glass) a.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(a.attributes.position.count * 2), 2));
   add(det, detMat); add(glass, shackGlass, false);
   return g;
+}
+
+// ---- irregular rooftop placement (v14) ----
+// Rules derived from real Taipei aerial photos (Wikimedia Commons "Taipei-rooftop-additions.jpg" etc.):
+// each row-house lot (4-7 m frontage) is a separate owner -> separate treatment, colour, height & age;
+// many lots carry a full-roof gable/arch tin canopy, others a partial shack hugging front or rear parapet,
+// some stacked 2-storey, stair towers with lean-tos, and open lots with tanks/plants/laundry; ridges mostly
+// run along lot depth; occasional skew. Adjacent lots sometimes merge (one owner bought both).
+const conc = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
+type PIP = (p: [number, number], pts: [number, number][]) => boolean;
+export function placeRooftop(root: THREE.Object3D, pts: [number, number][], h: number, rnd: () => number, pip: PIP) {
+  // principal axis = longest edge
+  let best = 0, th = 0; for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; const L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L > best) { best = L; th = Math.atan2(b[1] - a[1], b[0] - a[0]); } }
+  const cu = Math.cos(th), su = Math.sin(th); const toL = (p: [number, number]) => [p[0] * cu + p[1] * su, -p[0] * su + p[1] * cu];
+  let u0 = 1e9, u1 = -1e9, v0 = 1e9, v1 = -1e9; for (const p of pts) { const [u, v] = toL(p); u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); }
+  const W = u1 - u0, D = v1 - v0; if (W < 3.5 || D < 3.5) return;
+  const grp = new THREE.Group(); const extra: THREE.BufferGeometry[] = [], cg: THREE.BufferGeometry[] = [];
+  const world = (u: number, v: number): [number, number] => [u * cu - v * su, u * su + v * cu];
+  const inside = (u: number, v: number, w: number, d: number, r: number) => { const c = Math.cos(r), s = Math.sin(r); return [[-1, -1], [1, -1], [1, 1], [-1, 1]].every(([a, b]) => { const du = a * (w / 2 + 0.35), dv = b * (d / 2 + 0.35); return pip(world(u + du * c - dv * s, v + du * s + dv * c), pts); }); };
+  const put = (u: number, v: number, w: number, d: number, y: number, r: number, o: ShackOpt = {}) => { for (let k = 0; k < 4; k++) { if (inside(u, v, w, d, r)) { const sh = makeShack(w, d, rnd, o); const [x, z] = world(u, v); sh.position.set(x, y, z); sh.rotation.y = -(th + r); grp.add(sh); return true; } w *= 0.82; d *= 0.82; if (w < 2.2 || d < 2.2) return false; } return false; };
+  const ext = (g: THREE.BufferGeometry, u: number, v: number, y: number, r = 0) => { const [x, z] = world(u, v); g.rotateY(-(th + r)); g.translate(x, y, z); return g; };
+  const tank = (u: number, v: number, y: number) => { const t = new THREE.CylinderGeometry(0.45, 0.45, 1.0, 10); if (rnd() < 0.5) t.rotateZ(Math.PI / 2); t.translate(0, 1.3, 0); t.deleteAttribute('uv'); extra.push(ext(col(t, rnd() < 0.7 ? 0xd4d8da : 0x3a6ab0), u, v, y)); for (const [a, b] of [[-0.35, -0.35], [0.35, -0.35], [-0.35, 0.35], [0.35, 0.35]]) extra.push(ext(B(0.05, 0.8, 0.05, a, 0.4, b, 0x707470), u, v, y)); };
+  const plants = (u: number, v: number, y: number, n: number) => { for (let i = 0; i < n; i++) { const a = (rnd() - 0.5) * 2.4, b = (rnd() - 0.5) * 1.2; extra.push(ext(B(0.4, 0.35, 0.4, a, 0.18, b, [0x8a5a3a, 0x5a5a5a, 0xb07040][i % 3]), u, v, y)); const s = new THREE.SphereGeometry(0.3 + rnd() * 0.2, 6, 4); s.translate(a, 0.6, b); s.deleteAttribute('uv'); extra.push(ext(col(s, rnd() < 0.5 ? 0x3a7a3a : 0x507a30), u, v, y)); } };
+  const laundry = (u: number, v: number, y: number, L: number) => { extra.push(ext(B(0.05, 1.8, 0.05, -L / 2, 0.9, 0, 0x9aa0a0), u, v, y), ext(B(0.05, 1.8, 0.05, L / 2, 0.9, 0, 0x9aa0a0), u, v, y), ext(B(L, 0.03, 0.03, 0, 1.75, 0, 0x9aa0a0), u, v, y)); for (let k = 0; k < Math.floor(L / 0.6); k++) extra.push(ext(B(0.4, 0.55 + rnd() * 0.3, 0.02, -L / 2 + 0.4 + k * 0.6, 1.4, 0, [0xd84a4a, 0xe8e0c8, 0x3a6aa8, 0xe8c040, 0x404040][Math.floor(rnd() * 5)]), u, v, y)); };
+  // lots along the long axis
+  const lots: [number, number][] = []; let a = u0 + 0.3; while (a < u1 - 2.5) { let w = 4 + rnd() * 3; if (rnd() < 0.25) w *= 2; w = Math.min(w, u1 - 0.3 - a); if (u1 - 0.3 - (a + w) < 3) w = u1 - 0.3 - a; lots.push([a, w]); a += w; if (lots.length > 7) break; }
+  let prev = -1;
+  for (const [la, lw] of lots) {
+    let t = rnd(); if (t < 0.17 && prev === 0) t = 0.3 + rnd() * 0.7; // no two identical full canopies in a row usually
+    const um = la + lw / 2; const skew = rnd() < 0.18 ? (rnd() - 0.5) * 0.35 : 0; const dd = D - 0.6; const front = rnd() < 0.5 ? 1 : -1;
+    const Hk = 2.3 + rnd() * 0.9;
+    if (t < 0.28) { prev = 0; // full-roof canopy (often open sided, ridge along depth)
+      put(um, (v0 + v1) / 2, lw - 0.2, dd, h, skew * 0.3, { H: Hk + 0.3, open: rnd() < 0.45, kind: rnd() < 0.6 ? 0.2 : 0.6 });
+    } else if (t < 0.52) { prev = 1; // partial shack hugging a parapet, covering 35-70% depth
+      const d = dd * (0.35 + rnd() * 0.35), w = lw * (0.6 + rnd() * 0.35); const v = (v0 + v1) / 2 + front * (dd - d) / 2; put(um + (rnd() - 0.5) * (lw - w), v, w, d, h, skew, { H: Hk });
+      const fv = (v0 + v1) / 2 - front * (dd / 2 - (dd - d) / 2); if (rnd() < 0.6) tank(um + (rnd() - 0.5) * lw * 0.5, fv, h); if (rnd() < 0.6) plants(um, fv + front * 0.6, h, 2 + Math.floor(rnd() * 3)); if (rnd() < 0.5) laundry(um, fv - front * 0.4, h, Math.min(lw - 1, 3));
+    } else if (t < 0.64) { prev = 2; // stacked 2-storey
+      const d = dd * (0.55 + rnd() * 0.3), w = lw * (0.75 + rnd() * 0.2); const v = (v0 + v1) / 2 + front * (dd - d) / 2;
+      if (put(um, v, w, d, h, skew * 0.5, { H: 2.6, kind: 0.8 })) put(um + (rnd() - 0.5) * w * 0.3, v + front * d * 0.1, w * (0.55 + rnd() * 0.3), d * (0.55 + rnd() * 0.3), h + 2.95, skew * 0.5 + (rnd() - 0.5) * 0.2, { H: 2.3 + rnd() * 0.3 });
+    } else if (t < 0.8) { prev = 3; // stair tower + lean-to
+      const sw = 2.3, sd = 2.6, sh = 2.7; const su2 = la + 0.3 + sw / 2 + rnd() * Math.max(0, lw - sw - 0.6), sv = (v0 + v1) / 2 + front * (dd - sd) / 2 * rnd();
+      if (inside(su2, sv, sw, sd, 0)) { cg.push(ext(B(sw, sh, sd, 0, sh / 2, 0, 0xa8a49a), su2, sv, h), ext(B(sw + 0.2, 0.15, sd + 0.2, 0, sh + 0.07, 0, 0x8a8680), su2, sv, h), ext(B(0.9, 2.0, 0.05, 0, 1.0, -front * (sd / 2 + 0.03), 0x5a4a3a), su2, sv, h));
+        const lw2 = Math.min(lw - sw - 0.4, 2.5 + rnd() * 3); const side = su2 - la > la + lw - su2 ? -1 : 1; if (lw2 > 2.2) put(su2 + side * (sw / 2 + lw2 / 2 + 0.05), sv, lw2, sd + rnd() * 1.5, h, 0, { H: 2.3, kind: 0.9 }); }
+      if (rnd() < 0.6) tank(um, (v0 + v1) / 2 - front * dd * 0.3, h + (rnd() < 0.4 ? sh + 0.15 - 0.4 : 0));
+    } else { prev = 4; // open lot: tanks, plants, laundry, maybe a small storage shed
+      if (rnd() < 0.7) tank(um + (rnd() - 0.5) * lw * 0.4, (v0 + v1) / 2 + (rnd() - 0.5) * dd * 0.5, h); plants(um, v0 + 0.8, h, 2 + Math.floor(rnd() * 4)); if (rnd() < 0.6) laundry(um, (v0 + v1) / 2, h, Math.min(lw - 1, 3.2)); if (rnd() < 0.35) put(um + (rnd() - 0.5) * (lw - 2), v1 - 1.5, 1.8 + rnd(), 1.6 + rnd() * 0.8, h, (rnd() - 0.5) * 0.5, { H: 2.0, kind: 0.9 });
+    }
+  }
+  // merge everything by material to keep draw calls low
+  grp.updateMatrixWorld(true); const buckets = new Map<THREE.Material, THREE.BufferGeometry[]>();
+  const push = (m: THREE.Material, g: THREE.BufferGeometry) => { if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2)); if (!g.attributes.color) col(g, 0xffffff); (buckets.get(m) || buckets.set(m, []).get(m)!).push(strip(g)); };
+  grp.traverse(o => { const me = o as THREE.Mesh; if (me.isMesh) { const g = me.geometry.clone(); g.applyMatrix4(me.matrixWorld); push(me.material as THREE.Material, g); } });
+  for (const g of extra) push(detMat, g); for (const g of cg) push(conc, g);
+  for (const [m, arr] of buckets) { const me = new THREE.Mesh(mergeGeometries(arr), m); me.castShadow = m !== shackGlass; me.receiveShadow = true; root.add(me); }
+}
+
+// ---- roof finishes (防水漆 / concrete / bitumen / tile) + parapets & clutter ----
+const roofTex = (kind: number, seed: number) => cv(256, 256, c => { let s = seed; const r = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  const base = [['#6f8f6a', '#5e8060'], ['#8a8e8a', '#7c807e'], ['#9a968c', '#86827a'], ['#5a5a58', '#4a4a48'], ['#a2584a', '#8e4c40'], ['#7a9a7a', '#91a88e']][kind];
+  c.fillStyle = base[0]; c.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 40; i++) { c.fillStyle = r() < 0.5 ? base[1] : 'rgba(150,150,140,.35)'; c.globalAlpha = 0.25 + r() * 0.4; c.beginPath(); c.ellipse(r() * 256, r() * 256, 10 + r() * 50, 6 + r() * 30, r() * 3, 0, 7); c.fill(); } // patchy fade / bare concrete showing
+  c.globalAlpha = 1;
+  if (kind === 4) { c.strokeStyle = 'rgba(50,20,10,.5)'; for (let y = 0; y < 256; y += 16) { c.beginPath(); c.moveTo(0, y); c.lineTo(256, y); c.stroke(); } for (let y = 0; y < 256; y += 16) for (let x = (y / 16) % 2 * 12; x < 256; x += 24) { c.beginPath(); c.moveTo(x, y); c.lineTo(x, y + 16); c.stroke(); } }
+  for (let i = 0; i < 2 + (kind % 3); i++) { c.fillStyle = `rgba(28,28,26,${0.35 + r() * 0.25})`; c.save(); c.translate(r() * 256, r() * 256); c.rotate(r() * 3); c.beginPath(); c.roundRect(-10 - r() * 18, -6 - r() * 10, 20 + r() * 36, 12 + r() * 20, 5); c.fill(); c.restore(); } // bitumen patches
+  for (let i = 0; i < 6; i++) { const g = c.createRadialGradient(0, 0, 2, 0, 0, 30 + r() * 30); g.addColorStop(0, 'rgba(40,40,30,.35)'); g.addColorStop(1, 'rgba(40,40,30,0)'); c.save(); c.translate(r() * 256, r() * 256); c.scale(1, 0.6 + r()); c.fillStyle = g; c.fillRect(-60, -60, 120, 120); c.restore(); } // water / puddle stains
+  for (let i = 0; i < 10; i++) { c.fillStyle = `rgba(${50 + r() * 30},${80 + r() * 40},40,${0.3 + r() * 0.3})`; c.beginPath(); c.arc(r() * 256, r() < 0.6 ? (r() < 0.5 ? r() * 14 : 256 - r() * 14) : r() * 256, 2 + r() * 8, 0, 7); c.fill(); } // moss, mostly along edges
+  for (let i = 0; i < 4; i++) { const x = r() * 256; const g = c.createLinearGradient(0, 0, 0, 90); g.addColorStop(0, 'rgba(15,15,15,.6)'); g.addColorStop(1, 'rgba(15,15,15,0)'); c.fillStyle = g; c.fillRect(x, 0, 4 + r() * 6, 90); } // black streaks from drains
+  c.strokeStyle = 'rgba(30,30,30,.55)'; c.lineWidth = 1; for (let i = 0; i < 7; i++) { let x = r() * 256, y = r() * 256; c.beginPath(); c.moveTo(x, y); for (let k = 0; k < 8; k++) { x += (r() - 0.5) * 22; y += (r() - 0.5) * 22; c.lineTo(x, y); } c.stroke(); } // cracks
+});
+const ROOF_KINDS = [0, 0, 5, 1, 1, 2, 2, 3, 4, 0, 5, 2, 1, 0];
+export const ROOF_MATS = ROOF_KINDS.map((k, i) => { const t = roofTex(k, 999 + i * 131); t.colorSpace = THREE.SRGBColorSpace; t.repeat.set(1 / 9, 1 / 9); return new THREE.MeshStandardMaterial({ map: t, roughness: 0.95, side: THREE.DoubleSide }); });
+let lastRoof = -1;
+export function pickRoofMat(rnd: () => number) { let i = Math.floor(rnd() * ROOF_MATS.length); if (ROOF_KINDS[i] === ROOF_KINDS[Math.max(0, lastRoof)]) i = (i + 3) % ROOF_MATS.length; lastRoof = i; return ROOF_MATS[i]; }
+export function dressRoof(root: THREE.Object3D, pts: [number, number][], h: number, rnd: () => number, pip: PIP, clutter: boolean) {
+  const g: THREE.BufferGeometry[] = []; const pc = [0xb4b0a6, 0x9c9a92, 0xc8c4b8, 0x8a8e84][Math.floor(rnd() * 4)];
+  let cx = 0, cz = 0; for (const p of pts) { cx += p[0]; cz += p[1]; } cx /= pts.length; cz /= pts.length;
+  for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; const L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < 0.5) continue; const ang = -Math.atan2(b[1] - a[1], b[0] - a[0]); const mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2;
+    const ph = 0.8 + rnd() * 0.4; const box = (w: number, hh: number, d: number, y: number, c: number, off = 0) => { const q = new THREE.BoxGeometry(w, hh, d); q.translate(0, y, off); q.rotateY(ang); q.translate(mx, h, mz); q.deleteAttribute('uv'); g.push(col(q, c)); };
+    const nx = -(b[1] - a[1]) / L, nz = (b[0] - a[0]) / L; const inw = pip([mx + nx * 0.3, mz + nz * 0.3], pts) ? 1 : -1; // inward side offset (in rotated frame z ~ normal)
+    box(L, ph, 0.16, ph / 2, pc, 0.08 * inw); box(L + 0.1, 0.07, 0.28, ph + 0.035, 0xd0ccc2, 0.08 * inw); // parapet + coping
+    for (let k = 0; k < L / 4; k++) if (rnd() < 0.5) { const q = new THREE.BoxGeometry(0.12 + rnd() * 0.1, 0.5 + rnd() * 1.5, 0.02); const off = (rnd() - 0.5) * L; q.translate(off, -0.4, -0.05 * inw); q.rotateY(ang); q.translate(mx, h, mz); q.deleteAttribute('uv'); g.push(col(q, 0x6a3a1e)); } // rust/black drips outside below coping
+  }
+  if (clutter) { const rp = (): [number, number] | null => { for (let k = 0; k < 6; k++) { const p: [number, number] = [cx + (rnd() - 0.5) * 12, cz + (rnd() - 0.5) * 12]; if (pip(p, pts) && pip([p[0] + 1, p[1] + 1], pts) && pip([p[0] - 1, p[1] - 1], pts)) return p; } return null; };
+    const at = (q: THREE.BufferGeometry, p: [number, number], y = 0, r = rnd() * 6.28) => { q.rotateY(r); q.translate(p[0], h + y, p[1]); if (q.attributes.uv) q.deleteAttribute('uv'); return q; };
+    let p = rp(); if (p && rnd() < 0.45) { g.push(at(col(new THREE.BoxGeometry(2.0, 0.06, 1.2).rotateX(-0.5).translate(0, 1.0, 0), 0x1c2a44), p), at(col(new THREE.CylinderGeometry(0.25, 0.25, 2.0, 8).rotateZ(Math.PI / 2).translate(0, 1.55, -0.55), 0xd8d8d8), p)); g.push(at(col(new THREE.BoxGeometry(1.9, 0.8, 0.05).translate(0, 0.4, 0.4), 0x7a7a7a), p)); } // solar water heater
+    p = rp(); if (p && rnd() < 0.6) g.push(at(col(new THREE.CylinderGeometry(0.55, 0.55, 1.2, 10).translate(0, 0.6, 0), rnd() < 0.5 ? 0x3a6ab0 : 0xe8e8e0), p)); // old plastic tank
+    for (let i = 0; i < 2; i++) { p = rp(); if (p && rnd() < 0.6) g.push(at(col(new THREE.BoxGeometry(0.85, 0.6, 0.32).translate(0, 0.3, 0), 0xe4e2da), p)); } // AC compressors
+    p = rp(); if (p && rnd() < 0.5) { const e = rnd() * 6.28; for (let i = 0; i < 2; i++) g.push(at(col(new THREE.CylinderGeometry(0.04, 0.04, 6, 5).rotateZ(Math.PI / 2).translate(0, 0.15, i * 0.2), i ? 0x9a9a9a : 0x4a6a8a), p, 0, e)); } // pipes across
+    p = rp(); if (p && rnd() < 0.5) for (let i = 0; i < 5; i++) g.push(at(col(new THREE.BoxGeometry(0.3 + rnd() * 0.7, 0.2 + rnd() * 0.5, 0.3 + rnd() * 0.6).translate((rnd() - 0.5) * 1.2, 0.2, (rnd() - 0.5) * 1.2), [0x6a5a48, 0x8a8a84, 0x4a4a48, 0x9a7a50][i % 4]), p)); // junk pile
+    p = rp(); if (p && rnd() < 0.55) for (let i = 0; i < 4; i++) { g.push(at(col(new THREE.BoxGeometry(0.55, 0.3, 0.4).translate(i * 0.6, 0.15, 0), 0xf0f0ec), p, 0, 0.3)); g.push(at(col(new THREE.SphereGeometry(0.28, 6, 4).translate(i * 0.6, 0.45, 0), 0x3f7a35), p, 0, 0.3)); } // 保麗龍 foam boxes of plants
+    p = rp(); if (p && rnd() < 0.5) g.push(at(col(new THREE.CylinderGeometry(0.025, 0.025, 2.5, 4).translate(0, 1.25, 0), 0x777777), p), at(col(new THREE.BoxGeometry(1.2, 0.03, 0.03).translate(0, 2.2, 0), 0x777777), p)); // antenna
+  }
+  for (const q of g) { if (q.index) { const n = q.toNonIndexed(); q.copy(n); } q.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(q.attributes.position.count * 2), 2)); }
+  if (g.length) { const me = new THREE.Mesh(mergeGeometries(g.map(strip)), detMat); me.castShadow = true; me.receiveShadow = true; root.add(me); }
 }
