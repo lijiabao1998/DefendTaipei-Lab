@@ -1,10 +1,12 @@
-import { GameMap } from './map';
+import { shrink } from './texq';
 import { buildEvacZone, playEvac, cine } from './evac';
 import * as THREE from 'three';
 import { buildFacade } from './facade';
 import { buildParks } from './park';
 import { ArmorSystem, type ArmorKind } from './armor';
-import { FPV, Recon, boom } from './drone';
+import { Recon, boom } from './drone';
+import type { FPV } from './fpv';
+import type { GameMap } from './map';
 import { RocSystem, ROC_NAME, type RocKind } from './roc';
 import { placeRooftop, dressRoof, pickRoofMat, setShackNight } from './rooftin';
 let facade: ReturnType<typeof buildFacade> | null = null;
@@ -56,7 +58,7 @@ scene.add(sun, sun.target);
 const flash = new THREE.SpotLight(0xfff2cc, 0, 26, 0.5, 0.5, 1.2); scene.add(flash, flash.target);
 
 // ---------- textures ----------
-function canvasTex(w: number, h: number, draw: (c: CanvasRenderingContext2D) => void) { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; draw(cv.getContext('2d')!); const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; }
+function canvasTex(w: number, h: number, draw: (c: CanvasRenderingContext2D) => void) { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; draw(cv.getContext('2d')!); const t = new THREE.CanvasTexture(shrink(cv)); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; }
 const WALLC = ['#c9c1b0', '#b8b4a8', '#d8cfbd', '#a9a397', '#c4b49c', '#9fa7a8', '#d1c6b8'];
 const wallTexs = WALLC.map((col, wi) => canvasTex(256, 256, c => {
   const tile = wi % 2 === 0; // 二丁掛 tile facades vs. painted render
@@ -166,7 +168,7 @@ function blast(p: THREE.Vector3, fromAbove: boolean) { lastBlast = { x: p.x, y: 
   for (const s of sols) if (s.state !== 'dead' && Math.hypot(s.pos.x - p.x, s.pos.z - p.z) < 6) damageSol(s, 220, true);
   if (armor) armor.hit(p.x, p.z, fromAbove ? 160 : 55, true);
   const dp = Math.hypot(player.pos.x - p.x, player.pos.z - p.z); if (dp < 6) { player.hp -= 45 * (1 - dp / 6); player.rig.hurtT = 0.35; } }
-function launchFPV() { fpv = fpv || new FPV({ scene, renderer, player: () => player.pos, mobile: MOBILE, surf: (x, z) => bldAt(x, z)?.h ?? 0, wind: () => (raining() ? 2.2 : 0.8),
+async function launchFPV() { const { FPV } = await import('./fpv'); fpv = fpv || new FPV({ scene, renderer, player: () => player.pos, mobile: MOBILE, surf: (x, z) => bldAt(x, z)?.h ?? 0, wind: () => (raining() ? 2.2 : 0.8),
     blocked: (x, z, y) => { const b = bldAt(x, z); if (b && y < b.h + 0.5) return true; return !!armor && armor.list.some(a => Math.hypot(a.g.position.x - x, a.g.position.z - z) < 2.6 && y < 3.2); },
     los: (a, b) => los(a, b), jammers: () => checkpoints.filter((_, i) => i % 2 === 0 && !liberated.has(sectorOf(checkpoints[i][0], checkpoints[i][1]))), explode: blast, log });
   if (!MOBILE) renderer.domElement.requestPointerLock?.();
@@ -313,10 +315,10 @@ function buildMap(data: any) {
     const roof = new THREE.Mesh(rgeo, pickRoofMat(() => hh(9))); roof.position.y = h; roof.castShadow = true; b.roof.add(roof);
     const fl = new THREE.Mesh(rgeo, floorMat); fl.position.y = 0.03; fl.receiveShadow = true; group.add(fl); b.floor = fl;
     // rooftop additions 頂樓加蓋 + water tanks
-    if (A > 40 && rnd() < 0.55 || A > 30 && hh(3) < (lv <= 3 ? 0.6 : 0)) {
-      { let sd = Math.floor(hh(7) * 1e6) + 1; const pr = () => (sd = (sd * 16807) % 2147483647) / 2147483647; placeRooftop(b.roof, pts as any, h, pr, pip as any); }
-    }
-    { let sd = Math.floor(hh(8) * 1e6) + 7; const pr = () => (sd = (sd * 16807) % 2147483647) / 2147483647; dressRoof(b.roof, pts as any, h, pr, pip as any, A > 25); }
+    { const shack = A > 40 && rnd() < 0.55 || A > 30 && hh(3) < (lv <= 3 ? 0.6 : 0); const s7 = Math.floor(hh(7) * 1e6) + 1, s8 = Math.floor(hh(8) * 1e6) + 7, roofG = b.roof;
+      roofJobs.push({ x: cx, z: cz, f: () => {
+        if (shack) { let sd = s7; const pr = () => (sd = (sd * 16807) % 2147483647) / 2147483647; placeRooftop(roofG, pts as any, h, pr, pip as any); }
+        { let sd = s8; const pr = () => (sd = (sd * 16807) % 2147483647) / 2147483647; dressRoof(roofG, pts as any, h, pr, pip as any, A > 25); } } }); }
     const tq = rnd(); if (tq < 0.5 || hh(4) < (lv <= 3 ? 0.5 : 0)) { const st = lv <= 3 ? 1.6 : 0; const t = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 1.4, 10), tankMat); const tp: V2 = tq < 0.5 ? [cx + (rnd() - 0.5) * 2, cz + (rnd() - 0.5) * 2] : [cx + (hh(5) - 0.5) * 2, cz + (hh(6) - 0.5) * 2]; if (pip(tp, pts)) { t.position.set(tp[0], h + 0.7 + st, tp[1]); t.castShadow = true; b.roof.add(t); if (st) for (const [ox, oz] of [[-0.45, -0.45], [0.45, -0.45], [0.45, 0.45], [-0.45, 0.45]]) { const lg = new THREE.Mesh(new THREE.BoxGeometry(0.07, st, 0.07), tinMat); lg.position.set(tp[0] + ox, h + st / 2, tp[1] + oz); b.roof.add(lg); } } }
     group.add(b.roof);
     blds.push(b);
@@ -679,7 +681,7 @@ function update(dt: number) {
   for (let i = fx.length - 1; i >= 0; i--) { fx[i].t -= dt; if (fx[i].t <= 0) { scene.remove(fx[i].o); fx.splice(i, 1); } }
   if (dead && player.rig) animate(player.rig, 'death', 0, dt);
   for (const s of sols) if (s.state === 'dead' && s.rig.deadT < 1) animate(s.rig, 'death', 0, dt);
-  if (evac) evac.update(dt, evacOpen()); if (evac && evacOpen()) gmap?.intel('evac0', evac.pos[0], evac.pos[1], 'evac', '撤離點'); if (started) gmap?.update();
+  if (evac) evac.update(dt, evacOpen()); if (evac && evacOpen()) gmap?.intel('evac0', evac.pos[0], evac.pos[1], 'evac', '撤離點'); if (started) gmap?.update(); pumpRoofs(player.pos.x, player.pos.z, started ? 3 : 8);
   if (!started || dead) return;
   updateInformant(dt);
   if (evac && evacOpen() && Math.hypot(player.pos.x - evac.pos[0], player.pos.z - evac.pos[1]) < 5) doEvac();
@@ -822,9 +824,15 @@ function die() {
 function loop() { const dt = Math.min(clock.getDelta(), 0.05); if (cine.on) { requestAnimationFrame(loop); return; } if (rocCine) { rocCineStep(dt); renderer.render(scene, camera); requestAnimationFrame(loop); return; } update(dt); if (fpv?.active) { fpv.update(dt); if (fpv.active) fpv.render(renderer); else renderer.render(scene, camera); } else renderer.render(scene, camera); requestAnimationFrame(loop); }
 
 // ---------- boot ----------
+const prog = async (f: number, msg: string) => { const i = document.querySelector('#loadbar i') as HTMLElement | null; if (i) i.style.width = Math.round(f * 100) + '%'; $('loadmsg').textContent = msg; await new Promise(r => setTimeout(r, 0)); };
+// deferred rooftop dressing, streamed in by distance to the player
+const roofJobs: { x: number; z: number; f: () => void }[] = [];
+function pumpRoofs(px: number, pz: number, budgetMs: number, maxD = 1e9) { if (!roofJobs.length) return; const t0 = performance.now(); roofJobs.sort((a, b) => Math.hypot(b.x - px, b.z - pz) - Math.hypot(a.x - px, a.z - pz));
+  while (roofJobs.length && performance.now() - t0 < budgetMs) { const j = roofJobs[roofJobs.length - 1]; if (Math.hypot(j.x - px, j.z - pz) > maxD) break; roofJobs.pop(); j.f(); } }
 async function boot() {
+  await prog(0.3, '下載萬華地圖資料（OpenStreetMap）…');
   const data = await (await fetch(import.meta.env.BASE_URL + 'data/wanhua.json')).json();
-  buildMap(data);
+  await prog(0.45, '建造街區…'); buildMap(data); await prog(0.65, '佈置出生點附近的室內與巷弄…');
   const sv = (() => { try { return JSON.parse(localStorage.getItem(SAVE) || 'null'); } catch { return null; } })();
   // ---- detailed blocks around spawn (剝皮寮 / 康定路 / 西門町 edge) ----
   const homes = blds.filter(b => b.door && b.type === 'home' && sectorOf(b.c[0], b.c[1]) === 4);
@@ -863,17 +871,19 @@ async function boot() {
   for (const s of sols) if (s.state !== 'dead' && s.pos.distanceTo(player.pos) < 25) { s.pos.x += 40; }
   { let k = 0; for (const cp of checkpoints) for (let g = 0; g < 2; g++) { const s = sols[k++]; if (!s || s.state === 'dead') continue; const p: V2 = [cp[0] + (g ? 2.2 : -2.2), cp[1] + (g ? 1 : -1)]; s.post = p; s.pos.set(p[0], 0, p[1]); s.sector = sectorOf(p[0], p[1]); s.night = false; } }
   checkSectors(true);
-  gmap = new GameMap({ blds: blds as any, roads: roads as any, bounds, SX, SZ, sectorName: SECTOR_LABEL, liberated: () => liberated, player: () => ({ x: player.pos.x, z: player.pos.z, rot: player.mesh ? player.mesh.rotation.y : 0 }), parks: (parks?.clusters || []) as V2[], outposts: () => checkpoints, evac: () => evac ? evac.pos as V2 : null, home: () => start!.c as V2 });
+  await prog(0.85, '加蓋頂樓（目前街區）…'); pumpRoofs(start.c[0], start.c[1], 1e9, 160); (window as any).__roofLeft = () => roofJobs.length;
+  import('./map').then(({ GameMap }) => { gmap = new GameMap({ blds: blds as any, roads: roads as any, bounds, SX, SZ, sectorName: SECTOR_LABEL, liberated: () => liberated, player: () => ({ x: player.pos.x, z: player.pos.z, rot: player.mesh ? player.mesh.rotation.y : 0 }), parks: (parks?.clusters || []) as V2[], outposts: () => checkpoints, evac: () => evac ? evac.pos as V2 : null, home: () => start!.c as V2 });
   if (player.inv.rocradio) mapIntelOutposts('解放軍哨點（國軍情資）');
-  if (MOBILE) { const mb = document.createElement('button'); mb.id = 'mapbtn'; mb.textContent = '🗺'; mb.title = '地圖'; mb.onclick = () => gmap?.toggle(); document.body.appendChild(mb); }
-  const btns = $('btns'); $('loadmsg').textContent = `地圖：萬華・西門町（${blds.length} 棟建築，${roads.length} 條街道）`;
+  if (MOBILE) { const mb = document.createElement('button'); mb.id = 'mapbtn'; mb.textContent = '🗺'; mb.title = '地圖'; mb.style.display = 'none'; mb.onclick = () => gmap?.toggle(); document.body.appendChild(mb); }
+    (window as any).__game && ((window as any).__game.map = gmap); });
+  await prog(1, '完成'); const btns = $('btns'); $('loadmsg').textContent = `地圖：萬華・西門町（${blds.length} 棟建築，${roads.length} 條街道）`;
   const go = (load: boolean, gender = 'm') => {
     if (load && sv) gender = sv.g || 'm';
     player.gender = gender; player.rig = spawnRig(HERO[gender]); player.mesh = player.rig.root;
     if (load && sv) { player.pos.set(sv.p[0], 0, sv.p[1]);  Object.assign(player, { hp: sv.hp, hunger: sv.hu, thirst: sv.th, fatigue: sv.fa, bleed: sv.bl, inv: sv.inv, equip: sv.eq, kills: sv.k }); gameMin = sv.t; DAYH = sv.dl || 1; if (sv.wx) Object.assign(WX, sv.wx); if (sv.ex) UT.ev.ex = 1; if (sv.inf) INF = sv.inf; if (sv.ut) Object.assign(UT, sv.ut);
       const map = new Map<string, any>(sv.conts.map((c: any) => [c[0], c])); for (const c of conts) { const s = map.get(c.id); if (s) c.items = s[1]; map.delete(c.id); } map.forEach(c => String(c[0]).startsWith('pb') ? makeBucket(c[0], c[2], c[1]) : makeCont(c[0], c[2], 'crate', undefined, c[1])); (sv.bar || []).forEach((i: number) => doors[i] && setBarricade(doors[i])); checkSectors(true); conts.forEach(updateVis); }
     else { localStorage.removeItem(SAVE); gmap?.reset(); }
-    $('title').style.display = 'none'; started = true; lastHp = player.hp; startRainAudio(); { const sp = document.createElement('div'); sp.id = 'speed'; sp.innerHTML = '<span class="st"></span>' + SPEEDS.map((v, i) => `<button data-s="${v}" title="按 ${i + 1}">${v === 1 ? '▶' : v === 3 ? '⏩' : '⏭'} ×${v}</button>`).join('') + `<small>一天 = ${DAYH} 小時</small>`; sp.querySelectorAll('button').forEach(b => (b as HTMLElement).onclick = () => setSpeed(+(b as HTMLElement).dataset.s!)); $('topright').appendChild(sp); renderSpeed(); } log('十月某日清晨，解放軍登陸後三天，台北淪陷。萬華的電燈還亮著，水龍頭還有水——但能撐多久？', '#ffd76a'); log('提示：先搜刮身邊的櫥櫃（E），按 Tab 開背包裝備菜刀。', '#ccc');
+    $('title').style.display = 'none'; started = true; { const mb = document.getElementById('mapbtn'); if (mb) mb.style.display = ''; } lastHp = player.hp; startRainAudio(); { const sp = document.createElement('div'); sp.id = 'speed'; sp.innerHTML = '<span class="st"></span>' + SPEEDS.map((v, i) => `<button data-s="${v}" title="按 ${i + 1}">${v === 1 ? '▶' : v === 3 ? '⏩' : '⏭'} ×${v}</button>`).join('') + `<small>一天 = ${DAYH} 小時</small>`; sp.querySelectorAll('button').forEach(b => (b as HTMLElement).onclick = () => setSpeed(+(b as HTMLElement).dataset.s!)); $('topright').appendChild(sp); renderSpeed(); } log('十月某日清晨，解放軍登陸後三天，台北淪陷。萬華的電燈還亮著，水龍頭還有水——但能撐多久？', '#ffd76a'); log('提示：先搜刮身邊的櫥櫃（E），按 Tab 開背包裝備菜刀。', '#ccc');
   };
   if (sv) { const b = document.createElement('button'); b.textContent = '繼續遊戲'; b.onclick = () => go(true); btns.appendChild(b); }
   const sel = document.createElement('div'); sel.id = 'charsel';
@@ -888,3 +898,5 @@ async function boot() {
 }
 boot().catch(e => { console.error(e); $('loadmsg').textContent = '載入失敗：' + e; });
 loop();
+// PWA: offline play after the first load (cache is versioned per deploy in sw.js)
+if ('serviceWorker' in navigator && import.meta.env.PROD) addEventListener('load', () => navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js').catch(e => console.warn('sw', e)));

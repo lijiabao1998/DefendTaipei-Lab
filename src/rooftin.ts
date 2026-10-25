@@ -1,7 +1,8 @@
+import { shrink } from './texq';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 // 頂樓加蓋 鐵皮屋: real small-house shapes (gable / arched / mono-pitch), corrugated ribs via normal map, aluminium 鐵窗 windows, gutters, tanks.
-const cv = (w: number, h: number, f: (c: CanvasRenderingContext2D) => void) => { const c = document.createElement('canvas'); c.width = w; c.height = h; f(c.getContext('2d')!); const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; return t; };
+const cv = (w: number, h: number, f: (c: CanvasRenderingContext2D) => void) => { const c = document.createElement('canvas'); c.width = w; c.height = h; f(c.getContext('2d')!); const t = new THREE.CanvasTexture(shrink(c)); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; return t; };
 // normal map: sinusoidal ribs along U (5 ribs per metre since UVs are in metres)
 const ribN = cv(64, 8, c => { const d = c.createImageData(64, 8); for (let x = 0; x < 64; x++) { const s = Math.cos((x / 64) * Math.PI * 2 * 5); const nx = s * 0.75; for (let y = 0; y < 8; y++) { const i = (y * 64 + x) * 4; d.data[i] = (nx * 0.5 + 0.5) * 255; d.data[i + 1] = 128; d.data[i + 2] = Math.sqrt(1 - nx * nx) * 255; d.data[i + 3] = 255; } } c.putImageData(d, 0, 0); });
 ribN.colorSpace = THREE.NoColorSpace;

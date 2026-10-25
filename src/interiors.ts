@@ -1,3 +1,4 @@
+import { shrink } from './texq';
 // Hand-designed Taiwanese interiors placed procedurally inside real OSM footprints.
 import * as THREE from 'three';
 import { LOOT } from './items';
@@ -10,7 +11,7 @@ export type Ctx = {
 };
 const MC = new Map<string, THREE.Material>();
 const M = (c: number, o: any = {}) => { const k = c + JSON.stringify(o); if (!MC.has(k)) MC.set(k, new THREE.MeshStandardMaterial({ color: c, roughness: 0.7, ...o })); return MC.get(k)!; };
-function tex(w: number, h: number, draw: (c: CanvasRenderingContext2D) => void) { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; draw(cv.getContext('2d')!); const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t; }
+function tex(w: number, h: number, draw: (c: CanvasRenderingContext2D) => void) { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; draw(cv.getContext('2d')!); const t = new THREE.CanvasTexture(shrink(cv)); t.colorSpace = THREE.SRGBColorSpace; return t; }
 const TX: Record<string, THREE.Texture> = {};
 function textTex(key: string, lines: string[], bg: string, fg: string, w = 256, h = 128, size = 40) { if (TX[key]) return TX[key]; return TX[key] = tex(w, h, c => { c.fillStyle = bg; c.fillRect(0, 0, w, h); c.fillStyle = fg; c.font = `900 ${size}px "Noto Sans TC",sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; lines.forEach((l, i) => c.fillText(l, w / 2, h / (lines.length + 1) * (i + 1))); }); }
 function box(g: THREE.Object3D, w: number, h: number, d: number, mat: THREE.Material, x = 0, y = 0, z = 0, shadow = false) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y + h / 2, z); m.castShadow = shadow; m.receiveShadow = true; g.add(m); return m; }

@@ -1,3 +1,4 @@
+import { shrink } from './texq';
 // Round 6: realistic windows (鋁窗/鐵窗/冷氣/雨遮), Taiwanese rooftop clutter, and to-scale sidewalks / 標線型人行道 / curb lines.
 // Uses its own seeded PRNG so it never shifts the game's global rnd() sequence.
 import * as THREE from 'three';
@@ -8,7 +9,7 @@ const B = (x: number, y: number, z: number, tx = 0, ty = 0, tz = 0) => new THREE
 const Cy = (r0: number, r1: number, h: number, ty = 0, seg = 10) => new THREE.CylinderGeometry(r1, r0, h, seg).translate(0, ty, 0);
 const strip = (g: THREE.BufferGeometry) => { for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k); return g.index ? g.toNonIndexed() : g; };
 function prng(seed: number) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
-function ctex(w: number, h: number, f: (c: CanvasRenderingContext2D) => void) { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; f(cv.getContext('2d')!); const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t; }
+function ctex(w: number, h: number, f: (c: CanvasRenderingContext2D) => void) { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; f(cv.getContext('2d')!); const t = new THREE.CanvasTexture(shrink(cv)); t.colorSpace = THREE.SRGBColorSpace; return t; }
 
 export function buildFacade(c: FCtx) {
   const rnd = prng(20261025); const { center, R } = c; const M = (g: THREE.BufferGeometry[]) => c.merge(g.map(strip));
