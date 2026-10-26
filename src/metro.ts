@@ -24,6 +24,7 @@ export type Station = {
   exit: V2;
   gates: Gate[];
   loot: { id: string; p: V2; type: string }[];
+  shops: Shop[];
   built: boolean;
 };
 export const STATIONS: { name: string; x: number; z: number }[] = [
@@ -488,6 +489,7 @@ export function buildMetro(d: MetroDeps): Station[] {
       gates,
       loot: [],
       built: false,
+      shops: stationShops(i),
     };
     // two street exits per station, ~45 m apart
     [
@@ -512,6 +514,9 @@ export function buildMetro(d: MetroDeps): Station[] {
       { id: `m${i}:3`, p: [OX + 8, OZ + 21.4], type: 'store' }, // dropped on the platform
       { id: `m${i}:4`, p: [OX - 20, OZ + 26.6], type: 'home' }, // by the seats
       { id: `m${i}:5`, p: [OX + 21, OZ + 8], type: 'home' }, // lockers
+      { id: `m${i}:6`, p: [OX + 20, OZ + 0.5], type: 'pharmacy' }, // pharmacy shelves (only after the power cut)
+      { id: `m${i}:7`, p: [OX - 5, OZ + 9.4], type: 'store' }, // bakery kiosk
+      { id: `m${i}:8`, p: [OX + 5, OZ + 9.4], type: 'store' }, // phone / flower kiosk
     ];
     // collision is cheap, register it now so loot and walls are consistent before the meshes stream in
     SEGS[i] = interiorSegs(d.addSeg, OX, OZ);
@@ -586,6 +591,27 @@ function interiorSegs(addSeg: MetroDeps['addSeg'], OX: number, OZ: number): SegS
   // pillars on the island (they carry the roof beam)
   for (let x = -28; x <= 28; x += 8)
     if (Math.abs(Math.abs(x) - 12) > 3) (W(x - 0.4, 24, x + 0.4, 24), W(x, 23.6, x, 24.4));
+  // v22.3 shops: walls, glass fronts (door gap z∈[-0.6,0.8]), counters, shelves, kiosks, vending machines
+  for (const sx of [-1, 1]) {
+    W(sx * 18.6, -3, sx * 24, -3);
+    W(sx * 18.6, 3, sx * 24, 3, true);
+    W(sx * 18.6, -3, sx * 18.6, -0.6);
+    W(sx * 18.6, 0.8, sx * 18.6, 3);
+    W(sx * 18.8, -1.95, sx * 21.2, -1.95, true);
+    W(sx * 18.8, -1.25, sx * 21.2, -1.25, true);
+    W(sx * 18.8, -1.95, sx * 18.8, -1.25, true);
+    for (const gx of [22.0, 20.8])
+      (W(sx * gx, -0.4, sx * gx, 2.4, true), W(sx * (gx - 0.3), -0.4, sx * (gx + 0.3), -0.4, true));
+    W(sx * 23.0, -2.8, sx * 23.0, 2.8);
+  }
+  for (const kx of [-5, 5]) {
+    W(kx - 1.6, 8.9, kx + 1.6, 8.9, true);
+    W(kx - 1.6, 8.9, kx - 1.6, 11.4, true);
+    W(kx + 1.6, 8.9, kx + 1.6, 11.4, true);
+  }
+  W(9.7, -4.6, 14.3, -4.6, true);
+  W(-1.7, 10.6, 0.5, 10.6, true);
+  W(23.2, 5.7, 23.2, 8.4);
   const st: SegState = { jam, maint, gap, on: null };
   return st;
 }
@@ -662,10 +688,8 @@ export function ensureInterior(scene: THREE.Scene, S: Station, i: number) {
     b.box(M.glass, (a + c) / 2, 0, 4, c - a, 1.4, 0.05);
     b.box(M.steel, (a + c) / 2, 1.4, 4, c - a, 0.05, 0.08);
   }
-  // fictional convenience kiosk (巷口便利站) in the unpaid area
-  b.box(M.orange, -20, 0, -0.5, 3.6, 1.0, 1.6);
-  b.box(M.white, -20, 2.3, -0.5, 3.8, 0.4, 1.8);
-  b.box(M.dark, -20, 0, -1.6, 3.4, 2.0, 0.4);
+  // v22.3 shops, kiosks, vending machines (fictional brands)
+  buildRetail(g, b, i);
   // lockers in the paid area
   for (let a = 0; a < 3; a++) for (let c = 0; c < 4; c++) b.box(M.steel, 23.5, a * 0.6, 6 + c * 0.55, 0.5, 0.56, 0.52);
   // benches
@@ -674,7 +698,7 @@ export function ensureInterior(scene: THREE.Scene, S: Station, i: number) {
   for (let k = 0; k < 9; k++) {
     const x = -22 + k * 2.6 + r() * 0.6,
       z = -4.2 + (k % 2) * 3.6 + r();
-    if (Math.abs(x) < 1.6 || Math.abs(x - 7.6) < 2) continue;
+    if (Math.abs(x) < 1.6 || Math.abs(x - 7.6) < 2 || x < -18.2) continue;
     b.box(M.card, x, 0, z, 1.0, 0.02, 2.0, r() * 0.3);
     if (r() < 0.75) b.box(r() < 0.5 ? M.blanket : M.blanket2, x, 0.02, z + 0.2, 0.9, 0.12, 1.4, r() * 0.4);
     if (r() < 0.6) b.box(M.dark, x + 0.4, 0, z - 0.9, 0.4, 0.3, 0.3, r() * 2);
@@ -782,7 +806,7 @@ export function ensureInterior(scene: THREE.Scene, S: Station, i: number) {
       c.fillRect(0, 40, 256, 8);
     }),
   );
-  b.plane(kt, -20, 2.5, 0.42, 3.6, 0.38);
+  void kt;
   b.plane(picto('fire'), 3.4, 0.9, 24.42, 0.4, 0.4);
   const D = buildDyn(g, i);
   for (const x of [-20, 20]) {
@@ -1267,6 +1291,7 @@ export function metroTick(t: number, gm = 0, power = false, px = 0, pz = 0) {
     L.l.intensity = power ? L.base * 1.3 : L.base * (f > 0.93 ? 0.15 : 0.85 + 0.15 * Math.sin(t * 40 + L.ph));
   }
   if (metroStats.power !== power) setPower(power);
+  retailTick(power);
   SEGS.forEach(s => applySegs(s, power));
   for (const D of DYN) {
     const [OX, OZ] = OXZ(D.i);
@@ -1305,5 +1330,429 @@ export function metroTick(t: number, gm = 0, power = false, px = 0, pz = 0) {
     else if (v.phase === 'opening' || v.phase === 'open') drawBoard(D, `往 ${nx}　請上車`, `${LINE}　按 E 搭乘`, false);
     else if (v.phase === 'closing') drawBoard(D, `往 ${nx}　車門關閉`, '請勿強行上下車', false);
     else drawBoard(D, `往 ${nx}　${Math.max(1, Math.ceil(v.next - 0.01))} 分`, `下一班列車　${LINE}`, false);
+  }
+}
+
+// ===== v22.3 in-station retail (all fictional brands): convenience store, pharmacy, bakery/coffee kiosk,
+// phone-accessory/flower kiosk, vending machines and coin lockers. Day 1: lit, staffed, buy with the wallet;
+// after the power cut: shutters half down, shelves looted, dead machines that can be pried open. =====
+export type ShopKind = 'cvs' | 'pharm' | 'bakery' | 'flower' | 'vdrink' | 'vsnack' | 'vumb' | 'locker';
+export type Shop = { id: string; kind: ShopKind; name: string; p: V2; stock: [string, number][]; vend: boolean };
+const SHOP_DEF: { kind: ShopKind; name: string; x: number; z: number; stock: [string, number][] }[] = [
+  {
+    kind: 'cvs',
+    name: '巷口便利站',
+    x: -20,
+    z: -0.9,
+    stock: [
+      ['rice', 35],
+      ['bento', 85],
+      ['egg', 15],
+      ['oden', 40],
+      ['noodle', 45],
+      ['water', 20],
+      ['tea', 25],
+      ['coffee', 35],
+      ['battery', 60],
+      ['tissue', 30],
+      ['umbrella', 150],
+    ],
+  },
+  {
+    kind: 'pharm',
+    name: '安心藥局',
+    x: 20,
+    z: -0.9,
+    stock: [
+      ['bandage', 60],
+      ['pill', 120],
+      ['medkit', 450],
+      ['mask', 80],
+      ['tissue', 30],
+      ['sport', 25],
+    ],
+  },
+  {
+    kind: 'bakery',
+    name: '橘子烘焙・咖啡',
+    x: -5,
+    z: 8.3,
+    stock: [
+      ['bread', 35],
+      ['pineapple', 40],
+      ['coffee', 55],
+      ['soymilk', 30],
+      ['milktea', 60],
+    ],
+  },
+  {
+    kind: 'flower',
+    name: '小巷花坊・手機配件',
+    x: 5,
+    z: 8.3,
+    stock: [
+      ['powerbank', 590],
+      ['battery', 60],
+      ['umbrella', 150],
+    ],
+  },
+  {
+    kind: 'vdrink',
+    name: '飲料販賣機',
+    x: 10.2,
+    z: -4.5,
+    stock: [
+      ['water', 20],
+      ['tea', 25],
+      ['sport', 25],
+      ['coffee', 30],
+    ],
+  },
+  {
+    kind: 'vdrink',
+    name: '飲料販賣機',
+    x: 11.4,
+    z: -4.5,
+    stock: [
+      ['water', 20],
+      ['soymilk', 25],
+      ['milktea', 35],
+    ],
+  },
+  {
+    kind: 'vsnack',
+    name: '零食販賣機',
+    x: 12.6,
+    z: -4.5,
+    stock: [
+      ['snack', 30],
+      ['pineapple', 35],
+      ['cupnoodle', 40],
+    ],
+  },
+  {
+    kind: 'vumb',
+    name: '雨傘・口罩販賣機',
+    x: 13.8,
+    z: -4.5,
+    stock: [
+      ['umbrella', 199],
+      ['mask', 80],
+    ],
+  },
+  {
+    kind: 'vdrink',
+    name: '飲料販賣機',
+    x: -1.2,
+    z: 10.5,
+    stock: [
+      ['water', 20],
+      ['tea', 25],
+      ['sport', 25],
+    ],
+  },
+  {
+    kind: 'vsnack',
+    name: '零食販賣機',
+    x: 0,
+    z: 10.5,
+    stock: [
+      ['snack', 30],
+      ['cupnoodle', 40],
+    ],
+  },
+  { kind: 'locker', name: '投幣置物櫃', x: 22.7, z: 7.1, stock: [] },
+];
+export function stationShops(i: number): Shop[] {
+  const [OX, OZ] = OXZ(i);
+  return SHOP_DEF.map((d, k) => ({
+    id: `s${i}:${k}`,
+    kind: d.kind,
+    name: d.name,
+    p: [OX + d.x, OZ + d.z] as V2,
+    stock: d.stock,
+    vend: d.kind[0] === 'v' || d.kind === 'locker',
+  }));
+}
+/** deterministic loot from a pried machine / locker (same for every player) */
+export function pryLoot(s: Shop): Record<string, number> {
+  let h = 7;
+  for (const ch of s.id) h = (h * 31 + ch.charCodeAt(0)) % 2147483647;
+  const r = prng(h + 99);
+  const out: Record<string, number> = {};
+  const pool =
+    s.kind === 'locker'
+      ? ['cig', 'battery', 'cloth', 'bandage', 'powerbank', 'scrap', 'pill', 'umbrella', 'can']
+      : s.stock.map(x => x[0]);
+  const n = s.kind === 'locker' ? 1 + Math.floor(r() * 3) : 2 + Math.floor(r() * 3);
+  for (let k = 0; k < n; k++) {
+    const it = pool[Math.floor(r() * pool.length)];
+    out[it] = (out[it] || 0) + 1;
+  }
+  return out;
+}
+const R_ = {
+  vendLit: new THREE.MeshBasicMaterial({ color: 0xf4fbff }),
+  fridgeLit: new THREE.MeshBasicMaterial({ color: 0xdff4ff }),
+  shopLit: new THREE.MeshBasicMaterial({ color: 0xfff6dc }),
+  skin: std(0xd9b89a),
+  apronO: std(0xe8681c),
+  apronG: std(0x1f5a3a),
+  pants: std(0x2a2c30),
+  shutter: std(0x9aa0a6, { metalness: 0.5, roughness: 0.5 }),
+  vbodyO: std(0xd95a14, { roughness: 0.5 }),
+  vbodyG: std(0x2a6a48, { roughness: 0.5 }),
+  vbodyB: std(0x3a5a8a, { roughness: 0.5 }),
+};
+const GOODS = [0xe8681c, 0x2f7a52, 0xc62a1e, 0xf5c400, 0x3a5a8a, 0xf4f4f0, 0x8a3a8a, 0x3aa0c0].map(c => std(c));
+const signTex = (t: string, bg: string, fg: string) =>
+  tex('sg' + t, () =>
+    canvasTex(512, 80, c => {
+      c.fillStyle = bg;
+      c.fillRect(0, 0, 512, 80);
+      c.fillStyle = fg;
+      c.font = '800 46px sans-serif';
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.fillText(t, 256, 42);
+    }),
+  );
+const shutterTex = () =>
+  tex('shut', () =>
+    canvasTex(
+      128,
+      128,
+      c => {
+        for (let y = 0; y < 128; y += 8) {
+          c.fillStyle = y % 16 ? '#8c9298' : '#a9afb5';
+          c.fillRect(0, y, 128, 8);
+        }
+        c.fillStyle = '#c62a1e';
+        c.font = '800 20px sans-serif';
+        c.textAlign = 'center';
+        c.fillText('暫停營業', 64, 70);
+      },
+      false,
+    ),
+  );
+type RDyn = {
+  i: number;
+  on: THREE.Group;
+  off: THREE.Group;
+  shutters: { m: THREE.Object3D; up: number; half: number }[];
+  lights: THREE.PointLight[];
+  fronts: Map<string, THREE.Object3D>;
+};
+const RDYN: RDyn[] = [];
+let PRIED: Set<string> = new Set();
+export const setPried = (s: Set<string>) => (PRIED = s);
+
+/** a faceless bald clerk */
+function clerk(apron: THREE.Material, x: number, z: number, ry: number) {
+  const g = new THREE.Group();
+  g.position.set(x, 0, z);
+  g.rotation.y = ry;
+  const legs = bx(R_.pants, 0, 0, 0, 0.36, 0.8, 0.22);
+  const body = bx(apron, 0, 0.8, 0, 0.46, 0.62, 0.28);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), R_.skin);
+  head.position.y = 1.62;
+  const arms = bx(R_.skin, 0, 0.95, 0.05, 0.62, 0.12, 0.14);
+  g.add(legs, body, head, arms);
+  return g;
+}
+
+/** static + live retail geometry for one station */
+function buildRetail(g: THREE.Group, b: Builder, i: number) {
+  const r = prng(7000 + i * 53);
+  const on = new THREE.Group(),
+    off = new THREE.Group();
+  g.add(on, off);
+  const bOn = new Builder(on),
+    bOff = new Builder(off);
+  const goods = (bb: Builder, x: number, y: number, z: number, len: number, along: 'x' | 'z', fill: number) => {
+    for (let u = -len / 2 + 0.1; u < len / 2; u += 0.16) {
+      if (r() > fill) continue;
+      const m = GOODS[Math.floor(r() * GOODS.length)];
+      const h = 0.12 + r() * 0.14;
+      if (along === 'x') bb.box(m, x + u, y, z, 0.12, h, 0.22);
+      else bb.box(m, x, y, z + u, 0.22, h, 0.12);
+    }
+  };
+  const fallen = (x: number, z: number, n: number) => {
+    for (let k = 0; k < n; k++)
+      bOff.box(GOODS[k % GOODS.length], x + (r() - 0.5) * 2.4, 0, z + (r() - 0.5) * 2.4, 0.2, 0.08, 0.14, r() * 3);
+  };
+  const shutters: RDyn['shutters'] = [];
+  const shutter = (x: number, z: number, w: number, ry: number) => {
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, 1.5),
+      new THREE.MeshStandardMaterial({ map: shutterTex(), side: 2 }),
+    );
+    m.position.set(x, 3.4, z);
+    m.rotation.y = ry;
+    g.add(m);
+    shutters.push({ m, up: 3.4, half: 1.95 });
+  };
+  const lights: THREE.PointLight[] = [];
+  const lamp = (x: number, z: number) => {
+    const l = new THREE.PointLight(0xfff2d8, 0, 9, 1.4);
+    l.position.set(x, 2.4, z);
+    g.add(l);
+    lights.push(l);
+  };
+  // --- walk-in shops on both sides of the unpaid area (convenience store west, pharmacy east) ---
+  for (const sx of [-1, 1]) {
+    const X = (v: number) => sx * v;
+    const cvs = sx < 0;
+    b.box(M.wall, X(21.2), 0, -3, 5.2, 2.8, 0.2);
+    b.box(M.wall, X(21.2), 0, 3, 5.2, 1.0, 0.2);
+    b.floor(stoneTex(), X(21.2), 0, 5.2, 6);
+    // glass shop front with a door gap z∈[-0.6,0.8], fascia sign above
+    b.box(M.glass, X(18.6), 0, -1.8, 0.05, 2.6, 2.4);
+    b.box(M.glass, X(18.6), 0, 1.9, 0.05, 2.6, 2.2);
+    b.box(M.steel, X(18.6), 0, -0.6, 0.08, 2.6, 0.08);
+    b.box(M.steel, X(18.6), 0, 0.8, 0.08, 2.6, 0.08);
+    b.box(cvs ? M.orange : M.green, X(18.6), 2.6, 0, 0.25, 0.5, 6.1);
+    b.plane(
+      cvs ? signTex('巷口便利站', '#ffffff', '#e8681c') : signTex('安心藥局', '#1f5a3a', '#ffffff'),
+      X(18.45),
+      2.85,
+      0,
+      4.2,
+      0.6,
+      (sx * Math.PI) / 2,
+    );
+    b.box(cvs ? M.orange : M.green, X(18.4), 0.004, 0.1, 0.6, 0.01, 1.4); // door mat
+    // wall fridges (cvs) / medicine wall (pharmacy) on the back wall
+    b.box(M.steel, X(23.4), 0, 0, 0.7, 2.2, 5.6);
+    b.box(cvs ? R_.fridgeLit : R_.shopLit, X(23.04), 0.2, 0, 0.02, 1.8, 5.4);
+    bOff.box(M.dark, X(23.03), 0.2, 0, 0.02, 1.8, 5.4);
+    for (let s = 0; s < 4; s++) {
+      b.box(M.steel, X(23.1), 0.3 + s * 0.45, 0, 0.5, 0.03, 5.4);
+      goods(bOn, X(23.0), 0.33 + s * 0.45, 0, 5.2, 'z', 0.95);
+      goods(bOff, X(23.0), 0.33 + s * 0.45, 0, 5.2, 'z', 0.12);
+    }
+    for (let k = -2; k <= 2; k++) b.box(M.steel, X(23.05), 0.2, k * 1.1, 0.04, 1.8, 0.04); // fridge door frames
+    // gondola shelves (two rows)
+    for (const gx of [22.0, 20.8]) {
+      b.box(M.steel, X(gx), 0, 1.0, 0.6, 1.5, 2.8);
+      for (let s = 0; s < 3; s++) {
+        b.box(M.white, X(gx), 0.2 + s * 0.45, 1.0, 0.7, 0.03, 2.8);
+        for (const f of [-0.25, 0.25]) {
+          goods(bOn, X(gx) + f, 0.23 + s * 0.45, 1.0, 2.6, 'z', 0.9);
+          goods(bOff, X(gx) + f, 0.23 + s * 0.45, 1.0, 2.6, 'z', 0.1);
+        }
+      }
+    }
+    // counter + till; hot-food case (cvs) / dispensary glass (pharmacy)
+    b.box(cvs ? M.orange : M.green, X(20), 0, -1.6, 2.4, 1.0, 0.7);
+    b.box(M.white, X(20), 1.0, -1.6, 2.5, 0.04, 0.8);
+    b.box(M.black, X(19.3), 1.04, -1.6, 0.35, 0.25, 0.3);
+    b.box(M.glass, X(20.5), 1.04, -1.6, 1.0, 0.5, 0.6);
+    b.box(R_.shopLit, X(20.5), 1.05, -1.6, 0.9, 0.02, 0.5);
+    if (cvs)
+      for (let k = 0; k < 6; k++) bOn.box(k % 2 ? M.card : M.yellow, X(20.15 + k * 0.13), 1.08, -1.6, 0.1, 0.1, 0.1);
+    b.box(M.steel, X(21.2), 0, -2.75, 4.6, 1.8, 0.35); // back shelf (cigarettes-style rack / medicine rack)
+    goods(bOn, X(21.2), 1.82, -2.75, 4.4, 'x', 0.9);
+    on.add(clerk(cvs ? R_.apronO : R_.apronG, X(20), -2.25, 0));
+    fallen(X(21), 0.5, 14);
+    lamp(X(21), 0);
+    b.box(M.lamp, X(21.2), 2.75, 0, 3, 0.04, 0.3);
+    shutter(X(18.5), 0, 6, Math.PI / 2);
+  }
+  // --- kiosks in the paid area: bakery/coffee (west), phone accessories + flowers (east) ---
+  for (const [kx, bake] of [
+    [-5, true],
+    [5, false],
+  ] as const) {
+    b.box(bake ? M.wood : M.green, kx, 0, 9.3, 3.2, 1.0, 0.8);
+    b.box(M.white, kx, 1.0, 9.3, 3.3, 0.04, 0.9);
+    b.box(M.glass, kx - 0.6, 1.04, 9.3, 1.6, 0.45, 0.7);
+    b.box(R_.shopLit, kx - 0.6, 1.05, 9.3, 1.5, 0.02, 0.6);
+    b.box(M.dark, kx, 0, 11.3, 3.4, 2.4, 0.3); // back panel
+    b.box(bake ? M.orange : M.green, kx, 2.4, 11.3, 3.4, 0.4, 0.35);
+    b.plane(
+      bake ? signTex('橘子烘焙・咖啡', '#e8681c', '#ffffff') : signTex('小巷花坊・手機配件', '#1f5a3a', '#ffffff'),
+      kx,
+      2.6,
+      11.12,
+      3.3,
+      0.5,
+      Math.PI,
+    );
+    b.box(M.steel, kx, 0, 11.0, 3.2, 1.2, 0.3);
+    if (bake) {
+      for (let k = 0; k < 8; k++) bOn.box(M.card, kx - 1.2 + k * 0.17, 1.08, 9.3, 0.14, 0.08, 0.2);
+      b.box(M.black, kx + 1.0, 1.04, 9.4, 0.5, 0.55, 0.45); // coffee machine
+      b.box(M.steel, kx + 1.0, 1.4, 9.15, 0.4, 0.1, 0.05);
+      goods(bOn, kx, 1.22, 11.0, 3.0, 'x', 0.8);
+    } else {
+      // flower buckets + phone cases on a pegboard
+      for (let k = 0; k < 5; k++) {
+        b.box(M.steel, kx - 1.4 + k * 0.32, 0, 8.6, 0.26, 0.35, 0.26);
+        bOn.box(GOODS[k % 4], kx - 1.4 + k * 0.32, 0.35, 8.6, 0.3, 0.3, 0.3);
+        bOff.box(M.dark, kx - 1.4 + k * 0.32, 0.35, 8.6, 0.22, 0.12, 0.22);
+      }
+      for (let k = 0; k < 10; k++)
+        bOn.box(GOODS[(k + 3) % 8], kx - 1.3 + (k % 5) * 0.6, 1.4 + Math.floor(k / 5) * 0.45, 11.13, 0.2, 0.35, 0.03);
+    }
+    on.add(clerk(bake ? R_.apronO : R_.apronG, kx, 10.35, Math.PI));
+    fallen(kx, 9.3, 5);
+    lamp(kx, 9.6);
+    shutter(kx, 8.88, 3.3, 0);
+  }
+  // --- vending machines ---
+  const fronts = new Map<string, THREE.Object3D>();
+  SHOP_DEF.forEach((d, k) => {
+    if (d.kind[0] !== 'v') return;
+    const face = d.z < 0 ? 1 : -1; // facing +z on the north wall, -z on the south wall
+    const zc = d.z - face * 0.55;
+    const body = d.kind === 'vdrink' ? (k % 2 ? R_.vbodyG : R_.vbodyO) : d.kind === 'vsnack' ? R_.vbodyB : R_.vbodyG;
+    b.box(body, d.x, 0, zc, 1.0, 1.85, 0.75);
+    b.box(R_.vendLit, d.x, 1.5, zc + face * 0.38, 0.8, 0.22, 0.01); // lit header panel
+    b.box(M.black, d.x, 0.15, zc + face * 0.38, 0.6, 0.22, 0.02); // dispense slot
+    b.box(M.black, d.x + 0.38, 0.75, zc + face * 0.38, 0.1, 0.4, 0.02); // coin / card panel
+    // front glass door (opens when pried) with bottle rows behind
+    const fr = bx(M.glass, 0, 0, 0, 0.72, 1.0, 0.03);
+    const piv = new THREE.Group();
+    piv.position.set(d.x - 0.42, 0.42, zc + face * 0.39);
+    fr.position.set(0.36, 0.5, 0);
+    piv.add(fr);
+    g.add(piv);
+    fronts.set(`s${i}:${k}`, piv);
+    b.box(R_.vendLit, d.x - 0.06, 0.42, zc + face * 0.33, 0.7, 1.0, 0.01);
+    for (let row = 0; row < 3; row++)
+      for (let c = 0; c < 6; c++)
+        b.box(GOODS[(row * 3 + c + k) % 8], d.x - 0.36 + c * 0.12, 0.5 + row * 0.33, zc + face * 0.3, 0.07, 0.2, 0.07);
+    for (let c = 0; c < 6; c++) b.box(M.lampOn, d.x - 0.36 + c * 0.12, 0.47, zc + face * 0.36, 0.05, 0.02, 0.02);
+    if (d.kind === 'vumb')
+      b.plane(
+        signTex('雨傘・口罩', '#3a5a8a', '#fff'),
+        d.x,
+        1.62,
+        zc + face * 0.385,
+        0.8,
+        0.13,
+        face > 0 ? 0 : Math.PI,
+      );
+  });
+  // lockers: coin slots + little lit number panels
+  for (let a = 0; a < 3; a++)
+    for (let c = 0; c < 4; c++) b.box(R_.vendLit, 23.24, 0.42 + a * 0.6, 6 + c * 0.55, 0.01, 0.06, 0.12);
+  bOn.done();
+  bOff.done();
+  RDYN.push({ i, on, off, shutters, lights, fronts });
+}
+
+function retailTick(power: boolean) {
+  R_.vendLit.color.set(power ? 0xf4fbff : 0x1c1e20);
+  R_.fridgeLit.color.set(power ? 0xdff4ff : 0x1a1c1e);
+  R_.shopLit.color.set(power ? 0xfff6dc : 0x1c1c1a);
+  for (const D of RDYN) {
+    D.on.visible = power;
+    D.off.visible = !power;
+    for (const s of D.shutters) s.m.position.y = power ? s.up : s.half;
+    D.lights.forEach(l => (l.intensity = power ? 5 : 0));
+    for (const [id, f] of D.fronts) f.rotation.y = PRIED.has(id) ? -1.3 : 0;
   }
 }

@@ -1258,7 +1258,8 @@ body.mobile.portrait #coverind {
 }
 
 /* v22.2 metro ride */
-#ride {
+#ride,
+#shop {
   position: fixed;
   left: 50%;
   top: 50%;
@@ -1272,16 +1273,19 @@ body.mobile.portrait #coverind {
   text-align: center;
   min-width: 240px;
 }
-#ride h3 {
+#ride h3,
+#shop h3 {
   margin: 0 0 4px;
   color: #ffb070;
 }
-#ride p {
+#ride p,
+#shop p {
   margin: 0 0 10px;
   font-size: 13px;
   opacity: 0.8;
 }
-#ride button {
+#ride button,
+#shop button {
   display: block;
   width: 100%;
   margin: 6px 0;
@@ -1293,7 +1297,8 @@ body.mobile.portrait #coverind {
   color: #fff;
   cursor: pointer;
 }
-#ride button.x {
+#ride button.x,
+#shop button.x {
   background: #444;
 }
 #ridefade {

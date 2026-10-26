@@ -49,7 +49,18 @@ import {
 } from './textures';
 import { plaDrop } from './pla-loot';
 import { joy, initJoystick } from './joystick';
-import { buildMetro, ensureInterior, metroTick, metroStats, svc, stationOrigin, type Station } from './metro';
+import {
+  buildMetro,
+  ensureInterior,
+  metroTick,
+  metroStats,
+  svc,
+  stationOrigin,
+  pryLoot,
+  setPried,
+  type Shop,
+  type Station,
+} from './metro';
 import * as SV from './survival';
 import { VehicleSystem, VehicleKind } from './vehicles';
 import { furnish, nightMarket, setPower } from './interiors';
@@ -3011,6 +3022,7 @@ function nearestCont() {
     bd = 1.5;
   for (const c of conts) {
     if (Math.abs(c.p[0] - player.pos.x) > 6 || Math.abs(c.p[1] - player.pos.z) > 6) continue;
+    if (UT.power && SHOP_LOOT.test(c.id)) continue;
     const d = contDist(c);
     if (d < bd) {
       bd = d;
@@ -3217,6 +3229,71 @@ function metroBoard() {
   return -1;
 }
 let riding = false;
+const PS: { src?: string[] } = {};
+/** v22.3 wallet */
+const wallet = () => (surv.cash ??= 1200);
+const SHOP_LOOT = /^m\d+:[0678]$/; // shop shelves: only lootable once the shops are dead
+function shopAt(): Shop | null {
+  if (player.pos.z > -6000) return null;
+  let best: Shop | null = null,
+    bd = 1.3;
+  for (const st of metro) {
+    if (!st.built) continue;
+    for (const sh of st.shops) {
+      const d = Math.hypot(player.pos.x - sh.p[0], player.pos.z - sh.p[1]);
+      if (d < bd && (UT.power || sh.vend) && !(surv.pried || []).includes(sh.id)) ((bd = d), (best = sh));
+    }
+  }
+  return best;
+}
+function shopUse(sh: Shop) {
+  if (UT.power) {
+    if (sh.kind === 'locker') log('🔒 投幣置物櫃：每一格都有人在用，鎖著。', '#ccc');
+    else openShop(sh);
+    return true;
+  }
+  if (!sh.vend) return false;
+  const tool = ['hammer', 'pipe', 'bat', 'knife'].find(k => player.inv[k]);
+  const got = pryLoot(sh);
+  for (const [k, n] of Object.entries(got)) addItem(k, n);
+  (surv.pried ||= []).push(sh.id);
+  setPried(new Set(surv.pried));
+  noise(sh.p[0], sh.p[1], tool ? 24 : 36);
+  const list = Object.entries(got)
+    .map(([k, n]) => `${ITEMS[k]?.name || k}×${n}`)
+    .join('、');
+  log(`${tool ? `🔧 用${ITEMS[tool].name}撬開` : '💥 硬是砸開'}${sh.name}（好大聲）：${list}`, '#fc8');
+  return true;
+}
+function openShop(sh: Shop) {
+  document.getElementById('shop')?.remove();
+  const d = document.createElement('div');
+  d.id = 'shop';
+  const draw = () =>
+    (d.innerHTML =
+      `<h3>${sh.vend ? '🥤' : '🏪'} ${sh.name}</h3><p>錢包 NT$ ${wallet()}</p>` +
+      sh.stock
+        .map(([k, pr]) => `<button data-k="${k}" data-p="${pr}">${ITEMS[k]?.name || k}　NT$ ${pr}</button>`)
+        .join('') +
+      '<button data-k="" class="x">離開</button>');
+  draw();
+  d.onclick = e => {
+    const t = e.target as HTMLElement;
+    const k = t.dataset?.k;
+    if (k == null) return;
+    if (!k) return d.remove();
+    const pr = Number(t.dataset.p);
+    if (wallet() < pr) return log('💸 錢不夠了', '#f99');
+    surv.cash = wallet() - pr;
+    addItem(k);
+    log(
+      sh.vend ? `🥤 喀噹！${ITEMS[k].name}掉了出來（NT$ ${pr}）` : `🏪 在${sh.name}買了 ${ITEMS[k].name}（NT$ ${pr}）`,
+      '#cfc',
+    );
+    draw();
+  };
+  document.body.appendChild(d);
+}
 function openRide(i: number) {
   document.getElementById('ride')?.remove();
   const d = document.createElement('div');
@@ -3258,6 +3335,11 @@ function interact() {
   if (npcInteract()) return;
   if (metroUse()) return;
   if (document.getElementById('ride')) return document.getElementById('ride')!.remove();
+  if (document.getElementById('shop')) return document.getElementById('shop')!.remove();
+  {
+    const sh = shopAt();
+    if (sh && !nearestCont() && shopUse(sh)) return;
+  }
   {
     const bi = metroBoard();
     if (bi >= 0) return openRide(bi);
@@ -3798,6 +3880,7 @@ function update(dt: number) {
   if (dead && player.rig) animate(player.rig, 'death', 0, dt);
   for (const s of sols) if (s.state === 'dead' && s.rig.deadT < 1) animate(s.rig, 'death', 0, dt);
   if (evac) evac.update(dt, evacOpen());
+  if (metro.length && PS.src !== surv.pried) setPried(new Set((PS.src = surv.pried ||= [])));
   if (metro.length) metroTick(performance.now() / 1000, gameMin, UT.power, player.pos.x, player.pos.z);
   if (evac && evacOpen()) gmap?.intel('evac0', evac.pos[0], evac.pos[1], 'evac', '撤離點');
   if (started) {
@@ -4299,6 +4382,15 @@ function update(dt: number) {
   (scene.fog as THREE.Fog).color.copy(fogC);
   renderer.setClearColor(fogC);
   hemi.color.setHSL(0.6, 0.5, 0.35 + dayF * 0.45);
+  if (player.pos.z < -6000) {
+    // v22.3 underground: no sun or sky; only the station's own lights (or emergency lights after the cut)
+    sun.intensity = 0;
+    hemi.intensity = UT.power ? 0.5 : 0.07;
+    hemi.color.set(0xdfe6f0);
+    const uc = new THREE.Color(UT.power ? 0x14161a : 0x030405);
+    (scene.fog as THREE.Fog).color.copy(uc);
+    renderer.setClearColor(uc);
+  }
   const PW = UT.power ? 1 : 0;
   if ((updateLamps as any).pw !== PW) {
     (updateLamps as any).pw = PW;
@@ -4405,6 +4497,14 @@ function drawHud(inside: Bld | null) {
   } else if (!panelOpen && !survOpen && atHome() && !c) {
     pr.style.display = 'block';
     pr.textContent = '[E] 避難所（升級／存糧／拜拜）';
+  } else if (shopAt() && !panelOpen && !c) {
+    const sh = shopAt()!;
+    pr.style.display = 'block';
+    pr.textContent = UT.power
+      ? sh.kind === 'locker'
+        ? `[E] ${sh.name}`
+        : `[E] ${sh.vend ? '投幣購買' : '購物'}：${sh.name}（錢包 NT$ ${wallet()}）`
+      : `[E] 撬開${sh.name}（會發出很大的聲響）`;
   } else if (metroBoard() >= 0 && !panelOpen && !riding) {
     pr.style.display = 'block';
     pr.textContent = '[E] 搭乘艋舺橘線（選擇目的地）';
@@ -5287,6 +5387,9 @@ async function boot() {
     metro: () => metro,
     metroUse,
     metroBoard,
+    shopAt,
+    shopUse,
+    openShop,
     metroStats,
     svc,
     rideTo,

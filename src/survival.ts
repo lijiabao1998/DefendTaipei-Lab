@@ -31,6 +31,10 @@ export const UPG: Record<Upg, { name: string; cost: Record<string, number>; desc
 /** barter values (in 香菸 equivalents); scarcity raises what food and meds are worth */
 export const VAL: Record<string, number> = {
   cig: 1,
+  umbrella: 1,
+  mask: 2,
+  powerbank: 4,
+  bread: 1,
   battery: 2,
   can: 3,
   rice: 3,
@@ -65,6 +69,10 @@ export type SurvState = {
   gave: number;
   /** the shelter: where this survivor started */
   home?: [number, number];
+  /** v22.3 wallet (NTD) — only worth anything while the shops still run */
+  cash?: number;
+  /** v22.3 vending machines / lockers this player has pried open */
+  pried?: string[];
 };
 export function newSurv(): SurvState {
   const S = (id: string, name: string, role: string, skill: Survivor['skill'], here: boolean): Survivor => ({
