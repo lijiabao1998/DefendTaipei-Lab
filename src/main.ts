@@ -71,6 +71,8 @@ import { lotTex } from './paving';
 import { walkH } from './roads';
 import { dressWalkup, District, type TileInfo } from './district';
 import { buildDoorDeco, DoorView, doorSound, isHomeDoor, type LiveDoor } from './doors';
+import { SniperSys, findPosts, sniperActive, type Sniper } from './sniper';
+import { Scope, SCOPED, ballistic } from './scope';
 import { SET, QPIX, isKey, K, keyLabel, markMusic, vibrate } from './settings';
 import { openSettings, openHelp, openAbout, modalOpen, closeModal } from './menu';
 
@@ -2925,9 +2927,16 @@ addEventListener('mousemove', e => {
   mouse.set((e.clientX / innerWidth) * 2 - 1, (-e.clientY / innerHeight) * 2 + 1);
 });
 renderer.domElement.addEventListener('mousedown', e => {
+  if (e.button === 2) return scopeEnter();
+  if (e.button === 0 && scope.on) return scopeFire();
   if (e.button === 0 && !fpv?.active) clicking = true;
 });
-addEventListener('mouseup', () => (clicking = false));
+renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
+addEventListener('mouseup', e => {
+  clicking = false;
+  if (e.button === 2) scopeExit();
+});
+addEventListener('mousemove', e => scope.on && scope.look(e.movementX, e.movementY, SET.sens));
 addEventListener('wheel', e => {
   zoom = clamp(zoom * (e.deltaY > 0 ? 0.9 : 1.1), 0.5, 2.2);
   resize();
@@ -2935,6 +2944,251 @@ addEventListener('wheel', e => {
 const ray = new THREE.Raycaster();
 const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -1.0);
 const aimPt = new THREE.Vector3();
+
+// ---------- v22.5 snipers (enemy posts + player scope) ----------
+let snp: SniperSys | null = null;
+const scope = new Scope();
+let roofB: Bld | null = null;
+let scopeT = 0;
+let moral: { soldier: any; civ: any; x: number; z: number; t: number } | null = null;
+const snpWarn = document.createElement('div');
+snpWarn.id = 'snpwarn';
+document.body.appendChild(snpWarn);
+function snpSound(k: 'shot' | 'lock') {
+  try {
+    const ac = ((window as any).__snpAC ||= new AudioContext());
+    const o = ac.createOscillator(),
+      g = ac.createGain();
+    o.type = k === 'shot' ? 'sawtooth' : 'sine';
+    o.frequency.value = k === 'shot' ? 90 : 1800;
+    g.gain.setValueAtTime(k === 'shot' ? 0.5 : 0.06, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + (k === 'shot' ? 0.35 : 0.12));
+    o.connect(g).connect(ac.destination);
+    o.start();
+    o.stop(ac.currentTime + 0.4);
+  } catch {
+    /* no audio */
+  }
+}
+/** the sniper's eye, pulled just outside its own parapet so its own walls don't block the line */
+function snpEye(s: Sniper): V2 {
+  const dx = s.p[0] - s.b.c[0],
+    dz = s.p[1] - s.b.c[1],
+    l = Math.hypot(dx, dz) || 1;
+  return [s.p[0] + (dx / l) * 1.4, s.p[1] + (dz / l) * 1.4];
+}
+function setupSnipers() {
+  if (snp) return;
+  const posts = findPosts(roads, blds);
+  surv.snpDead ||= [];
+  snp = new SniperSys(
+    posts,
+    {
+      scene,
+      rig: () => {
+        const r = makeRig({
+          gender: 'm',
+          hair: 0x111111,
+          top: 0x4c5733,
+          bottom: 0x4c5733,
+          shoes: 0x111111,
+          soldier: true,
+        });
+        setWeapon(r, 't93');
+        scene.add(r.root);
+        return r;
+      },
+      animate: (r, a, dt) => animate(r, a as AnimState, 0, dt),
+      sees: s => {
+        if (roofB === s.b) return true;
+        if (roofB) return false;
+        const P: V2 = [player.pos.x, player.pos.z];
+        if (bldAt(P[0], P[1])) return false; // indoors / under the arcade
+        if (vehicles.list.some(v => Math.hypot(v.pos.x - P[0], v.pos.z - P[1]) < 1.8)) return false; // behind a car
+        return los(snpEye(s), P);
+      },
+      player: () => player.pos,
+      hurt: dmg => {
+        if (player.sleeping) player.sleeping = false;
+        player.rig.hurtT = 0.35;
+        player.hp -= dmg;
+        if (!player.bleed && Math.random() < 0.5) player.bleed = true;
+        log('砰！你被狙擊手擊中！快找掩蔽！', '#f44');
+      },
+      warn: on => {
+        snpWarn.style.display = on ? 'block' : 'none';
+        snpWarn.textContent = '⚠ 你被狙擊手鎖定！躲進騎樓、車後或巷子';
+        if (on) slowDown('狙擊手鎖定');
+      },
+      sound: snpSound,
+      cleared: s => {
+        surv.snpDead!.includes(s.id) || surv.snpDead!.push(s.id);
+        player.kills++;
+        log(`狙擊手已清除：${s.name} 一帶白天安全了。`, '#9f9');
+        gmap?.intel('snpok' + s.id, s.j[0], s.j[1], 'safe', `已清除狙擊點：${s.name}`);
+        makeCont('snpbox' + s.id, [s.p[0], s.p[1]], 'crate', undefined, { a762n: 5, bandage: 1 });
+      },
+    },
+    surv.snpDead,
+  );
+  for (const s of snp.list)
+    if (!s.dead) gmap?.intel('snp' + s.id, s.j[0], s.j[1], 'dng', `狙擊手（白天 06:00–18:30 危險）：${s.name}`);
+}
+/** stairwell door of a sniper building near the player */
+function roofDoor() {
+  if (!snp) return null;
+  for (const s of snp.list) {
+    const d = s.b.door;
+    if (d && Math.hypot(d.p[0] - player.pos.x, d.p[1] - player.pos.z) < 2) return s;
+  }
+  return null;
+}
+function roofToggle() {
+  if (roofB) {
+    const d = roofB.door!;
+    player.pos.set(d.p[0], 0, d.p[1]);
+    roofB = null;
+    log('你從樓梯間下到街上。');
+    return true;
+  }
+  const s = roofDoor();
+  if (!s) return false;
+  roofB = s.b;
+  const c = s.b.c;
+  player.pos.set(c[0] + (s.p[0] - c[0]) * 0.45, 0, c[1] + (s.p[1] - c[1]) * 0.45);
+  log(s.dead ? '你爬上了頂樓。' : '你悄悄爬上頂樓——狙擊手就在前面。靠近後近戰。', '#fd9');
+  return true;
+}
+function scopeAllowed() {
+  return !!player.equip && SCOPED.has(player.equip) && !drive.cur && !panelOpen && !player.sleeping;
+}
+function scopeEnter() {
+  if (!scopeAllowed()) return;
+  scope.enter(Math.atan2(aimPt.x - player.pos.x, aimPt.z - player.pos.z));
+  scopeT = performance.now();
+}
+function scopeExit() {
+  if (!scope.on) return;
+  scope.exit();
+  if (moral && moral.t > 0) moralEnd(false);
+}
+const eyeY = () => (roofB ? roofB.h : 0) + 1.55;
+/** a scoped shot: bullet drop (≈300 m/s), head / body hit zones, stops at buildings and the ground; loud */
+function scopeFire() {
+  const k = player.equip;
+  const d = ITEMS[k];
+  if (!d || player.cd > 0) return;
+  if (!player.inv[d.ammo!]) return log('沒有子彈了', '#f99');
+  if (--player.inv[d.ammo!] <= 0) delete player.inv[d.ammo!];
+  player.cd = d.cd;
+  player.rig.shootT = 0.14;
+  snpSound('shot');
+  noise(player.pos.x, player.pos.z, 80); // a rifle crack: soldiers come to search
+  const o = new THREE.Vector3(player.pos.x, eyeY(), player.pos.z);
+  let hit: { s?: Sniper; sol?: Sol; head: boolean } | null = null;
+  const r = ballistic(o, scope.dir(), 260, 300, (p, dist) => {
+    if (dist > 1.5) {
+      const b = bldAt(p.x, p.z);
+      if (b && b !== roofB && p.y < b.h) return true;
+      if (roofB && b === roofB && p.y < roofB.h) return true;
+    }
+    for (const s of snp?.list || []) {
+      if (s.dead) continue;
+      const hx = p.x - s.p[0],
+        hz = p.z - s.p[1];
+      if (hx * hx + (p.y - (s.y + 1.62)) ** 2 + hz * hz < 0.04) return !!(hit = { s, head: true });
+      if (hx * hx + hz * hz < 0.1 && p.y > s.y && p.y < s.y + 1.45) return !!(hit = { s, head: false });
+    }
+    for (const s of sols) {
+      if (s.state === 'dead') continue;
+      const hx = p.x - s.pos.x,
+        hz = p.z - s.pos.z;
+      const top = s.crouch ? 1.15 : 1.62;
+      if (hx * hx + (p.y - top) ** 2 + hz * hz < 0.04) return !!(hit = { sol: s, head: true });
+      if (hx * hx + hz * hz < 0.1 && p.y < top - 0.15) return !!(hit = { sol: s, head: false });
+    }
+    return false;
+  });
+  tracer(o, r.p);
+  const H = hit as { s?: Sniper; sol?: Sol; head: boolean } | null;
+  if (moral && moral.t > 0 && Math.hypot(r.p.x - moral.x, r.p.z - moral.z) < 2.5) return moralEnd(true);
+  if (H?.s) {
+    snp!.hit(H.s, d.dmg, H.head);
+    log(H.head ? '爆頭！' : '命中狙擊手軀幹', '#ff9');
+  } else if (H?.sol) {
+    damageSol(H.sol, H.head ? 999 : d.dmg, false);
+    log(H.head ? '爆頭！' : '命中', '#ff9');
+  }
+}
+/** the moral moment: through the scope, an enemy soldier helping an injured civilian */
+function moralStart() {
+  if (surv.moral || moral) return;
+  // in view if possible; otherwise turn the scope to the nearest open stretch of street
+  for (let k = 0; k < 24; k++)
+    for (let dist = 12; dist <= 45; dist += 3) {
+      const yaw = scope.yaw + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.26;
+      const dir = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+      const x = player.pos.x + dir.x * dist,
+        z = player.pos.z + dir.z * dist;
+      if (bldAt(x, z) || !los([player.pos.x, player.pos.z], [x, z])) continue;
+      scope.yaw = yaw;
+      scope.pitch = Math.atan2(1.2 - eyeY(), dist);
+      const soldier = makeRig({
+        gender: 'm',
+        hair: 0x111111,
+        top: 0x4c5733,
+        bottom: 0x4c5733,
+        shoes: 0x111111,
+        soldier: true,
+      });
+      const civ = makeRig({ gender: 'f', hair: 0xcccccc, top: 0x8a6a8a, bottom: 0x333344, shoes: 0x222222 });
+      soldier.root.position.set(x, 0, z);
+      civ.root.position.set(x + 0.55, 0, z);
+      soldier.root.rotation.y = civ.root.rotation.y = Math.atan2(-dir.z, dir.x);
+      scene.add(soldier.root, civ.root);
+      moral = { soldier, civ, x, z, t: 20 };
+      scope.note.textContent = '一名解放軍士兵正扶著受傷的阿嬤走向路邊。　[左鍵] 開槍　／　放開右鍵：放過';
+      return;
+    }
+}
+function moralEnd(shot: boolean) {
+  if (!moral) return;
+  surv.moral = shot ? 'shot' : 'spared';
+  surv.karma += shot ? -2 : 1;
+  if (shot) {
+    moral.soldier.root.rotation.x = -Math.PI / 2;
+    player.kills++;
+    log('你扣下了扳機。阿嬤跌坐在地上，抬頭看向槍聲的方向。', '#f99');
+  } else log('你放過了他。他把阿嬤扶到騎樓下，轉身離開。', '#9cf');
+  scope.note.textContent = '';
+  const m = moral;
+  moral.t = 0;
+  setTimeout(() => {
+    scene.remove(m.soldier.root, m.civ.root);
+    if (moral === m) moral = null;
+  }, 8000);
+}
+function snpUpdate(dt: number) {
+  if (!snp) return;
+  snp.update(dt, gameMin);
+  if (scope.on) {
+    if (!scopeAllowed()) scopeExit();
+    if (
+      performance.now() - scopeT > 1500 &&
+      gameMin > 1440 + 9 * 60 &&
+      !surv.moral &&
+      !snp.inZone(player.pos.x, player.pos.z) &&
+      !bldAt(player.pos.x, player.pos.z)
+    )
+      moralStart();
+  }
+  if (moral && moral.t > 0) {
+    moral.t -= dt;
+    animate(moral.soldier, 'carry', 0.6, dt);
+    animate(moral.civ, 'walk', 0.4, dt);
+    if (moral.t <= 0) moralEnd(false);
+  }
+}
 
 // ---------- inventory / loot UI ----------
 let panelOpen = false;
@@ -3470,6 +3724,9 @@ function rideTo(i: number, j: number) {
 }
 function interact() {
   if (npcInteract()) return;
+  if (roofB || roofDoor()) {
+    if (roofToggle()) return;
+  }
   {
     const dn = doorNear(1.6);
     if (dn && !dn.barricaded && (!dn.open || (!nearestCont() && !atHome()))) return toggleDoor(dn);
@@ -3748,6 +4005,16 @@ function playerAttack() {
     }
   } else {
     noise(player.pos.x, player.pos.z, d.noise);
+    if (roofB && snp) {
+      const s = snp.list.find(
+        q => !q.dead && q.b === roofB && Math.hypot(q.p[0] - player.pos.x, q.p[1] - player.pos.z) < d.range + 0.6,
+      );
+      if (s) {
+        snp.hit(s, d.dmg * 4, s.st !== 'aim');
+        log(s.dead ? '你從背後制伏了狙擊手。' : '狙擊手掙扎反抗！', '#ff9');
+        return;
+      }
+    }
     for (const s of sols) {
       if (s.state === 'dead') continue;
       const to = s.pos.clone().sub(player.pos);
@@ -4076,6 +4343,7 @@ function update(dt: number) {
   if (player.hp <= 0) return die();
   vehicles.update(dt);
   if (armor && started && !PRO.hide) armor.update(dt);
+  if (started) snpUpdate(dt);
   if (recon && started && !PRO.hide) recon.update(dt, performance.now() / 1000);
   if (roc && started && !PRO.hide) roc.update(dt);
   ROC.cd = Math.max(0, ROC.cd - dt);
@@ -4205,8 +4473,13 @@ function update(dt: number) {
     player.vel.lerp(want3, Math.min(1, dt * accRate));
     if (player.vel.lengthSq() > 0.0004 && player.vaultT <= 0) {
       player.pos.addScaledVector(player.vel, dt);
-      collide(player.pos, 0.35);
-      collideDoors(player.pos);
+      if (roofB) {
+        // v22.5 on a rooftop: stay inside the parapet
+        if (!pip([player.pos.x, player.pos.z], roofB.pts)) player.pos.addScaledVector(player.vel, -dt);
+      } else {
+        collide(player.pos, 0.35);
+        collideDoors(player.pos);
+      }
     }
     if (mv.lengthSq() > 0 && player.vaultT <= 0) {
       if (running) {
@@ -4243,7 +4516,7 @@ function update(dt: number) {
       : Math.atan2(aimPt.x - player.pos.x, aimPt.z - player.pos.z);
     let dr = Math.atan2(Math.sin(want - player.mesh.rotation.y), Math.cos(want - player.mesh.rotation.y));
     player.mesh.rotation.y += dr * Math.min(1, dt * (faceMove ? 9 : 12));
-    if ((clicking || MB.fire) && !panelOpen) playerAttack();
+    if ((clicking || MB.fire) && !panelOpen && !scope.on) playerAttack();
     player.moving = player.vel.length();
     const eqk = player.equip ? ITEMS[player.equip].kind : '';
     player.anim =
@@ -4266,7 +4539,7 @@ function update(dt: number) {
   animate(player.rig, player.anim, player.moving, dt);
   if (!drive.cur) {
     player.mesh.position.copy(player.pos);
-    player.mesh.position.y += walkH(player.pos.x, player.pos.z); // v21.4 stand on the raised walk
+    player.mesh.position.y += roofB ? roofB.h : walkH(player.pos.x, player.pos.z); // v21.4 stand on the raised walk (v22.5 or a roof)
   }
   // v21.2 shader cutaway around the camera→player line (see occlusion.ts); camera itself unchanged
   updateOcclusion(player.pos.x, player.pos.y, player.pos.z);
@@ -4653,7 +4926,14 @@ function drawHud(inside: Bld | null) {
         (scene.remove(exitMark.m), (exitMark = null), log('你走出了家門。', '#9cf'));
     }
   }
-  if (dn && !dn.barricaded && !panelOpen && !np && (!dn.open || (!c && !atHome()))) {
+  const rd = roofB ? null : roofDoor();
+  if (roofB && !panelOpen) {
+    pr.style.display = 'block';
+    pr.textContent = '[E] 走樓梯下到街上';
+  } else if (rd && !panelOpen) {
+    pr.style.display = 'block';
+    pr.textContent = `[E] 爬上頂樓（${rd.dead ? '已清除的狙擊點' : '狙擊手所在'}）`;
+  } else if (dn && !dn.barricaded && !panelOpen && !np && (!dn.open || (!c && !atHome()))) {
     pr.style.display = 'block';
     pr.textContent = `[E] ${dn.open ? '關門' : '開門'}${isHomeDoor(dn) ? '（家門）' : ''}｜[${keyLabel('barricade')}] 封門`;
   } else if (np && !panelOpen) {
@@ -4731,6 +5011,10 @@ function loop() {
     if (fpv.active) fpv.render(renderer);
     else renderer.render(scene, camera);
   } else renderer.render(scene, camera);
+  if (scope.on) {
+    scope.place(player.pos.x, eyeY(), player.pos.z);
+    scope.render(renderer, scene);
+  }
   requestAnimationFrame(loop);
 }
 
@@ -5352,6 +5636,7 @@ async function boot() {
     $('title').style.display = 'none';
     started = true;
     if (!surv.home) surv.home = [player.pos.x, player.pos.z];
+    setupSnipers();
     {
       // v22.4.1 day 1: mark the home's street door (map pin + a bobbing arrow until you have stepped outside)
       const hb = bldAt(player.pos.x, player.pos.z);
@@ -5563,6 +5848,32 @@ async function boot() {
     OCC,
     escapeCheck,
     unstuck,
+    snp: () =>
+      snp?.list.map(s => ({
+        id: s.id,
+        name: s.name,
+        j: s.j,
+        p: s.p,
+        y: s.y,
+        dead: s.dead,
+        st: s.st,
+        door: s.b.door?.p,
+      })),
+    snpLock: () => !!snp?.lock,
+    inBld: (x: number, z: number) => !!bldAt(x, z),
+    inZone: (x: number, z: number) => !!snp?.inZone(x, z),
+    snpLos: (i: number, x: number, z: number) => los(snpEye(snp!.list[i]), [x, z]),
+    roof: () => (roofB ? roofB.h : 0),
+    roofGo: () => roofToggle(),
+    scopeOn: (yaw?: number, pitch?: number) => {
+      scopeEnter();
+      if (yaw !== undefined) scope.yaw = yaw;
+      if (pitch !== undefined) scope.pitch = pitch;
+      return scope.on;
+    },
+    scopeOff: () => scopeExit(),
+    scopeFire: () => scopeFire(),
+    moral: () => surv.moral || (moral ? 'pending' : ''),
     autoStop: () => {
       AUTO.path = [];
       AUTO.i = 0;

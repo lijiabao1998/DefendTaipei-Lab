@@ -73,6 +73,10 @@ export type SurvState = {
   cash?: number;
   /** v22.3 vending machines / lockers this player has pried open */
   pried?: string[];
+  /** v22.5 cleared sniper posts */
+  snpDead?: string[];
+  /** v22.5 the scope moment: shot or spared the soldier helping a civilian */
+  moral?: 'shot' | 'spared';
 };
 export function newSurv(): SurvState {
   const S = (id: string, name: string, role: string, skill: Survivor['skill'], here: boolean): Survivor => ({

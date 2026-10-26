@@ -1559,3 +1559,85 @@ body.mobile #charsel,
 body.portrait #charsel {
   width: auto;
 }
+/* v22.5 sniper scope + targeted warning */
+#scope {
+  display: none;
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 40;
+  background: radial-gradient(circle at center, transparent 0, transparent 41vmin, #000 41.2vmin);
+}
+#scope .ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 82vmin;
+  height: 82vmin;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  box-shadow: inset 0 0 6vmin rgba(0, 0, 0, 0.85);
+  border: 3px solid #111;
+}
+#scope .xh {
+  position: absolute;
+  padding: 0;
+  border: 0;
+  background: #111;
+  left: 50%;
+  top: 50%;
+}
+#scope .xh.h {
+  width: 82vmin;
+  height: 2px;
+  transform: translate(-50%, -50%);
+}
+#scope .xh.v {
+  width: 2px;
+  height: 82vmin;
+  transform: translate(-50%, -50%);
+}
+#scope .mil {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px;
+  border-radius: 50%;
+  background: #e8681c;
+}
+#scope .snote {
+  position: absolute;
+  bottom: 6vmin;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #f3e6c8;
+  font-size: 15px;
+  text-align: center;
+  max-width: 80vw;
+  text-shadow: 0 0 4px #000;
+}
+#snpwarn {
+  display: none;
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(150, 10, 10, 0.88);
+  color: #fff;
+  padding: 6px 14px;
+  border: 2px solid #ff5040;
+  border-radius: 6px;
+  font-weight: bold;
+  z-index: 41;
+  animation: snpblink 0.4s infinite alternate;
+}
+@keyframes snpblink {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.55;
+  }
+}
