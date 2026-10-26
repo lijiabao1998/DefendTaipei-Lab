@@ -53,6 +53,7 @@ import { VehicleSystem, VehicleKind } from './vehicles';
 import { furnish, nightMarket, setPower } from './interiors';
 import { buildDecay } from './decay';
 import { buildAlley } from './alley';
+import { updateOcclusion, OCC } from './occlusion';
 import { dressWalkup, District, type TileInfo } from './district';
 
 // ---------- utils ----------
@@ -3501,6 +3502,8 @@ function update(dt: number) {
   setLodFocus(player.pos);
   animate(player.rig, player.anim, player.moving, dt);
   if (!drive.cur) player.mesh.position.copy(player.pos);
+  // v21.2 shader cutaway around the camera→player line (see occlusion.ts); camera itself unchanged
+  updateOcclusion(player.pos.x, player.pos.y, player.pos.z);
   // buildings cutaway
   const inside = bldAt(player.pos.x, player.pos.z);
   for (const b of blds) {
@@ -4578,6 +4581,7 @@ async function boot() {
   addEventListener('beforeunload', save);
   (window as any).__game = {
     roofStats,
+    OCC,
     escapeCheck,
     unstuck,
     spawnTest: (roleId: string, g: string, skip: boolean) => {
