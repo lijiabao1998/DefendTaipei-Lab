@@ -7,7 +7,8 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { canvasTex, roadMat } from './textures';
-import { lotTex } from './paving';
+import { lotTex, ARCADE_MATS, worldUV } from './paving';
+import { stair, leanTo, ac, brickPatch, brickMat, vsign, vsignMat, VSN, furnishRoom } from './walkup';
 import { Forest } from './trees';
 import { placeRooftop, dressRoof, pickRoofMat, roofClass } from './rooftin';
 import { VehicleSystem, type VehicleKind } from './vehicles';
@@ -30,7 +31,15 @@ export type DIndex = {
   tiles: Record<string, [number, number]>;
 };
 export type Front = { x: number; z: number; nx: number; nz: number; ux: number; uz: number; len: number };
-export type TileInfo = { key: string; cx: number; cz: number; fronts: Front[]; roads: DRoad[]; rnd: () => number };
+export type TileInfo = {
+  key: string;
+  cx: number;
+  cz: number;
+  fronts: Front[];
+  roads: DRoad[];
+  rnd: () => number;
+  rooms: { x: number; z: number; kind: 'home' | 'shop'; nx: number; nz: number }[];
+};
 type Seg = { a: V2; b: V2; low?: boolean };
 export type DistrictDeps = {
   scene: THREE.Scene;
@@ -454,6 +463,7 @@ export class District {
     const cages: THREE.Matrix4[] = [],
       plants: THREE.Matrix4[] = [],
       cloth: [THREE.Matrix4, number][] = [],
+      cagesC: [THREE.Matrix4, number][] = [],
       lamps: THREE.Matrix4[] = [],
       forest = new Forest();
     // trunk blocker (collision + bullet cover)
@@ -519,6 +529,23 @@ export class District {
       g.add(rm);
     }
     const veh: { x: number; z: number; ang: number; kind: VehicleKind }[] = [];
+    // v21.5 walk-up realism + enterable ground floors
+    const BB = td.b
+      .filter(b => b.p.length >= 3)
+      .map(b => {
+        const xs = b.p.map(p => p[0]),
+          zs = b.p.map(p => p[1]);
+        return { p: b.p, x0: Math.min(...xs), x1: Math.max(...xs), z0: Math.min(...zs), z1: Math.max(...zs) };
+      });
+    const inB = (x: number, z: number) =>
+      BB.some(b => x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1 && pip([x, z], b.p));
+    const brickG: THREE.BufferGeometry[] = [],
+      vsG: THREE.BufferGeometry[] = [],
+      tileG: THREE.BufferGeometry[][] = ARCADE_MATS.map(() => []);
+    const rooms: { x: number; z: number; kind: 'home' | 'shop'; nx: number; nz: number }[] = [];
+    let stairs = 0;
+    const local = (gs: THREE.BufferGeometry[], m: THREE.Matrix4, into: THREE.BufferGeometry[]) =>
+      gs.forEach(q => into.push(q.applyMatrix4(m)));
     for (const b of td.b) {
       const pts = b.p;
       if (pts.length < 3) continue;
@@ -547,9 +574,84 @@ export class District {
         const mx = (a[0] + c[0]) / 2,
           mz = (a[1] + c[1]) / 2;
         if (pip([mx + nx * 0.3, mz + nz * 0.3], pts)) ((nx = -nx), (nz = -nz));
-        const seg: Seg = { a: [a[0], a[1]], b: [c[0], c[1]] };
-        segs.push(seg);
-        this.d.addSeg(seg);
+        const rdE = this.roadDist(mx + nx * 3, mz + nz * 3);
+        const angE = Math.atan2(nx, nz),
+          XX = nz,
+          XZ = -nx; // local +x in world
+        // v21.5 enterable ground floor: one bay of a street-front walk-up opens into a furnished room
+        let room: { w: number; d: number; cx: number; cz: number } | null = null;
+        if (L >= 4 && L < 40 && rdE <= 3 && lv <= 7 && rooms.length < 6 && rnd() < 0.3) {
+          const w = Math.min(4.2, L - 0.6),
+            d = 4.6,
+            t0 = 0.3 + rnd() * (L - w - 0.6);
+          const cx2 = a[0] + ux * (t0 + w / 2),
+            cz2 = a[1] + uz * (t0 + w / 2);
+          const ok = [
+            [-w / 2 + 0.2, -d + 0.2],
+            [w / 2 - 0.2, -d + 0.2],
+            [0, -d / 2],
+          ].every(([lx, lz]) => pip([cx2 + XX * lx + nx * lz, cz2 + XZ * lx + nz * lz], pts));
+          if (ok) room = { w, d, cx: cx2, cz: cz2 };
+        }
+        if (room) {
+          const { w, d, cx: rx, cz: rz } = room;
+          const W2 = (lx: number, lz: number): V2 => [rx + XX * lx + nx * lz, rz + XZ * lx + nz * lz];
+          const dl = W2(-0.7, 0),
+            dr = W2(0.7, 0);
+          // street wall split around a 1.4 m doorway, then the room's own side and back walls
+          const near = (q: V2) => Math.hypot(q[0] - a[0], q[1] - a[1]);
+          const [d0, d1] = near(dl) < near(dr) ? [dl, dr] : [dr, dl];
+          const rs: Seg[] = [
+            { a: [a[0], a[1]], b: d0 },
+            { a: d1, b: [c[0], c[1]] },
+            { a: W2(-w / 2, 0), b: W2(-w / 2, -d) },
+            { a: W2(w / 2, 0), b: W2(w / 2, -d) },
+            { a: W2(-w / 2, -d), b: W2(w / 2, -d) },
+          ];
+          for (const sg of rs) {
+            segs.push(sg);
+            this.d.addSeg(sg);
+          }
+          const kind = rnd() < 0.5 ? 'home' : 'shop';
+          const M = place(rx, 0, rz, angE, 1, 1, 1);
+          local(furnishRoom({ kind, w, d }, rnd, GF), M, misc);
+          // old tile floor (one style per room)
+          const fl = new THREE.BoxGeometry(w, 0.04, d).translate(0, 0.02, -d / 2).applyMatrix4(M);
+          tileG[Math.floor(rnd() * tileG.length)].push(worldUV(fl, 1));
+          const ip = W2(0, -d / 2);
+          rooms.push({ x: ip[0], z: ip[1], kind, nx, nz });
+          if (kind === 'shop' && rnd() < 0.5) {
+            const sp = W2(0.6, -2.6);
+            veh.push({ x: sp[0], z: sp[1], ang: angE, kind: 'scooter' });
+          }
+        } else {
+          const seg: Seg = { a: [a[0], a[1]], b: [c[0], c[1]] };
+          segs.push(seg);
+          this.d.addSeg(seg);
+        }
+        // rear light-well / back alley side: stairs, lean-tos, ACs, coloured cages, peeled brick
+        if (rdE > 3 && L >= 3.5) {
+          const M0 = place(mx, 0, mz, angE, 1, 1, 1);
+          const free = (lz: number) => !inB(mx + nx * lz, mz + nz * lz);
+          if (lv >= 3 && stairs < 8 && L >= 4.5 && rnd() < 0.18 && free(1.5) && free(3)) {
+            stairs++;
+            local(stair(Math.min(lv - 1, 6), GF, FH, rnd), M0, misc);
+          } else if (rnd() < 0.35 && free(1.2) && free(2.2)) local(leanTo(Math.min(L, 6), 2.2, 2.6, rnd), M0, metal);
+          const nb = Math.max(1, Math.round(L / 3.4));
+          for (let k = 0; k < nb; k++) {
+            const lx = (k + 0.5 - nb / 2) * (L / nb);
+            for (let f = 1; f < lv; f++) {
+              const y = GF + (f - 1) * FH;
+              if (rnd() < 0.22) local(ac(lx + 0.6, y + 0.9), M0, misc);
+              if (rnd() < 0.4)
+                cagesC.push([
+                  place(mx + XX * lx, y + 0.15, mz + XZ * lx, angE, (L / nb) * 0.9, FH - 0.4, 0.45),
+                  [0xb0ffc0, 0xffb890, 0xffffff, 0xd0e8ff][Math.floor(rnd() * 4)],
+                ]);
+              if (rnd() < 0.07) local(brickPatch(lx, y + 1.4, rnd), M0, brickG);
+            }
+          }
+        }
         // wall quads: ground band (shutters) + upper floors (stained walk-up bays)
         const quad = (y0: number, y1: number, v0: number, v1: number) => {
           const pg = new THREE.BufferGeometry();
@@ -575,6 +677,16 @@ export class District {
         for (let k = 0; k < bays; k++) {
           const bx = a[0] + ux * (k + 0.5) * bw,
             bz = a[1] + uz * (k + 0.5) * bw;
+          // v21.5 vertical sign blades, split ACs, peeled render on the street face
+          {
+            const M1 = place(bx, 0, bz, ang, 1, 1, 1);
+            if (k % 2 === 0 && rnd() < 0.3)
+              vsG.push(vsign(bw / 2 - 0.15, GF + 1.6, Math.floor(rnd() * VSN)).applyMatrix4(M1));
+            for (let f = 1; f < lv; f++) {
+              if (rnd() < 0.18) local(ac(-bw / 2 + 0.6, GF + (f - 1) * FH + 0.5), M1, misc);
+              if (rnd() < 0.05) local(brickPatch((rnd() - 0.5) * bw, GF + (f - 1) * FH + 1.6, rnd), M1, brickG);
+            }
+          }
           // ground: awning (teal/red corrugated, rust underside) + faded signboard
           if (rnd() < 0.8) {
             const aw = box(bw * 0.98, 0.04, 1.3, 0, 0, 0.65, rnd() < 0.7 ? awn : AWN[Math.floor(rnd() * AWN.length)]);
@@ -702,6 +814,9 @@ export class District {
       par.add(m);
     };
     for (const [m, arr] of roofB) add(arr, m, g);
+    add(brickG, brickMat, detail, false);
+    add(vsG, vsignMat, detail, false);
+    tileG.forEach((gs, i) => add(gs, ARCADE_MATS[i], g, false));
     add(up, upperMat, g);
     add(gr, shutMat, g);
     add(misc, vcMat, g);
@@ -723,6 +838,13 @@ export class District {
       par.add(im);
     };
     inst(CAGE, metalMat, cages, detail);
+    inst(
+      CAGE,
+      metalMat,
+      cagesC.map(c => c[0]),
+      detail,
+      cagesC.map(c => c[1]),
+    );
     inst(PLANT, plantMat, plants, detail);
     inst(
       CLOTH,
@@ -740,7 +862,7 @@ export class District {
     }
     this.d.scene.add(g);
     void m4;
-    return { key, cx, cz, g, detail, segs, info: { key, cx, cz, fronts, roads: td.r, rnd } };
+    return { key, cx, cz, g, detail, segs, info: { key, cx, cz, fronts, roads: td.r, rnd, rooms } };
   }
   // ---------- cheap landmarks ----------
   /** footprints the core map must leave empty (its own generic boxes are replaced by the landmark) */
@@ -772,6 +894,23 @@ export class District {
       };
       if (l.kind === 'temple') {
         // 龍山寺: red-pillared halls on a stone base, stacked swallowtail roofs (orange glazed tile)
+        // v21.5 old 榕樹 shading the temple square (廟埕) in front, with stools under them
+        {
+          const f = new Forest();
+          let sd = 11;
+          const rr = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+          for (const [x, z] of [
+            [-11, 24],
+            [11, 25],
+            [0, 30],
+          ]) {
+            f.add('banyan', x, z, rr() * 6, 1.2 + rr() * 0.3, 0, 0.9 + rr() * 0.2);
+            this.d.addSeg({ a: [l.x + x - 0.9, l.z + z], b: [l.x + x + 0.9, l.z + z] });
+            this.d.addSeg({ a: [l.x + x, l.z + z - 0.9], b: [l.x + x, l.z + z + 0.9] });
+            f.add('bench', x + 2.2, z, 1.57);
+          }
+          f.build(g);
+        }
         const base = new THREE.Mesh(new THREE.BoxGeometry(32, 0.8, 38), M(0x9a9286));
         base.position.y = 0.4;
         g.add(base);

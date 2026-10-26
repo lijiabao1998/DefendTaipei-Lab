@@ -55,6 +55,7 @@ export async function pickRole(page, { g = 'f', role, skipIntro = true } = {}) {
       box.dispatchEvent(new Event('change'));
       window.__selG(g);
       document.querySelector(`.ch[data-r="${role}"]`).click();
+      if (document.body.classList.contains('portrait')) document.getElementById('startgo').click();
     },
     [g, role || (g === 'f' ? 'nurse' : 'courier'), skipIntro],
   );

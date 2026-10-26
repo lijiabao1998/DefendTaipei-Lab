@@ -1001,3 +1001,190 @@ body.mobile #coverbtn {
   background: rgba(20, 30, 40, 0.8);
   font-size: 22px;
 }
+
+/* v21.5.1 mobile portrait thumb buttons (right side, clear of the joystick on the left) */
+#pbtns {
+  display: none;
+}
+body.mobile.portrait #pbtns {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  position: fixed;
+  z-index: 21;
+  right: calc(14px + env(safe-area-inset-right));
+  bottom: calc(150px + env(safe-area-inset-bottom));
+}
+.pbtn {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  background: rgba(20, 26, 32, 0.72);
+  color: #fff;
+  font-size: 28px;
+  font-weight: 700;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.pbtn:nth-child(2) {
+  background: rgba(150, 30, 24, 0.8);
+}
+.pbtn.on {
+  transform: scale(0.92);
+  background: rgba(255, 200, 80, 0.85);
+  color: #111;
+}
+
+/* v21.5.1 nothing in-game shows over the title / role select */
+body:not(.ingame) #coverbtn,
+body:not(.ingame) #mapbtn,
+body:not(.ingame) #pbtns,
+body:not(.ingame) #menubtn,
+body:not(.ingame) #coverind,
+body:not(.ingame) #joy,
+body:not(.ingame) #speed {
+  display: none !important;
+}
+#startbar,
+#menubtn {
+  display: none;
+}
+#pmenu.hidden {
+  display: none;
+}
+#pmenu {
+  position: fixed;
+  z-index: 40;
+  left: 50%;
+  top: 30%;
+  transform: translateX(-50%);
+  background: rgba(15, 18, 22, 0.94);
+  border: 1px solid #555;
+  border-radius: 10px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 180px;
+  text-align: center;
+  color: #fff;
+}
+#pmenu button {
+  font-size: 18px;
+  padding: 10px;
+  border-radius: 6px;
+  border: 0;
+  background: #8a2a20;
+  color: #fff;
+}
+body.mobile #menubtn {
+  display: block;
+  position: fixed;
+  z-index: 22;
+  left: calc(8px + env(safe-area-inset-left));
+  top: calc(8px + env(safe-area-inset-top));
+  width: 44px;
+  height: 44px;
+  font-size: 22px;
+  border-radius: 8px;
+  border: 1px solid #777;
+  background: rgba(20, 26, 32, 0.75);
+  color: #fff;
+}
+body.mobile.portrait #stats {
+  margin-top: 46px;
+}
+/* portrait role select: compact rows, 2-col role grid, sticky start bar */
+body.portrait #title {
+  justify-content: flex-start;
+  padding: calc(10px + env(safe-area-inset-top)) 8px calc(84px + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+body.portrait #title h1 {
+  font-size: 30px;
+  letter-spacing: 4px;
+}
+body.portrait #title h2 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+body.portrait #title p {
+  display: none;
+}
+body.portrait #daylen,
+body.portrait #gsel {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  font-size: 12px;
+  margin: 2px 0;
+}
+body.portrait #daylen button,
+body.portrait #gsel button {
+  font-size: 13px;
+  padding: 5px 10px;
+  margin: 0;
+}
+body.portrait #mpsel {
+  font-size: 11px;
+}
+body.portrait #charsel {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  width: 100%;
+  max-width: none;
+}
+body.portrait #charsel .ch {
+  width: auto !important;
+  margin: 0 !important;
+  padding: 6px !important;
+  font-size: 12px;
+}
+body.portrait #charsel .ch .pv {
+  width: 56px !important;
+  height: 56px !important;
+}
+body.portrait #charsel .ch small {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 10px;
+}
+body.portrait #charsel .ch.on {
+  outline: 3px solid #f2d27a;
+}
+body.portrait:not(.ingame) #startbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  position: fixed;
+  z-index: 30;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 10px calc(12px + env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom))
+    calc(12px + env(safe-area-inset-left));
+  background: rgba(10, 8, 6, 0.95);
+  border-top: 1px solid #a33;
+  color: #eee;
+  font-size: 14px;
+}
+#startgo {
+  font-size: 18px;
+  padding: 12px 22px;
+  border: 0;
+  border-radius: 8px;
+  background: #b33a2a;
+  color: #fff;
+  font-weight: 700;
+}
+
+body.mobile.portrait #coverind {
+  bottom: calc(230px + env(safe-area-inset-bottom)) !important;
+}

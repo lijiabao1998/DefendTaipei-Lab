@@ -69,8 +69,20 @@ const $ = (id: string) => document.getElementById(id)!;
 
 // ---------- renderer ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-const MOBILE = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+const MOBILE =
+  matchMedia('(pointer: coarse)').matches ||
+  'ontouchstart' in window ||
+  navigator.maxTouchPoints > 0 ||
+  /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 if (MOBILE) document.body.classList.add('mobile');
+{
+  // v21.5.1 portrait layout flag (title screen + HUD), follows rotation / resize
+  const pq = matchMedia('(orientation: portrait)');
+  const pu = () => document.body.classList.toggle('portrait', MOBILE && pq.matches);
+  pu();
+  addEventListener('resize', pu);
+  pq.addEventListener?.('change', pu);
+}
 renderer.setPixelRatio(Math.min(devicePixelRatio, MOBILE ? 1.25 : 1.5));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
@@ -267,6 +279,95 @@ function findCover(x: number, z: number, r = 1.4) {
     if (d < r && (!best || d < best.d)) best = { s, d };
   }
   return best && { low: (best.s.h ?? 99) <= 1.6, x, z, seg: best.s };
+}
+/** nearest live soldier in sight within r m */
+function nearestFoe(r: number) {
+  let best: Sol | null = null,
+    bd = r;
+  for (const s of sols) {
+    if (s.state === 'dead' || !s.mesh.visible) continue;
+    const d = Math.hypot(s.pos.x - player.pos.x, s.pos.z - player.pos.z);
+    if (d < bd && los([player.pos.x, player.pos.z], [s.pos.x, s.pos.z])) ((best = s), (bd = d));
+  }
+  return best;
+}
+/** v21.5.1 mobile portrait: three big thumb buttons on the right (搜 / 打 / 撤); the joystick stays as it is */
+function initPortraitButtons() {
+  const wrap = document.createElement('div');
+  wrap.id = 'pbtns';
+  const buzz = () => navigator.vibrate?.(15);
+  const mk = (t: string, title: string, down: () => void, up?: () => void) => {
+    const b = document.createElement('button');
+    b.textContent = t;
+    b.title = title;
+    b.className = 'pbtn';
+    b.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      b.setPointerCapture(e.pointerId);
+      b.classList.add('on');
+      buzz();
+      down();
+    });
+    const end = () => {
+      b.classList.remove('on');
+      up?.();
+    };
+    b.addEventListener('pointerup', end);
+    b.addEventListener('pointercancel', end);
+    wrap.appendChild(b);
+  };
+  mk('搜', '搜刮／互動', () => interact());
+  mk(
+    '打',
+    '攻擊最近目標（按住連射）',
+    () => (MB.fire = true),
+    () => (MB.fire = false),
+  );
+  mk('撤', '撤退／找掩體', () => {
+    if (!player.cover && findCover(player.pos.x, player.pos.z)) toggleCover();
+    else {
+      if (player.cover) toggleCover();
+      MB.retreat = 1.6;
+    }
+  });
+  document.body.appendChild(wrap);
+  // ☰ menu: pause / map / save, reachable on portrait phones
+  const mb = document.createElement('button');
+  mb.id = 'menubtn';
+  mb.textContent = '☰';
+  mb.title = '選單';
+  const menu = document.createElement('div');
+  menu.id = 'pmenu';
+  menu.className = 'hidden';
+  menu.innerHTML =
+    '<b>⏸ 已暫停</b><button data-a="go">繼續</button><button data-a="map">地圖</button><button data-a="save">存檔</button>';
+  const close = () => {
+    menu.classList.add('hidden');
+    paused = false;
+  };
+  mb.onclick = () => {
+    paused = menu.classList.toggle('hidden') ? false : true;
+  };
+  menu.querySelectorAll('button').forEach(
+    b =>
+      ((b as HTMLElement).onclick = () => {
+        const a = (b as HTMLElement).dataset.a;
+        if (a === 'map') {
+          close();
+          gmap?.toggle();
+        } else if (a === 'save') {
+          save();
+          log('已存檔', '#9f9');
+        } else close();
+      }),
+  );
+  document.body.appendChild(mb);
+  document.body.appendChild(menu);
+  const upd = () => document.body.classList.toggle('portrait', MOBILE && matchMedia('(orientation: portrait)').matches);
+  upd();
+  addEventListener('resize', upd);
+  matchMedia('(orientation: portrait)').addEventListener?.('change', upd);
 }
 function toggleCover() {
   if (player.cover) {
@@ -1536,6 +1637,26 @@ function rollLoot(type: string, r: () => number) {
 const dTile = new Map<string, { sols: Sol[]; conts: Cont[]; marks: THREE.Object3D[]; cps: V2[] }>();
 let dSolId = 100000;
 const sandMat = new THREE.MeshStandardMaterial({ color: 0x8a7a58, roughness: 1 });
+/** v21.5 a visible sandbag wall (cover, 1 m) of n bags at (x, z) facing ang; returns the group */
+function sandbags(x: number, z: number, ang: number, n = 4) {
+  const g = new THREE.Group();
+  const ux = Math.cos(ang),
+    uz = Math.sin(ang);
+  for (let row = 0; row < 3; row++)
+    for (let k = 0; k < n - (row === 2 ? 1 : 0); k++) {
+      const sb = new THREE.Mesh(sandGeo, sandMat);
+      const o = (k - (n - 1) / 2 + (row % 2) * 0.5) * 0.62;
+      sb.position.set(x + ux * o, 0.17 + row * 0.3, z + uz * o);
+      sb.rotation.y = -ang;
+      sb.castShadow = true;
+      g.add(sb);
+    }
+  scene.add(g);
+  const hl = (n * 0.62) / 2;
+  addSeg({ a: [x - ux * hl, z - uz * hl], b: [x + ux * hl, z + uz * hl] }, true);
+  return g;
+}
+const sandGeo = new THREE.BoxGeometry(0.6, 0.3, 0.45);
 function dSoldier(key: string, tid: number, route: V2[], sector: number, post?: V2) {
   const rig = spawnRig(SOLDIER_OPTS);
   setWeapon(rig, 'rifle');
@@ -1589,6 +1710,13 @@ function onTileLoad(t: TileInfo) {
       }),
     );
   }
+  // v21.5 enterable ground-floor rooms: a cabinet / fridge / shelf inside each (ids 100+, saved per tile)
+  (t.rooms || []).forEach((rm, j) => {
+    const i = 100 + j;
+    const ty = rm.kind === 'shop' ? 'store' : 'home';
+    const preset = sv.c?.[i] ?? rollLoot(ty, r);
+    rec.conts.push(makeCont(`t${t.key}:${i}`, [rm.x - rm.nx * 1.2, rm.z - rm.nz * 1.2], ty, undefined, { ...preset }));
+  });
   const big = t.roads.filter(q => q.p.length >= 2 && !/foot|path|steps|cycle|service/.test(q.t));
   // garrison outpost for the area this tile anchors
   const gs = SECTORS.findIndex((_, i) => outerSector(i) && garrisonKey(i) === t.key);
@@ -2544,6 +2672,7 @@ const isNight = () => {
 let DAYH = 1;
 const MPS = () => 1440 / (DAYH * 3600); // game minutes per real second
 let speed = 1;
+let paused = false; // v21.5.1 menu pause (local only)
 const SPEEDS = [1, 3, 20];
 function dangerNear() {
   return sols.some(
@@ -2626,6 +2755,8 @@ initJoystick(MOBILE);
 const keys: Record<string, boolean> = {};
 let mouse = new THREE.Vector2();
 let clicking = false;
+// v21.5.1 portrait thumb buttons: 打 held = fire at the nearest target, 撤 = retreat sprint for a moment
+const MB = { fire: false, retreat: 0 };
 addEventListener('keydown', e => {
   keys[e.code] = true;
   if (started && e.code === 'KeyM') {
@@ -3416,7 +3547,7 @@ function update(dt: number) {
     updatePrologue(dt);
   }
   pumpRoofs(player.pos.x, player.pos.z, started ? 3 : 8);
-  if (!started || dead) return;
+  if (!started || dead || paused) return;
   updateInformant(dt);
   if (evac && evacOpen() && Math.hypot(player.pos.x - evac.pos[0], player.pos.z - evac.pos[1]) < 5) doEvac();
   if (speed > 1 && dangerNear()) slowDown('佔領軍接近');
@@ -3536,7 +3667,13 @@ function update(dt: number) {
     if (jm > 0.12) {
       mv.addScaledVector(f, -joy.y).addScaledVector(r, joy.x);
     }
-    const running = (keys.ShiftLeft || keys.ShiftRight || jm > 0.93) && !player.sneak && player.fatigue < 95;
+    if (MB.retreat > 0) {
+      MB.retreat -= dt;
+      const e = nearestFoe(30);
+      if (e && jm < 0.12) mv.add(new THREE.Vector3(player.pos.x - e.pos.x, 0, player.pos.z - e.pos.z).normalize());
+    }
+    const running =
+      (keys.ShiftLeft || keys.ShiftRight || jm > 0.93 || MB.retreat > 0) && !player.sneak && player.fatigue < 95;
     let sp = player.cover ? 1.4 : player.sneak ? 1.6 : running ? 6 : 3.4;
     if (player.cover && Math.hypot(player.pos.x - player.cover.x, player.pos.z - player.cover.z) > 1.8) {
       player.cover = null;
@@ -3581,6 +3718,16 @@ function update(dt: number) {
     }
     ray.setFromCamera(mouse, camera);
     ray.ray.intersectPlane(plane, aimPt);
+    if (MB.fire) {
+      const e = nearestFoe(25);
+      if (e) aimPt.set(e.pos.x, 0, e.pos.z);
+      else
+        aimPt.set(
+          player.pos.x + Math.sin(player.mesh.rotation.y) * 5,
+          0,
+          player.pos.z + Math.cos(player.mesh.rotation.y) * 5,
+        );
+    }
     const eqk0 = player.equip ? ITEMS[player.equip].kind : '';
     const faceMove = player.vel.length() > 0.5 && (running || eqk0 !== 'gun') && !clicking;
     const want = faceMove
@@ -3588,7 +3735,7 @@ function update(dt: number) {
       : Math.atan2(aimPt.x - player.pos.x, aimPt.z - player.pos.z);
     let dr = Math.atan2(Math.sin(want - player.mesh.rotation.y), Math.cos(want - player.mesh.rotation.y));
     player.mesh.rotation.y += dr * Math.min(1, dt * (faceMove ? 9 : 12));
-    if (clicking && !panelOpen) playerAttack();
+    if ((clicking || MB.fire) && !panelOpen) playerAttack();
     player.moving = player.vel.length();
     const eqk = player.equip ? ITEMS[player.equip].kind : '';
     player.anim =
@@ -4477,6 +4624,7 @@ async function boot() {
       cb.title = '掩體';
       cb.onclick = () => toggleCover();
       document.body.appendChild(cb);
+      initPortraitButtons();
     }
     (window as any).__game && ((window as any).__game.map = gmap);
   });
@@ -4618,6 +4766,8 @@ async function boot() {
     if (MP) startNet();
     $('title').style.display = 'none';
     started = true;
+    document.body.classList.add('ingame');
+    document.getElementById('startbar')?.remove();
     {
       const mb = document.getElementById('mapbtn');
       if (mb) mb.style.display = '';
@@ -4683,14 +4833,30 @@ async function boot() {
     mpMsg(`將加入 ${code}，選角色開始`);
   };
   if (MPQ.get('room')) MP = { base: defB, code: MPQ.get('room')!.toUpperCase() };
+  let selR = ROLES[0].id;
+  const markSel = () => {
+    sel.querySelectorAll('.ch').forEach(x => x.classList.toggle('on', (x as HTMLElement).dataset.r === selR));
+    const r = roleById(selR);
+    const sb = document.getElementById('startbar');
+    if (sb) sb.querySelector('b')!.textContent = `${r.names[selG === 'm' ? 0 : 1]}・${r.name}`;
+  };
   const drawSel = () => {
     sel.innerHTML = ROLES.map(r => {
       const o = r.look[selG];
       return `<div class="ch" data-g="${selG}" data-r="${r.id}"><img class="pv" alt="" src="${rolePortrait(r.id, selG)}"><b>${r.names[selG === 'm' ? 0 : 1]}・${r.name}</b><small>${selG === 'm' ? '男' : '女'}・${r.age[selG === 'm' ? 0 : 1]} 歲<br>${r.blurb}<br><em>${r.perks.join('・')}</em></small></div>`;
     }).join('');
-    sel
-      .querySelectorAll('.ch')
-      .forEach(el => ((el as HTMLElement).onclick = () => go(false, selG, (el as HTMLElement).dataset.r!, skipI)));
+    sel.querySelectorAll('.ch').forEach(
+      el =>
+        ((el as HTMLElement).onclick = () => {
+          const rid = (el as HTMLElement).dataset.r!;
+          // v21.5.1 portrait phones: a tap picks the role, the sticky 開始遊戲 bar starts
+          if (document.body.classList.contains('portrait')) {
+            selR = rid;
+            markSel();
+          } else go(false, selG, rid, skipI);
+        }),
+    );
+    markSel();
   };
   gsw.querySelectorAll('button').forEach(
     b =>
@@ -4730,6 +4896,14 @@ async function boot() {
   btns.appendChild(gsw);
   btns.appendChild(sel);
   btns.appendChild(mpw);
+  {
+    const sb = document.createElement('div');
+    sb.id = 'startbar';
+    sb.innerHTML = '<span>已選：<b></b></span><button id="startgo">開始遊戲 ▶</button>';
+    (sb.querySelector('#startgo') as HTMLElement).onclick = () => go(false, selG, selR, skipI);
+    document.body.appendChild(sb);
+    markSel();
+  }
   camera.position.copy(player.pos).add(CAM_OFF);
   camera.lookAt(player.pos);
   addEventListener('beforeunload', save);
@@ -4801,6 +4975,8 @@ async function boot() {
     gm: () => gameMin,
     roadDist,
     shotRay,
+    sandbags,
+    MB,
     addSeg,
     removeSeg,
     findCover,
