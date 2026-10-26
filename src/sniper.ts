@@ -94,7 +94,7 @@ export type SniperDeps = {
   player: () => THREE.Vector3;
   hurt: (dmg: number, s: Sniper) => void;
   warn: (on: boolean, s?: Sniper) => void;
-  sound: (k: 'shot' | 'lock') => void;
+  sound: (k: 'shot' | 'lock', s?: Sniper) => void;
   cleared: (s: Sniper) => void;
 };
 let glintTex: THREE.Texture | null = null;
@@ -185,11 +185,11 @@ export class SniperSys {
       if (s.st === 'cool') {
         if (s.t <= 0) s.st = 'idle';
       } else if (s.st === 'idle') {
-        if (see) ((s.st = 'aim'), (s.t = AIM_T), this.D.sound('lock'));
+        if (see) ((s.st = 'aim'), (s.t = AIM_T), this.D.sound('lock', s));
       } else if (s.st === 'aim') {
         if (!see) s.st = 'idle';
         else if (s.t <= 0) {
-          this.D.sound('shot');
+          this.D.sound('shot', s);
           this.D.hurt(38 + ((s.id.charCodeAt(3) * 7) % 10), s);
           s.st = 'cool';
           s.t = 3.5;

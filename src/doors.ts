@@ -58,13 +58,13 @@ export function buildDoorDeco(scene: THREE.Scene, doors: Door[]) {
   }
 }
 
-let actx: AudioContext | null = null;
+import { sfxCtx } from './audio';
 /** short metallic creak + latch clunk (synthesised) */
 export function doorSound(open: boolean) {
   try {
-    actx ||= new AudioContext();
-    const c = actx,
-      t = c.currentTime;
+    const c = sfxCtx();
+    if (!c) return;
+    const t = c.currentTime;
     const o = c.createOscillator(),
       g = c.createGain();
     o.type = 'sawtooth';

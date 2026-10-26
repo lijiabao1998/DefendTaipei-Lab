@@ -73,6 +73,7 @@ import { dressWalkup, District, type TileInfo } from './district';
 import { buildDoorDeco, DoorView, doorSound, isHomeDoor, type LiveDoor } from './doors';
 import { SniperSys, findPosts, sniperActive, type Sniper } from './sniper';
 import { Scope, SCOPED, ballistic } from './scope';
+import * as AU from './audio';
 import { SET, QPIX, isKey, K, keyLabel, markMusic, vibrate } from './settings';
 import { openSettings, openHelp, openAbout, modalOpen, closeModal } from './menu';
 
@@ -947,6 +948,7 @@ function setupArmor(c: V2) {
     canSee: (ax, az, bx, bz) => !bldAt(bx, bz) && los([ax, az], [bx, bz]),
     hurt: dmg => {
       if (player.sleeping) player.sleeping = false;
+      AU.gunshot('mg', 30, false);
       player.rig.hurtT = 0.35;
       player.rig.hurtSide = 1;
       player.stun = 0.25;
@@ -2945,6 +2947,39 @@ const ray = new THREE.Raycaster();
 const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -1.0);
 const aimPt = new THREE.Vector3();
 
+// ---------- v22.6 audio glue ----------
+AU.unlockAudio();
+const pDist = (x: number, z: number) => Math.hypot(player.pos.x - x, player.pos.z - z);
+function surfaceAt(x: number, z: number): AU.Surface {
+  if (z < -6000) return 'metro';
+  const b = bldAt(x, z);
+  if (b) return b.type === 'home' || b.type === 'house' || b.type === 'residential' ? 'wood' : 'tile';
+  return walkH(x, z) > 0.02 ? 'tile' : 'asphalt';
+}
+let stepA = 0,
+  auHp = 100;
+function audioTick(dt: number) {
+  // footsteps (player): one per stride; sneaking is silent
+  if (!drive.cur && player.vaultT <= 0 && !player.sneak) {
+    stepA += player.vel.length() * dt;
+    const run = player.vel.length() > 4.5;
+    if (stepA > (run ? 1.05 : 0.75)) {
+      stepA = 0;
+      AU.footstep(roofB ? 'tile' : surfaceAt(player.pos.x, player.pos.z), 0, false, run);
+    }
+  }
+  if (player.hp < auHp - 3 && !dead) AU.hurt(0);
+  auHp = player.hp;
+  const inside = !!bldAt(player.pos.x, player.pos.z);
+  AU.ambience(dt, {
+    rain: WX.amt,
+    indoor: inside || player.pos.z < -6000,
+    home: atHome(),
+    night: isNight(),
+    metro: player.pos.z < -6000,
+    combat: sols.some(s => s.state === 'combat'),
+  });
+}
 // ---------- v22.5 snipers (enemy posts + player scope) ----------
 let snp: SniperSys | null = null;
 const scope = new Scope();
@@ -2954,15 +2989,17 @@ let moral: { soldier: any; civ: any; x: number; z: number; t: number } | null = 
 const snpWarn = document.createElement('div');
 snpWarn.id = 'snpwarn';
 document.body.appendChild(snpWarn);
-function snpSound(k: 'shot' | 'lock') {
+function snpSound(k: 'shot' | 'lock', s?: Sniper) {
+  if (k === 'shot') return AU.gunshot('sniper', s ? pDist(s.p[0], s.p[1]) : 0, false);
   try {
-    const ac = ((window as any).__snpAC ||= new AudioContext());
+    const ac = AU.sfxCtx();
+    if (!ac) return;
     const o = ac.createOscillator(),
       g = ac.createGain();
-    o.type = k === 'shot' ? 'sawtooth' : 'sine';
-    o.frequency.value = k === 'shot' ? 90 : 1800;
-    g.gain.setValueAtTime(k === 'shot' ? 0.5 : 0.06, ac.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + (k === 'shot' ? 0.35 : 0.12));
+    o.type = 'sine';
+    o.frequency.value = 1800; // the lock-on tick
+    g.gain.setValueAtTime(0.06, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.12);
     o.connect(g).connect(ac.destination);
     o.start();
     o.stop(ac.currentTime + 0.4);
@@ -3020,7 +3057,7 @@ function setupSnipers() {
         snpWarn.textContent = '⚠ 你被狙擊手鎖定！躲進騎樓、車後或巷子';
         if (on) slowDown('狙擊手鎖定');
       },
-      sound: snpSound,
+      sound: (k, s) => snpSound(k, s),
       cleared: s => {
         surv.snpDead!.includes(s.id) || surv.snpDead!.push(s.id);
         player.kills++;
@@ -3082,7 +3119,7 @@ function scopeFire() {
   if (--player.inv[d.ammo!] <= 0) delete player.inv[d.ammo!];
   player.cd = d.cd;
   player.rig.shootT = 0.14;
-  snpSound('shot');
+  AU.gunshot(AU.gunKind(k, d), 0, !!bldAt(player.pos.x, player.pos.z));
   noise(player.pos.x, player.pos.z, 80); // a rifle crack: soldiers come to search
   const o = new THREE.Vector3(player.pos.x, eyeY(), player.pos.z);
   let hit: { s?: Sniper; sol?: Sol; head: boolean } | null = null;
@@ -3832,6 +3869,7 @@ function interact() {
   }
   if (c) {
     curCont = c;
+    AU.rummage();
     panelOpen = true;
     $('panel').classList.remove('hidden');
     renderPanel();
@@ -3969,6 +4007,7 @@ function playerAttack() {
       return;
     }
     if (--player.inv[d.ammo] <= 0) delete player.inv[d.ammo];
+    AU.gunshot(AU.gunKind(k, d), 0, !!bldAt(player.pos.x, player.pos.z));
     noise(player.pos.x, player.pos.z, d.noise);
     if (d.at) {
       fireAT(k, d, dir);
@@ -4032,6 +4071,7 @@ function damageSol(s: Sol, dmg: number, stealth: boolean) {
   if (stealth) log('偷襲！', '#ff9');
   if (s.hp <= 0) {
     s.state = 'dead';
+    AU.death(pDist(s.pos.x, s.pos.z));
     s.cone.visible = false;
     if (s.tile) district.save(s.tile, 'dead', { ...(district.saved[s.tile]?.dead || {}), [s.tid!]: 1 });
     player.kills++;
@@ -4344,6 +4384,7 @@ function update(dt: number) {
   vehicles.update(dt);
   if (armor && started && !PRO.hide) armor.update(dt);
   if (started) snpUpdate(dt);
+  if (started) audioTick(dt);
   if (recon && started && !PRO.hide) recon.update(dt, performance.now() / 1000);
   if (roc && started && !PRO.hide) roc.update(dt);
   ROC.cd = Math.max(0, ROC.cd - dt);
@@ -4653,6 +4694,7 @@ function update(dt: number) {
         if (s.cd <= 0 && !(s.stun! > 0) && !s.crouch && (!s.cov || atCov || dist < 8)) {
           s.rig.shootT = 0.14;
           s.cd = 1.1 + rnd() * 0.6;
+          AU.gunshot('rifle', dist, !!bldAt(s.pos.x, s.pos.z) || !!bldAt(player.pos.x, player.pos.z));
           noise(s.pos.x, s.pos.z, 40);
           // v21.4 ray against walls / cover first, then the hit roll (lower vs a covered target)
           const clear = shotRay([s.pos.x, s.pos.z], pp, 1.4, playerAimH(), 1.0);
@@ -4752,6 +4794,14 @@ function update(dt: number) {
     );
     s.mesh.position.copy(s.pos);
     s.mesh.position.y += walkH(s.pos.x, s.pos.z);
+    if (moved > 0.2 && !s.crouch) {
+      const sa = ((s as any).stepA = ((s as any).stepA || 0) + moved * dt);
+      if (sa > (moved > 2.9 ? 1.1 : 0.8)) {
+        (s as any).stepA = 0;
+        const dd = pDist(s.pos.x, s.pos.z);
+        if (dd < 22) AU.footstep(surfaceAt(s.pos.x, s.pos.z), dd, true, moved > 2.9);
+      }
+    }
     {
       const ty = Math.PI / 2 - s.dir;
       const d0 = Math.atan2(Math.sin(ty - s.mesh.rotation.y), Math.cos(ty - s.mesh.rotation.y));
@@ -4985,6 +5035,7 @@ function drawHud(inside: Bld | null) {
   else if (t0.startsWith('[B]')) pr.textContent = `[${keyLabel('barricade')}]` + t0.slice(3);
 }
 function die() {
+  AU.death(0);
   dead = true;
   (localStorage.removeItem(SAVE), localStorage.removeItem('dt.tiles'));
   closePanel();
@@ -5874,6 +5925,8 @@ async function boot() {
     scopeOff: () => scopeExit(),
     scopeFire: () => scopeFire(),
     moral: () => surv.moral || (moral ? 'pending' : ''),
+    audio: () => ({ ...AU.auStats, sfx: AU.sfxCtx()?.state }),
+    audioFx: AU,
     autoStop: () => {
       AUTO.path = [];
       AUTO.i = 0;
