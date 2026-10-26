@@ -1,3 +1,4 @@
+import { markMusic } from './settings';
 // 撤離動畫（lazy-loaded）：hand-modelled generic Ford-class carrier, MH-60-style helicopter, RHIB, Gerstner ocean, dawn grade.
 // All geometry is procedural (no third-party models). Environment HDRI: Poly Haven "Kloofendal 48d Partly Cloudy (Pure Sky)", CC0.
 import * as THREE from 'three';
@@ -859,6 +860,7 @@ const GradeShader = {
 function audio(mode: string) {
   try {
     const ac = new AudioContext();
+    markMusic(ac);
     const len = ac.sampleRate * 2;
     const buf = ac.createBuffer(1, len, ac.sampleRate);
     const d = buf.getChannelData(0);

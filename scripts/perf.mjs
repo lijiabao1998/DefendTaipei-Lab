@@ -32,6 +32,8 @@ for (const [name, dev, thr] of [
     const tFirst = await p.evaluate(() =>
       performance.getEntriesByType('paint').map(e => [e.name, Math.round(e.startTime)]),
     );
+    await p.waitForFunction(() => window.__newGame, null, { timeout: 600000, polling: 500 });
+    await p.evaluate(() => window.__newGame());
     await p.waitForSelector('.ch', { state: 'visible', timeout: 600000 });
     const tti = Date.now() - t0;
     out[`${name}${warm ? '-repeat' : ''}`] = { tti_ms: tti, kB: Math.round(bytes / 1024), paint: tFirst };

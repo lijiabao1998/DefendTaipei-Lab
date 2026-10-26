@@ -15,6 +15,8 @@ for (const [role, g, dv] of runs) {
   const p = await ctx.newPage();
   p.on('pageerror', e => errs.push(role + ':' + String(e)));
   await p.goto(url);
+  await p.waitForFunction(() => window.__newGame, null, { timeout: 600000, polling: 500 });
+  await p.evaluate(() => window.__newGame());
   await p.waitForSelector('.ch', { state: 'visible', timeout: 300000 });
   await p.evaluate(`window.__selG('${g}')`);
   if (role === 'courier' || role === 'nurse')

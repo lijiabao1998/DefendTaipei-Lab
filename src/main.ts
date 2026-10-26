@@ -70,6 +70,8 @@ import { updateOcclusion, OCC } from './occlusion';
 import { lotTex } from './paving';
 import { walkH } from './roads';
 import { dressWalkup, District, type TileInfo } from './district';
+import { SET, QPIX, isKey, K, keyLabel, markMusic, vibrate } from './settings';
+import { openSettings, openHelp, openAbout, modalOpen, closeModal } from './menu';
 
 // ---------- utils ----------
 let seed = 20261024;
@@ -96,7 +98,7 @@ if (MOBILE) document.body.classList.add('mobile');
   addEventListener('resize', pu);
   pq.addEventListener?.('change', pu);
 }
-renderer.setPixelRatio(Math.min(devicePixelRatio, MOBILE ? 1.25 : 1.5));
+renderer.setPixelRatio(Math.min(devicePixelRatio, MOBILE ? Math.min(1.25, QPIX[SET.quality]) : QPIX[SET.quality]));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = MOBILE ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
@@ -308,7 +310,7 @@ function nearestFoe(r: number) {
 function initPortraitButtons() {
   const wrap = document.createElement('div');
   wrap.id = 'pbtns';
-  const buzz = () => navigator.vibrate?.(15);
+  const buzz = () => vibrate(15);
   const mk = (t: string, title: string, down: () => void, up?: () => void) => {
     const b = document.createElement('button');
     b.textContent = t;
@@ -350,36 +352,8 @@ function initPortraitButtons() {
   mb.id = 'menubtn';
   mb.textContent = '☰';
   mb.title = '選單';
-  const menu = document.createElement('div');
-  menu.id = 'pmenu';
-  menu.className = 'hidden';
-  menu.innerHTML =
-    '<b>⏸ 已暫停</b><button data-a="go">繼續</button><button data-a="map">地圖</button><button data-a="surv">避難所</button><button data-a="save">存檔</button>';
-  const close = () => {
-    menu.classList.add('hidden');
-    paused = false;
-  };
-  mb.onclick = () => {
-    paused = menu.classList.toggle('hidden') ? false : true;
-  };
-  menu.querySelectorAll('button').forEach(
-    b =>
-      ((b as HTMLElement).onclick = () => {
-        const a = (b as HTMLElement).dataset.a;
-        if (a === 'surv') {
-          close();
-          openSurv('home');
-        } else if (a === 'map') {
-          close();
-          gmap?.toggle();
-        } else if (a === 'save') {
-          save();
-          log('已存檔', '#9f9');
-        } else close();
-      }),
-  );
+  mb.onclick = () => togglePause();
   document.body.appendChild(mb);
-  document.body.appendChild(menu);
   const upd = () => document.body.classList.toggle('portrait', MOBILE && matchMedia('(orientation: portrait)').matches);
   upd();
   addEventListener('resize', upd);
@@ -2125,6 +2099,7 @@ let rainAudio: { g: GainNode } | null = null;
 function startRainAudio() {
   try {
     const ac = new AudioContext();
+    markMusic(ac);
     const buf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
     const d = buf.getChannelData(0);
     let last = 0;
@@ -2690,6 +2665,7 @@ const MPS = () => 1440 / (DAYH * 3600); // game minutes per real second
 let speed = 1;
 let metro: Station[] = [];
 let paused = false;
+let NOSAVE = false;
 // v22 survival layer state (saved; day events seeded by day number)
 let surv: SV.SurvState = SV.newSurv();
 let survOpen = false;
@@ -2779,43 +2755,124 @@ let clicking = false;
 // v21.5.1 portrait thumb buttons: 打 held = fire at the nearest target, 撤 = retreat sprint for a moment
 const MB = { fire: false, retreat: 0 };
 addEventListener('keydown', e => {
+  // v22.4: Esc backs out of whatever is on top (modal → shop/ride → shelter → map → panel), else opens the pause menu
+  if (e.code === 'Escape') {
+    e.preventDefault();
+    if (fpv?.active) return;
+    escBack();
+    return;
+  }
+  if (modalOpen() || pauseOpen()) return;
   keys[e.code] = true;
-  if (started && e.code === 'KeyM') {
+  const is = (a: string) => isKey(e.code, a);
+  if (started && is('map')) {
     gmap?.toggle();
     return;
   }
-  if (gmap?.open && e.code === 'Escape') {
-    gmap.toggle(false);
-    return;
-  }
-  if (e.code === 'Tab') {
+  if (is('inv')) {
     e.preventDefault();
     toggleInv();
   }
   if (!started) return;
-  if (e.code === 'KeyC') {
+  if (is('sneak')) {
     player.sneak = !player.sneak;
     log(player.sneak ? '進入潛行' : '解除潛行');
   }
-  if (e.code === 'KeyE') interact();
-  if (e.code === 'KeyI') toggleInv();
-  if (e.code === 'KeyB') barricade();
-  if (e.code === 'KeyZ') sleep();
-  if (e.code === 'Digit1') setSpeed(1);
-  if (e.code === 'Digit2') setSpeed(3);
-  if (e.code === 'Digit3') setSpeed(20);
-  if (e.code === 'KeyF') {
+  if (is('interact')) interact();
+  if (is('barricade')) barricade();
+  if (is('sleep')) sleep();
+  if (is('speed1')) setSpeed(1);
+  if (is('speed2')) setSpeed(3);
+  if (is('speed3')) setSpeed(20);
+  if (is('light')) {
     player.light = !player.light;
   }
-  if (e.code === 'Space') {
+  if (is('vault')) {
     e.preventDefault();
     tryVault();
   }
-  if (e.code === 'KeyQ') shove();
-  if (e.code === 'KeyG') toggleCover();
-  if (e.code === 'KeyH' && started) survOpen ? closeSurv() : openSurv('home');
-  if (e.code === 'Escape') closePanel();
+  if (is('shove')) shove();
+  if (is('cover')) toggleCover();
+  if (is('shelter')) survOpen ? closeSurv() : openSurv('home');
 });
+/** close the top-most overlay; returns false when nothing was open */
+function closeTop(): boolean {
+  if (modalOpen()) return (closeModal(), true);
+  for (const id of ['shop', 'ride']) {
+    const el = document.getElementById(id);
+    if (el) return (el.remove(), true);
+  }
+  if (survOpen) return (closeSurv(), true);
+  if (gmap?.open) return (gmap.toggle(false), true);
+  if (panelOpen) return (closePanel(), true);
+  return false;
+}
+function escBack() {
+  if (closeTop()) return;
+  if (started && !dead) togglePause();
+  else if (!started) (window as any).__titleBack?.();
+}
+// ---- v22.4 pause menu (Esc / ☰). In multiplayer only the menu is local: the shared world keeps running ----
+let pauseEl: HTMLElement | null = null;
+const pauseOpen = () => !!pauseEl && !pauseEl.classList.contains('hidden');
+function togglePause(on = !pauseOpen()) {
+  if (!pauseEl) {
+    pauseEl = document.createElement('div');
+    pauseEl.id = 'pmenu';
+    pauseEl.className = 'hidden';
+    pauseEl.innerHTML =
+      '<b>⏸ 已暫停</b><em id="pmp"></em>' +
+      [
+        ['go', '繼續'],
+        ['save', '存檔'],
+        ['load', '讀檔'],
+        ['map', '地圖'],
+        ['surv', '避難所'],
+        ['set', '設定'],
+        ['help', '操作說明'],
+        ['quit', '返回主選單'],
+      ]
+        .map(([a, t]) => `<button data-a="${a}">${t}</button>`)
+        .join('');
+    pauseEl.querySelectorAll('button').forEach(
+      b =>
+        ((b as HTMLElement).onclick = () => {
+          const a = (b as HTMLElement).dataset.a;
+          if (a === 'go') togglePause(false);
+          else if (a === 'save') {
+            save();
+            log('已存檔', '#9f9');
+            b.textContent = '已存檔 ✓';
+            setTimeout(() => (b.textContent = '存檔'), 1200);
+          } else if (a === 'load') {
+            if (!localStorage.getItem(SAVE)) return log('沒有存檔', '#f99');
+            if (!confirm('讀取上次存檔？目前未存的進度會遺失。')) return;
+            sessionStorage.setItem('dt.autoload', '1');
+            NOSAVE = true;
+            location.reload();
+          } else if (a === 'map') {
+            togglePause(false);
+            gmap?.toggle();
+          } else if (a === 'surv') {
+            togglePause(false);
+            openSurv('home');
+          } else if (a === 'set') openSettings();
+          else if (a === 'help') openHelp();
+          else if (a === 'quit') {
+            if (!confirm('返回主選單？進度會自動存檔。')) return;
+            save();
+            NOSAVE = true;
+            location.reload();
+          }
+        }),
+    );
+    document.body.appendChild(pauseEl);
+  }
+  pauseEl.classList.toggle('hidden', !on);
+  ($('pmp') as HTMLElement).textContent = on && MP ? '多人連線中：只有你的畫面暫停，世界仍在進行' : '';
+  paused = on && !MP;
+  if (on) for (const k in keys) keys[k] = false;
+}
 addEventListener('keyup', e => (keys[e.code] = false));
 addEventListener('mousemove', e => {
   mouse.set((e.clientX / innerWidth) * 2 - 1, (-e.clientY / innerHeight) * 2 + 1);
@@ -3115,7 +3172,7 @@ function openSurv(kind: 'home' | 'trade' | 'moral') {
         .join('')}</ul>`;
     } else if (kind === 'trade') {
       const t = tradeAt();
-      h += `<h3>🤝 ${t ? t.name : '以物易物'}</h3><p>你有 長壽菸×${player.inv.cig || 0}。今天的行情（物資緊縮 ×${S.scarcity.toFixed(2)}）：</p><div class="row">`;
+      h += `<h3>🤝 ${t ? t.name : '以物易物'}</h3><p>你有 長樂菸×${player.inv.cig || 0}。今天的行情（物資緊縮 ×${S.scarcity.toFixed(2)}）：</p><div class="row">`;
       for (const k of Object.keys(SV.VAL)) {
         if (k === 'cig') continue;
         const pz = SV.price(S, k);
@@ -3832,7 +3889,7 @@ function updateStory(gm: number) {
   }
 }
 function save() {
-  if (!started || dead) return;
+  if (!started || dead || NOSAVE) return;
   gmap?.save();
   localStorage.setItem(
     SAVE,
@@ -3944,10 +4001,10 @@ function update(dt: number) {
     const f = new THREE.Vector3(-1, 0, -1).normalize(),
       r = new THREE.Vector3(1, 0, -1).normalize();
     const mv = new THREE.Vector3();
-    if (keys.KeyW) mv.add(f);
-    if (keys.KeyS) mv.sub(f);
-    if (keys.KeyD) mv.add(r);
-    if (keys.KeyA) mv.sub(r);
+    if (keys[K('up')]) mv.add(f);
+    if (keys[K('down')]) mv.sub(f);
+    if (keys[K('right')]) mv.add(r);
+    if (keys[K('left')]) mv.sub(r);
     if (mv.lengthSq()) mv.normalize();
     const jm = Math.min(1, Math.hypot(joy.x, joy.y));
     if (jm > 0.12) mv.addScaledVector(f, -joy.y).addScaledVector(r, joy.x);
@@ -4013,10 +4070,10 @@ function update(dt: number) {
     const f = new THREE.Vector3(-1, 0, -1).normalize(),
       r = new THREE.Vector3(1, 0, -1).normalize();
     const mv = new THREE.Vector3();
-    if (keys.KeyW) mv.add(f);
-    if (keys.KeyS) mv.sub(f);
-    if (keys.KeyD) mv.add(r);
-    if (keys.KeyA) mv.sub(r);
+    if (keys[K('up')]) mv.add(f);
+    if (keys[K('down')]) mv.sub(f);
+    if (keys[K('right')]) mv.add(r);
+    if (keys[K('left')]) mv.sub(r);
     const jm = Math.min(1, Math.hypot(joy.x, joy.y));
     if (jm > 0.12) {
       mv.addScaledVector(f, -joy.y).addScaledVector(r, joy.x);
@@ -4027,7 +4084,12 @@ function update(dt: number) {
       if (e && jm < 0.12) mv.add(new THREE.Vector3(player.pos.x - e.pos.x, 0, player.pos.z - e.pos.z).normalize());
     }
     const running =
-      (keys.ShiftLeft || keys.ShiftRight || jm > 0.93 || MB.retreat > 0) && !player.sneak && player.fatigue < 95;
+      (keys[K('sprint')] ||
+        (/^Shift/.test(K('sprint')) && (keys.ShiftLeft || keys.ShiftRight)) ||
+        jm > 0.93 ||
+        MB.retreat > 0) &&
+      !player.sneak &&
+      player.fatigue < 95;
     let sp = player.cover ? 1.4 : player.sneak ? 1.6 : running ? 6 : 3.4;
     if (player.cover && Math.hypot(player.pos.x - player.cover.x, player.pos.z - player.cover.z) > 1.8) {
       player.cover = null;
@@ -4531,6 +4593,10 @@ function drawHud(inside: Bld | null) {
     pr.style.display = 'block';
     pr.textContent = d.barricaded ? '[B] 拆除封門' : '[B] 封門（鐵鎚+木板）';
   } else pr.style.display = 'none';
+  // v22.4 prompts show the key actually bound (settings → 按鍵設定)
+  const t0 = pr.textContent || '';
+  if (t0.startsWith('[E]')) pr.textContent = `[${keyLabel('interact')}]` + t0.slice(3);
+  else if (t0.startsWith('[B]')) pr.textContent = `[${keyLabel('barricade')}]` + t0.slice(3);
 }
 function die() {
   dead = true;
@@ -5199,14 +5265,56 @@ async function boot() {
       renderSpeed();
     }
     PRO.on || log('十月某日清晨，解放軍登陸後三天，台北淪陷。萬華的電燈還亮著，水龍頭還有水——但能撐多久？', '#ffd76a');
-    log('提示：先搜刮身邊的櫥櫃（E），按 Tab 開背包裝備菜刀。', '#ccc');
+    log(
+      MOBILE
+        ? '提示：先按「搜」搜刮身邊的櫥櫃，☰ 開選單。'
+        : `提示：先搜刮身邊的櫥櫃（${keyLabel('interact')}），按 ${keyLabel('inv')} 開背包裝備菜刀；Esc 開選單。`,
+      '#ccc',
+    );
   };
-  if (sv) {
-    const b = document.createElement('button');
-    b.textContent = '繼續遊戲';
-    b.onclick = () => go(true);
-    btns.appendChild(b);
+  // v22.4 title menu: 繼續遊戲 / 新遊戲 / 多人連線 / 設定 / 操作說明 / 製作名單; 新遊戲 and 多人連線 open the role select
+  const tm = document.createElement('div');
+  tm.id = 'tmenu';
+  tm.innerHTML =
+    (sv ? '<button data-a="cont" class="pri">繼續遊戲</button>' : '') +
+    `<button data-a="new"${sv ? '' : ' class="pri"'}>新遊戲</button><button data-a="mp">多人連線</button><button data-a="set">設定</button><button data-a="help">操作說明</button><button data-a="about">製作名單／關於</button>`;
+  const showSel = (mp = false) => {
+    document.body.classList.add('selmode');
+    btns.style.display = '';
+    tm.style.display = 'none';
+    if (mp) document.getElementById('mpsel')?.scrollIntoView({ block: 'center' });
+    document.getElementById('mpsel')?.classList.toggle('hl', mp);
+  };
+  const showTm = () => {
+    document.body.classList.remove('selmode');
+    btns.style.display = 'none';
+    tm.style.display = '';
+  };
+  tm.querySelectorAll('button').forEach(
+    b =>
+      ((b as HTMLElement).onclick = () => {
+        const a = (b as HTMLElement).dataset.a;
+        if (a === 'cont') go(true);
+        else if (a === 'new') {
+          if (sv && !confirm('開始新遊戲會覆蓋目前的存檔，確定？')) return;
+          showSel();
+        } else if (a === 'mp') showSel(true);
+        else if (a === 'set') openSettings();
+        else if (a === 'help') openHelp();
+        else openAbout();
+      }),
+  );
+  btns.parentElement!.insertBefore(tm, btns);
+  {
+    const back = document.createElement('button');
+    back.id = 'selback';
+    back.textContent = '← 返回主選單';
+    back.onclick = showTm;
+    btns.appendChild(back);
   }
+  showTm();
+  (window as any).__newGame = () => showSel();
+  (window as any).__titleBack = () => document.body.classList.contains('selmode') && showTm();
   const sel = document.createElement('div');
   sel.id = 'charsel';
   let selG: 'm' | 'f' = 'm';
@@ -5299,7 +5407,7 @@ async function boot() {
   );
   const h = document.createElement('div');
   h.className = 'selh';
-  h.textContent = sv ? '或建立新的倖存者：' : '選擇你的倖存者：';
+  h.textContent = '選擇你的倖存者：';
   btns.appendChild(h);
   btns.appendChild(dl);
   btns.appendChild(gsw);
@@ -5316,6 +5424,11 @@ async function boot() {
   camera.position.copy(player.pos).add(CAM_OFF);
   camera.lookAt(player.pos);
   addEventListener('beforeunload', save);
+  // pause menu 讀檔 reloads straight into the save
+  if (sv && sessionStorage.getItem('dt.autoload')) {
+    sessionStorage.removeItem('dt.autoload');
+    setTimeout(() => go(true), 0);
+  }
   (window as any).__game = {
     roofStats,
     OCC,

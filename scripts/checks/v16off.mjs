@@ -6,6 +6,8 @@ const p = await ctx.newPage();
 p.on('requestfailed', r => console.log('RF', r.url(), r.failure()?.errorText));
 p.on('request', r => r.serviceWorker || 0);
 await p.goto(url);
+await p.waitForFunction(() => window.__newGame, null, { timeout: 600000, polling: 500 });
+await p.evaluate(() => window.__newGame());
 await p.waitForSelector('.ch', { state: 'visible', timeout: 300000 });
 await p
   .waitForFunction('navigator.serviceWorker.controller', null, { timeout: 60000 })

@@ -47,6 +47,9 @@ export async function preview(port) {
 // The title screen does not scroll, so on small or phone viewports some cards are off-screen; the clicks are
 // therefore sent through the DOM instead of as pointer events.
 export async function pickRole(page, { g = 'f', role, skipIntro = true } = {}) {
+  // v22.4: the role select sits behind the title menu's 新遊戲
+  await page.waitForFunction(() => window.__newGame, null, { timeout: 600000, polling: 500 });
+  await page.evaluate(() => window.__newGame());
   await page.waitForSelector('.ch', { state: 'visible', timeout: 600000 });
   await page.evaluate(
     ([g, role, skip]) => {

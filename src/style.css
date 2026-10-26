@@ -1058,8 +1058,8 @@ body:not(.ingame) #speed {
   position: fixed;
   z-index: 40;
   left: 50%;
-  top: 30%;
-  transform: translateX(-50%);
+  top: 50%;
+  transform: translate(-50%, -50%);
   background: rgba(15, 18, 22, 0.94);
   border: 1px solid #555;
   border-radius: 10px;
@@ -1345,4 +1345,149 @@ body.mobile.portrait #coverind {
   font-size: 20px;
   margin: 16px 0 4px;
   color: #ffb070;
+}
+/* v22.4 title menu, pause menu, modal screens */
+#logo {
+  font-size: 36px;
+  line-height: 1;
+  filter: drop-shadow(0 0 12px #e8681c88);
+}
+#tmenu {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 18px auto 8px;
+  width: min(320px, 86vw);
+}
+#tmenu button {
+  margin: 0;
+  width: 100%;
+  font-size: 18px;
+  padding: 11px;
+}
+#tmenu button.pri {
+  background: #e8681c;
+}
+#selback {
+  display: block;
+  margin: 0 0 8px !important;
+}
+#mpsel.hl {
+  outline: 2px solid #e8681c;
+  border-radius: 6px;
+}
+body:not(.selmode) #startbar {
+  display: none !important;
+}
+#pmenu em {
+  font-size: 12px;
+  color: #fc9;
+}
+#pmenu em:empty {
+  display: none;
+}
+#modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#modal .mbox {
+  background: rgba(15, 18, 22, 0.97);
+  border: 1px solid #555;
+  border-radius: 10px;
+  color: #eee;
+  padding: 14px 18px;
+  width: min(560px, 94vw);
+  max-height: 88vh;
+  overflow: auto;
+  font-size: 14px;
+}
+#modal h3 {
+  margin: 0 0 8px;
+  color: #e8681c;
+}
+#modal h4 {
+  margin: 12px 0 6px;
+  border-bottom: 1px solid #333;
+  color: #9cf;
+}
+#modal button {
+  background: #1f5a3a;
+  color: #fff;
+  border: 1px solid #3a7;
+  border-radius: 5px;
+  padding: 4px 10px;
+  font-size: 13px;
+}
+#modal .mclose {
+  margin-top: 12px;
+  width: 100%;
+  padding: 9px;
+  font-size: 15px;
+  background: #8a2a20;
+  border: 0;
+}
+.srow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+  flex-wrap: wrap;
+}
+.srow span {
+  width: 110px;
+}
+.srow input[type='range'] {
+  flex: 1;
+  min-width: 120px;
+}
+.srow i {
+  font-size: 12px;
+  color: #aaa;
+}
+#kmsg {
+  display: block;
+  font-size: 12px;
+  color: #fc9;
+  margin-bottom: 6px;
+}
+#klist {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 4px 14px;
+}
+.krow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.krow button {
+  min-width: 72px;
+}
+.krow button.wait {
+  background: #e8681c !important;
+}
+.ktab {
+  border-collapse: collapse;
+  width: 100%;
+  margin-bottom: 10px;
+}
+.ktab td,
+.ktab th {
+  border-bottom: 1px solid #2a2a2a;
+  padding: 3px 6px;
+  text-align: left;
+}
+.ktab td:first-child {
+  width: 90px;
+  color: #fc9;
+  font-weight: bold;
+}
+.mnote {
+  color: #aaa;
+  font-size: 12px;
 }

@@ -1,3 +1,4 @@
+import { SET } from './settings';
 // FPV kamikaze drone (pilot view w/ analog video look + OSD) and PLA recon drones.
 import * as THREE from 'three';
 type V2 = [number, number];
@@ -312,8 +313,8 @@ export class FPV {
     } else {
       // mouse acts as a self-centring right stick; keys as integrated throttle (like a non-centring gimbal)
       const s = this.stickRP;
-      s[0] = THREE.MathUtils.clamp(s[0] + this.md[0] * 0.006, -1, 1);
-      s[1] = THREE.MathUtils.clamp(s[1] - this.md[1] * 0.006, -1, 1);
+      s[0] = THREE.MathUtils.clamp(s[0] + this.md[0] * 0.006 * SET.sens, -1, 1);
+      s[1] = THREE.MathUtils.clamp(s[1] - this.md[1] * 0.006 * SET.sens, -1, 1);
       this.md[0] = this.md[1] = 0;
       const dec = Math.exp(-dt * 5);
       s[0] *= dec;

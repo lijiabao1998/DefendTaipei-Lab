@@ -5,6 +5,8 @@ const b = await launch();
 const p = await b.newPage({ viewport: { width: 1366, height: 900 }, deviceScaleFactor: 2 });
 p.on('pageerror', e => errs.push(String(e)));
 await p.goto(url);
+await p.waitForFunction(() => window.__newGame, null, { timeout: 600000, polling: 500 });
+await p.evaluate(() => window.__newGame());
 await p.waitForSelector('.ch', { state: 'visible', timeout: 300000 });
 for (const g of ['m', 'f']) {
   await p.evaluate(`window.__selG('${g}')`);

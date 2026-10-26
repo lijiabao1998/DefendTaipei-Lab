@@ -8,6 +8,8 @@ p.on('pageerror', e => errs.push(String(e)));
 await p.goto(url);
 await p.waitForTimeout(1500);
 await p.screenshot({ path: shot('v16-loading.png') });
+await p.waitForFunction(() => window.__newGame, null, { timeout: 600000, polling: 500 });
+await p.evaluate(() => window.__newGame());
 await p.waitForSelector('.ch', { state: 'visible', timeout: 600000 });
 await p.screenshot({ path: shot('v16-ready.png') });
 const r0 = await p.evaluate('window.__roofLeft()');

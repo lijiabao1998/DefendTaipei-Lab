@@ -6,6 +6,8 @@ const b = await launch();
 const p = await b.newPage({ viewport: { width: 1366, height: 820 } });
 p.on('pageerror', e => errs.push(String(e)));
 await p.goto(url);
+await p.waitForFunction(() => window.__newGame, null, { timeout: 600000, polling: 500 });
+await p.evaluate(() => window.__newGame());
 await p.waitForSelector('.ch', { state: 'visible', timeout: 300000 });
 await p.evaluate(`document.querySelector('.ch[data-r="office"]').click()`);
 await p.waitForFunction(() => window.__game && !document.getElementById('wake'), null, {

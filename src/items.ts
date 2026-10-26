@@ -390,7 +390,7 @@ export const ITEMS: Record<string, ItemDef> = {
   umbrella: { name: '折疊傘', w: 0.4, kind: 'tool', desc: '下雨天很搶手，也能拿來換東西' },
   mask: { name: '醫用口罩（一盒）', w: 0.2, kind: 'tool', desc: '煙塵、病人都用得到，交易好物' },
   powerbank: { name: '行動電源', w: 0.3, kind: 'tool', desc: '停電後最值錢的東西之一' },
-  cig: { name: '長壽菸（一包）', w: 0.05, kind: 'tool', desc: '戰時最通行的貨幣' },
+  cig: { name: '長樂菸（一包）', w: 0.05, kind: 'tool', desc: '戰時最通行的貨幣' },
   battery: { name: '3 號電池', w: 0.05, kind: 'tool', desc: '收音機、手電筒都要，換東西很好用' },
   scrap: { name: '廢五金', w: 0.8, kind: 'tool', desc: '螺絲、鐵條、白鐵管，蓋東西用' },
   cloth: { name: '舊棉被布', w: 0.5, kind: 'tool' },

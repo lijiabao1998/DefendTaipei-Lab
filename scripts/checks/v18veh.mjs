@@ -8,6 +8,8 @@ for (const dv of (process.argv[3] || 'desk,phone').split(',')) {
   const p = await ctx.newPage();
   p.on('pageerror', e => errs.push(dv + ':' + String(e)));
   await p.goto(url);
+  await p.waitForFunction(() => window.__newGame, null, { timeout: 600000, polling: 500 });
+  await p.evaluate(() => window.__newGame());
   await p.waitForSelector('.ch', { state: 'visible', timeout: 300000 });
   await p.evaluate(`document.querySelector('#gsel ~ label input, input[type=checkbox]').checked=true`);
   await p.evaluate(`document.querySelector('.ch[data-r="${dv === 'desk' ? 'courier' : 'tech'}"]').click()`);

@@ -9,6 +9,8 @@ const mk = async (q, n) => {
   const p = await ctx.newPage();
   p.on('pageerror', e => errs.push(n + ':' + String(e)));
   await p.goto(url + q);
+  await p.waitForFunction(() => window.__newGame, null, { timeout: 600000, polling: 500 });
+  await p.evaluate(() => window.__newGame());
   await p.waitForSelector('.ch', { state: 'visible', timeout: 600000 });
   return p;
 };

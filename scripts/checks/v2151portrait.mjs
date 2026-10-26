@@ -19,6 +19,8 @@ for (const [w, h] of [
   const errs = [];
   p.on('pageerror', e => errs.push(String(e)));
   await p.goto(url);
+  await p.waitForFunction(() => window.__newGame, null, { timeout: 600000, polling: 500 });
+  await p.evaluate(() => window.__newGame());
   await p.waitForSelector('.ch', { state: 'visible', timeout: 600000 });
   await p.waitForTimeout(800);
   const sel = await p.evaluate(() => {

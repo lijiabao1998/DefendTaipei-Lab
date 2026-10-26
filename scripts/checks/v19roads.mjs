@@ -10,6 +10,8 @@ p.on('console', m => {
   if (m.type() === 'error') errs.push('console:' + m.text());
 });
 await p.goto(url);
+await p.waitForFunction(() => window.__newGame, null, { timeout: 600000, polling: 500 });
+await p.evaluate(() => window.__newGame());
 await p.waitForSelector('.ch', { state: 'visible', timeout: 300000 });
 await p.evaluate(`document.querySelector('.ch[data-r="office"]').click()`);
 await p.waitForFunction(() => window.__game && !document.getElementById('wake'), null, {
