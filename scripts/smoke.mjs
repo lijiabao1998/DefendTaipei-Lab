@@ -143,4 +143,25 @@ const info = await p.evaluate(() => {
 });
 console.log(JSON.stringify(info));
 check(info.sols >= 64 && info.sols <= 64 + 36, '64 core PLA soldiers + bounded district garrisons (' + info.sols + ')');
+// v21.2 every role × gender (prologue + skip) must be able to walk from the spawn to a street (no fallback nudge)
+const spawns = await p.evaluate(() => {
+  const g = window.__game,
+    out = [];
+  for (const r of ['courier', 'nurse', 'student', 'office', 'tech'])
+    for (const gd of ['m', 'f'])
+      for (const skip of [false, true]) {
+        const e = g.spawnTest(r, gd, skip);
+        out.push({ k: r + '/' + gd + (skip ? '/skip' : '/prologue'), ok: e.ok, n: e.nudges });
+      }
+  return out;
+});
+check(
+  spawns.every(s => s.ok) && spawns[spawns.length - 1].n === 0,
+  `all 20 role spawns reach a street without nudges (${
+    spawns
+      .filter(s => !s.ok)
+      .map(s => s.k)
+      .join(',') || 'ok'
+  })`,
+);
 await finish();

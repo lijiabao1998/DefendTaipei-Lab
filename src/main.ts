@@ -223,6 +223,64 @@ function collide(pos: THREE.Vector3, r: number) {
   pos.x = clamp(pos.x, WORLD.minx, WORLD.maxx);
   pos.z = clamp(pos.z, WORLD.minz, WORLD.maxz);
 }
+
+// ---- v21.2 spawn reachability: grid BFS (0.25 m) honouring walls (los + 0.35 m player radius) until a road is reached ----
+function walkable(x: number, z: number) {
+  const q = new THREE.Vector3(x, 0, z);
+  collide(q, 0.35);
+  return Math.hypot(q.x - x, q.z - z) < 0.03;
+}
+function escapeCheck(px: number, pz: number, R = 70) {
+  const S = 0.25,
+    N = Math.ceil(R / S);
+  const seen = new Set<number>();
+  const key = (i: number, j: number) => (i + N) * 8192 + (j + N);
+  const qu: [number, number, number][] = [[0, 0, 0]];
+  seen.add(key(0, 0));
+  let n = 0;
+  let qh = 0;
+  while (qh < qu.length && n < 400000) {
+    const [i, j, d] = qu[qh++];
+    n++;
+    const x = px + i * S,
+      z = pz + j * S;
+    if (d > 12 && !bldAt(x, z) && roadDist(x, z) < 2.5) return { ok: true, dist: d * S, x, z };
+    for (const [di, dj] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ]) {
+      const a = i + di,
+        b = j + dj;
+      if (Math.abs(a) > N || Math.abs(b) > N || seen.has(key(a, b))) continue;
+      const nx = px + a * S,
+        nz = pz + b * S;
+      if (!los([x, z], [nx, nz]) || !walkable(nx, nz)) continue;
+      seen.add(key(a, b));
+      qu.push([a, b, d + 1]);
+    }
+  }
+  return { ok: false, dist: -1, x: px, z: pz };
+}
+/** fallback: if the player cannot reach a street, nudge to the nearest point that can (rings out to 25 m) */
+let nudges = 0;
+function unstuck() {
+  const P = player.pos;
+  if (escapeCheck(P.x, P.z).ok) return false;
+  for (let r = 0.5; r <= 25; r += 0.5)
+    for (let k = 0; k < Math.max(8, r * 6); k++) {
+      const t = (k / Math.max(8, r * 6)) * Math.PI * 2;
+      const x = P.x + Math.cos(t) * r,
+        z = P.z + Math.sin(t) * r;
+      if (walkable(x, z) && escapeCheck(x, z, 50).ok) {
+        P.set(x, 0, z);
+        nudges++;
+        return true;
+      }
+    }
+  return false;
+}
 const bounds = { minx: -500, maxx: 500, minz: -500, maxz: 500 };
 /** whole-district clamp (set from the district index; falls back to the core bounds) */
 const WORLD = { minx: -500, maxx: 500, minz: -500, maxz: 500 };
@@ -4316,9 +4374,31 @@ async function boot() {
       log('你的外送機車就停在門口，鑰匙在身上。', '#9cf');
     } else {
       const bed = findBed(home);
-      if (bed) from = [bed[0] + 0.9, bed[1]];
+      // v21.2: wake beside the bed on whichever side is open floor inside the home and connected to the door
+      // (a fixed +x offset put some roles inside the wall next to a bed against the east wall → stuck)
+      if (bed) {
+        from = doorIn(home);
+        for (const [ox, oz] of [
+          [0.9, 0],
+          [-0.9, 0],
+          [0, 0.9],
+          [0, -0.9],
+          [1.3, 0],
+          [-1.3, 0],
+          [0, 1.3],
+          [0, -1.3],
+        ]) {
+          const x = bed[0] + ox,
+            z = bed[1] + oz;
+          if (pip([x, z], home.pts) && walkable(x, z) && escapeCheck(x, z).ok) {
+            from = [x, z];
+            break;
+          }
+        }
+      }
     }
     player.pos.set(from[0], 0, from[1]);
+    if (unstuck()) console.warn('spawn: nudged to a walkable point');
     const dest =
       r.dest === 'hospital' && hosp
         ? hosp
@@ -4498,6 +4578,15 @@ async function boot() {
   addEventListener('beforeunload', save);
   (window as any).__game = {
     roofStats,
+    escapeCheck,
+    unstuck,
+    spawnTest: (roleId: string, g: string, skip: boolean) => {
+      player.gender = g;
+      spawnRole(roleById(roleId), skip);
+      const e = escapeCheck(player.pos.x, player.pos.z);
+      if (!skip) endPrologue();
+      return { ...e, nudges, p: [player.pos.x, player.pos.z] };
+    },
     district,
     sectorOf,
     SECTORS,
