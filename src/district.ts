@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { canvasTex, roadMat } from './textures';
-import { placeRooftop } from './rooftin';
+import { placeRooftop, dressRoof, pickRoofMat, roofClass } from './rooftin';
 import { VehicleSystem, type VehicleKind } from './vehicles';
 
 type V2 = [number, number];
@@ -490,6 +490,7 @@ export class District {
         new THREE.Vector3(sx, sy, sz),
       );
     let roofs = 0;
+    const roofB = new Map<THREE.Material, THREE.BufferGeometry[]>();
     // base road surfaces
     const rg: THREE.BufferGeometry[] = [];
     for (const r of td.r) {
@@ -658,11 +659,14 @@ export class District {
       const rf = new THREE.ShapeGeometry(sh);
       rf.rotateX(-Math.PI / 2);
       rf.translate(0, h, 0);
-      misc.push(paint(rf.toNonIndexed(), 0x8e8a80, 0.08));
-      if (!big && roofs < 14 && rnd() < 0.4) {
+      const rm = pickRoofMat(rnd);
+      (roofB.get(rm) || roofB.set(rm, []).get(rm)!).push(rf.toNonIndexed());
+      const rcls = roofClass(pts, lv, (b.k || '') + ' ' + (b.n || ''));
+      if (roofs < 40 && rcls !== 'none') {
         roofs++;
         const rg2 = new THREE.Group();
-        placeRooftop(rg2, pts, h, rnd, pip as any);
+        placeRooftop(rg2, pts, h, rnd, pip as any, rcls);
+        dressRoof(rg2, pts, h, rnd, pip as any, true);
         detail.add(rg2);
       }
     }
@@ -704,6 +708,7 @@ export class District {
       m.receiveShadow = true;
       par.add(m);
     };
+    for (const [m, arr] of roofB) add(arr, m, g);
     add(up, upperMat, g);
     add(gr, shutMat, g);
     add(misc, vcMat, g);

@@ -18,7 +18,7 @@ import { ROLES, roleById, type Role } from './roles';
 import type { FPV } from './fpv';
 import type { GameMap } from './map';
 import { RocSystem, ROC_NAME, type RocKind } from './roc';
-import { placeRooftop, dressRoof, pickRoofMat, setShackNight } from './rooftin';
+import { placeRooftop, dressRoof, pickRoofMat, setShackNight, roofClass, roofStats } from './rooftin';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { ITEMS, LOOT } from './items';
 import { iconURL, iconMat } from './icons';
@@ -1015,7 +1015,9 @@ function buildMap(data: any) {
     b.floor = fl;
     // rooftop additions 頂樓加蓋 + water tanks
     {
-      const shack = (A > 40 && rnd() < 0.55) || (A > 30 && hh(3) < (lv <= 3 ? 0.6 : 0));
+      const rcls = roofClass(pts as any, lv, type + ' ' + (ob.n || ''));
+      if (A > 40) rnd(); // keep the world RNG sequence identical to v21 (soldier/loot placement)
+      const shack = A > 30 && (rcls !== 'row' || hh(3) < 0.9);
       const s7 = Math.floor(hh(7) * 1e6) + 1,
         s8 = Math.floor(hh(8) * 1e6) + 7,
         roofG = b.roof;
@@ -1026,7 +1028,7 @@ function buildMap(data: any) {
           if (shack) {
             let sd = s7;
             const pr = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
-            placeRooftop(roofG, pts as any, h, pr, pip as any);
+            placeRooftop(roofG, pts as any, h, pr, pip as any, rcls);
           }
           {
             let sd = s8;
@@ -4495,6 +4497,7 @@ async function boot() {
   camera.lookAt(player.pos);
   addEventListener('beforeunload', save);
   (window as any).__game = {
+    roofStats,
     district,
     sectorOf,
     SECTORS,

@@ -62,7 +62,12 @@ await p.waitForTimeout(4000);
 await G(`const m=g.map;if(m){const b=m.d.bounds;m.revealRect(b.minx,b.minz,b.maxx,b.maxz);m.dirty=true;m.fit();}`);
 await p.waitForTimeout(1500);
 await p.screenshot({ path: `${pre}-map.png`, timeout: 120000 });
+// v21.1 rooftop-addition coverage by class (share of buildings with an addition, covered share of roof area)
+const roofs = await G(
+  `const o={};for(const [k,v] of Object.entries(g.roofStats))o[k]={n:v.n,withPct:v.n?Math.round(100*v.with/v.n):0,coverPct:v.roofA?Math.round(100*v.coverA/v.roofA):0};return o`,
+);
+console.log('roof coverage by class', JSON.stringify(roofs));
 console.log(JSON.stringify({ stats, walk, errs }));
 await b.close();
 const maxLoaded = Math.max(...walk.map(w => w.loaded));
-if (errs.length || maxLoaded > 40) process.exit(1);
+if (errs.length || maxLoaded > 40 || roofs.big.coverPct > 20 || roofs.none.withPct > 0) process.exit(1);

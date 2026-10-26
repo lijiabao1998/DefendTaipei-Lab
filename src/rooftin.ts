@@ -153,6 +153,7 @@ const strip = (g: THREE.BufferGeometry) => {
 export type ShackOpt = { H?: number; open?: boolean; kind?: number; mat?: number; roofMat?: number };
 export function makeShack(W: number, D: number, rnd: () => number, o: ShackOpt = {}) {
   const g = new THREE.Group();
+  g.userData = { w: W, d: D };
   const H = o.H ?? 2.5 + rnd() * 0.4;
   const wallI = o.mat ?? pickMat(rnd()),
     roofI = o.roofMat ?? (rnd() < 0.6 ? wallI : pickMat(rnd()));
@@ -411,9 +412,57 @@ export function makeShack(W: number, D: number, rnd: () => number, o: ShackOpt =
 // many lots carry a full-roof gable/arch tin canopy, others a partial shack hugging front or rear parapet,
 // some stacked 2-storey, stair towers with lean-tos, and open lots with tanks/plants/laundry; ridges mostly
 // run along lot depth; occasional skew. Adjacent lots sometimes merge (one owner bought both).
+export type RoofClass = 'row' | 'walkup' | 'big' | 'none';
+const NONRES =
+  /school|college|universit|kindergarten|temple|shrine|church|relig|market|hospital|clinic|public|civic|government|station|train|transport|industrial|warehouse|commercial|retail|office|hotel|parking|garage|landmark|sport|stadium|museum|library|police|fire/i;
+/** Classify a footprint for rooftop additions: floors, footprint area and lot shape (oriented bbox). */
+export function roofClass(pts: [number, number][], lv: number, kind = ''): RoofClass {
+  if (NONRES.test(kind)) return 'none';
+  let A = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i],
+      c = pts[(i + 1) % pts.length];
+    A += a[0] * c[1] - c[0] * a[1];
+  }
+  A = Math.abs(A / 2);
+  if (lv >= 6 || A > 600) return 'big';
+  let best = 0,
+    th = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i],
+      b = pts[(i + 1) % pts.length];
+    const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (L > best) ((best = L), (th = Math.atan2(b[1] - a[1], b[0] - a[0])));
+  }
+  const cu = Math.cos(th),
+    su = Math.sin(th);
+  let v0 = 1e9,
+    v1 = -1e9;
+  for (const p of pts) {
+    const v = -p[0] * su + p[1] * cu;
+    v0 = Math.min(v0, v);
+    v1 = Math.max(v1, v);
+  }
+  const D = v1 - v0;
+  if (lv <= 5 && D >= 6 && D <= 22 && A <= 450) return 'row';
+  return lv <= 5 ? 'walkup' : 'big';
+}
+export const roofStats: Record<RoofClass, { n: number; with: number; roofA: number; coverA: number }> = {
+  row: { n: 0, with: 0, roofA: 0, coverA: 0 },
+  walkup: { n: 0, with: 0, roofA: 0, coverA: 0 },
+  big: { n: 0, with: 0, roofA: 0, coverA: 0 },
+  none: { n: 0, with: 0, roofA: 0, coverA: 0 },
+};
 const conc = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
 type PIP = (p: [number, number], pts: [number, number][]) => boolean;
-export function placeRooftop(root: THREE.Object3D, pts: [number, number][], h: number, rnd: () => number, pip: PIP) {
+export function placeRooftop(
+  root: THREE.Object3D,
+  pts: [number, number][],
+  h: number,
+  rnd: () => number,
+  pip: PIP,
+  cls: RoofClass = 'row',
+) {
   // principal axis = longest edge
   let best = 0,
     th = 0;
@@ -442,7 +491,10 @@ export function placeRooftop(root: THREE.Object3D, pts: [number, number][], h: n
   }
   const W = u1 - u0,
     D = v1 - v0;
-  if (W < 3.5 || D < 3.5) return;
+  const st = roofStats[cls];
+  st.n++;
+  st.roofA += W * D;
+  if (cls === 'none' || W < 3.5 || D < 3.5) return;
   const grp = new THREE.Group();
   const extra: THREE.BufferGeometry[] = [],
     cg: THREE.BufferGeometry[] = [];
@@ -532,37 +584,104 @@ export function placeRooftop(root: THREE.Object3D, pts: [number, number][], h: n
         ),
       );
   };
-  // lots along the long axis
-  // v15 REGULAR layout (real Taipei aerials): the tin addition covers (almost) the whole roof, aligned to the footprint and
-  // parapets, one roof form + corrugation direction per building, continuous along the row; lots differ only slightly
-  // (height step, colour/age), with an occasional gap left as open roof with tanks.
-  const lots: [number, number][] = [];
-  let a = u0 + 0.5;
-  const lotW = 4.5 + rnd() * 2;
-  while (a < u1 - 0.5 - 2.5) {
-    let w = lotW;
-    if (u1 - 0.5 - (a + w) < 3) w = u1 - 0.5 - a;
-    lots.push([a, w]);
-    a += w;
-    if (lots.length > 10) break;
-  }
-  const kind = rnd() < 0.65 ? 0.2 : rnd() < 0.6 ? 0.6 : 0.9;
-  const baseMat = pickMat(rnd());
-  const H0 = 2.6 + rnd() * 0.3;
-  const set = 0.5 + rnd() * 0.4;
+  // v21.1 class-aware coverage (real Taipei): 連棟透天 rows → per-lot additions 60–90 % of each lot, aligned along
+  // the row, some lots open; 4–5F walk-ups → one partial shack at one end; big / tall → none or a small set-back
+  // stair/tank room (< ~20 %); non-residential → none (handled above).
+  let cover = 0;
+  const putC = (u: number, v: number, w: number, d: number, o: ShackOpt) => {
+    const before = grp.children.length;
+    const ok = put(u, v, w, d, h, 0, o);
+    if (ok && grp.children.length > before) {
+      const sh = grp.children[grp.children.length - 1] as any;
+      cover += (sh.userData.w ?? w) * (sh.userData.d ?? d);
+    }
+    return ok;
+  };
   const vm = (v0 + v1) / 2;
-  const uniform = rnd() < 0.5; // whole row built as one (same colour) vs. per-lot colour steps
-  for (const [la, lw] of lots) {
-    const um = la + lw / 2;
-    if (lots.length > 2 && rnd() < 0.1) {
-      if (rnd() < 0.8) tank(um, vm, h);
-      if (rnd() < 0.6) laundry(um, vm + 1, h, Math.min(lw - 1, 3));
-      continue;
-    } // occasional gap
-    const m = uniform || rnd() < 0.55 ? baseMat : pickMat(rnd());
-    const dH = uniform ? 0 : Math.round((rnd() - 0.5) * 2) * 0.25;
-    put(um, vm, lw - 0.05, D - set * 2, h, 0, { H: H0 + dH, kind, mat: m, roofMat: m, open: false });
+  const set = 0.5 + rnd() * 0.3;
+  const Du = D - set * 2;
+  if (cls === 'row') {
+    const lots: [number, number][] = [];
+    let a = u0 + 0.4;
+    const lotW = 4 + rnd() * 2;
+    while (a < u1 - 0.4 - 2.5) {
+      let w = lotW;
+      if (u1 - 0.4 - (a + w) < 3) w = u1 - 0.4 - a;
+      lots.push([a, w]);
+      a += w;
+      if (lots.length > 14) break;
+    }
+    const kind = rnd() < 0.65 ? 0.2 : rnd() < 0.6 ? 0.6 : 0.9;
+    const baseMat = pickMat(rnd());
+    const H0 = 2.6 + rnd() * 0.3;
+    const side = rnd() < 0.5 ? -1 : 1; // additions hug the same parapet along the whole row
+    const frac = 0.6 + rnd() * 0.3;
+    const uniform = rnd() < 0.5;
+    for (const [la, lw] of lots) {
+      const um = la + lw / 2;
+      if (rnd() < 0.2) {
+        if (rnd() < 0.8) tank(um, vm, h);
+        if (rnd() < 0.5) laundry(um, vm + side * -1, h, Math.min(lw - 1, 3));
+        continue;
+      }
+      const m = uniform || rnd() < 0.6 ? baseMat : pickMat(rnd());
+      const f = uniform ? frac : Math.min(0.9, Math.max(0.6, frac + (rnd() - 0.5) * 0.15));
+      const d = Du * f;
+      const dH = uniform ? 0 : Math.round((rnd() - 0.5) * 2) * 0.25;
+      putC(um, vm + (side * (Du - d)) / 2, lw - 0.06, d, { H: H0 + dH, kind, mat: m, roofMat: m, open: false });
+      if (d < Du - 2 && rnd() < 0.5) tank(um, vm - (side * (Du - d / 2)) / 2, h);
+    }
+  } else if (cls === 'walkup') {
+    if (rnd() < 0.4) {
+      tank(u0 + W * (0.2 + rnd() * 0.6), vm, h);
+    } else {
+      const m = pickMat(rnd());
+      const w = Math.min(W - 1.6, W * (0.3 + rnd() * 0.25)),
+        d = Math.min(Du - 1, D * (0.4 + rnd() * 0.3));
+      const end = rnd() < 0.5 ? -1 : 1;
+      const um = (u0 + u1) / 2 + end * (W / 2 - 0.8 - w / 2);
+      putC(um, vm + (rnd() - 0.5) * (Du - d), w, d, {
+        H: 2.6,
+        kind: rnd() < 0.6 ? 0.2 : 0.6,
+        mat: m,
+        roofMat: m,
+        open: false,
+      });
+      tank(um - end * (w / 2 + 1.5), vm, h);
+    }
+  } else {
+    // big / tall: concrete roof, parapet, tanks; sometimes a small set-back stair / tank room
+    const nT = 1 + Math.floor(rnd() * 3);
+    for (let i = 0; i < nT; i++) tank(u0 + 2 + rnd() * (W - 4), v0 + 2 + rnd() * (D - 4), h);
+    if (rnd() < 0.45) {
+      const cap = 0.18 * W * D;
+      let w = Math.min(3 + rnd() * 3, W - 4),
+        d = Math.min(3 + rnd() * 2.5, D - 4);
+      if (w * d > cap) {
+        const k = Math.sqrt(cap / (w * d));
+        w *= k;
+        d *= k;
+      }
+      if (w > 2.3 && d > 2.3) {
+        const m = pickMat(rnd());
+        putC(
+          u0 + 1.5 + w / 2 + rnd() * Math.max(0, W - 3 - w),
+          v0 + 1.5 + d / 2 + rnd() * Math.max(0, D - 3 - d),
+          w,
+          d,
+          {
+            H: 2.5,
+            kind: 0.2,
+            mat: m,
+            roofMat: m,
+            open: false,
+          },
+        );
+      }
+    }
   }
+  if (cover > 0) st.with++;
+  st.coverA += cover;
   // merge everything by material to keep draw calls low
   grp.updateMatrixWorld(true);
   const buckets = new Map<THREE.Material, THREE.BufferGeometry[]>();
