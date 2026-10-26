@@ -49,7 +49,7 @@ import {
 } from './textures';
 import { plaDrop } from './pla-loot';
 import { joy, initJoystick } from './joystick';
-import { buildMetro, ensureInterior, metroTick, type Station } from './metro';
+import { buildMetro, ensureInterior, metroTick, metroStats, svc, stationOrigin, type Station } from './metro';
 import * as SV from './survival';
 import { VehicleSystem, VehicleKind } from './vehicles';
 import { furnish, nightMarket, setPower } from './interiors';
@@ -3197,15 +3197,71 @@ function metroUse() {
   player.vel.set(0, 0, 0);
   log(
     m.down
-      ? `🚇 由 ${m.gt.no} 號出口進入北都地下鐵 ${m.st.name}站（停電・停駛中）`
+      ? `🚇 由 ${m.gt.no} 號出口進入北都地下鐵 ${m.st.name}站${UT.power ? '（正常營運）' : '（停電・停駛中）'}`
       : `從 ${m.gt.no} 號出口回到地面（${m.st.name}）`,
     '#fc8',
   );
   return true;
 }
+/** v22.2 standing on the platform beside an open train (day-1 service only) → station index, else -1 */
+function metroBoard() {
+  if (!UT.power) return -1;
+  for (let i = 0; i < metro.length; i++) {
+    if (!metro[i].built) continue;
+    const [OX, OZ] = stationOrigin(i);
+    const lx = player.pos.x - OX,
+      lz = player.pos.z - OZ;
+    const ph = svc(i, gameMin).phase;
+    if (Math.abs(lx) < 27 && lz > 24.5 && lz < 28.3 && (ph === 'open' || ph === 'opening')) return i;
+  }
+  return -1;
+}
+let riding = false;
+function openRide(i: number) {
+  document.getElementById('ride')?.remove();
+  const d = document.createElement('div');
+  d.id = 'ride';
+  d.innerHTML =
+    `<h3>🚇 艋舺橘線・${metro[i].name}站</h3><p>選擇下車站（約 3 分鐘車程）</p>` +
+    metro.map((s, j) => (j === i ? '' : `<button data-j="${j}">${s.name}站 橘${s.no}</button>`)).join('') +
+    '<button data-j="-1" class="x">取消</button>';
+  d.onclick = e => {
+    const j = Number((e.target as HTMLElement).dataset?.j ?? NaN);
+    if (Number.isNaN(j)) return;
+    d.remove();
+    if (j >= 0) rideTo(i, j);
+  };
+  document.body.appendChild(d);
+}
+function rideTo(i: number, j: number) {
+  if (riding || !metro[j]) return;
+  riding = true;
+  const f = document.createElement('div');
+  f.id = 'ridefade';
+  f.innerHTML = `<div class="car"><div class="win"></div><div class="win"></div><div class="win"></div></div><p>車廂內・往 ${metro[j].name}站</p><small>下一站 ${metro[j].name}　請握緊扶手</small>`;
+  document.body.appendChild(f);
+  requestAnimationFrame(() => f.classList.add('on'));
+  log(`🚇 在${metro[i].name}站上車，往${metro[j].name}站`, '#fc8');
+  setTimeout(() => {
+    ensureInterior(scene, metro[j], j);
+    const [OX, OZ] = stationOrigin(j);
+    player.pos.set(OX + 0.2, 0, OZ + 26.6);
+    player.vel.set(0, 0, 0);
+  }, 1400);
+  setTimeout(() => {
+    f.classList.remove('on');
+    log(`🚇 ${metro[j].name}站到了`, '#fc8');
+    setTimeout(() => (f.remove(), (riding = false)), 700);
+  }, 3000);
+}
 function interact() {
   if (npcInteract()) return;
   if (metroUse()) return;
+  if (document.getElementById('ride')) return document.getElementById('ride')!.remove();
+  {
+    const bi = metroBoard();
+    if (bi >= 0) return openRide(bi);
+  }
   if (survOpen) return closeSurv();
   {
     const t = tradeAt();
@@ -3742,7 +3798,7 @@ function update(dt: number) {
   if (dead && player.rig) animate(player.rig, 'death', 0, dt);
   for (const s of sols) if (s.state === 'dead' && s.rig.deadT < 1) animate(s.rig, 'death', 0, dt);
   if (evac) evac.update(dt, evacOpen());
-  if (metro.length) metroTick(performance.now() / 1000);
+  if (metro.length) metroTick(performance.now() / 1000, gameMin, UT.power, player.pos.x, player.pos.z);
   if (evac && evacOpen()) gmap?.intel('evac0', evac.pos[0], evac.pos[1], 'evac', '撤離點');
   if (started) {
     gmap?.update();
@@ -4349,6 +4405,9 @@ function drawHud(inside: Bld | null) {
   } else if (!panelOpen && !survOpen && atHome() && !c) {
     pr.style.display = 'block';
     pr.textContent = '[E] 避難所（升級／存糧／拜拜）';
+  } else if (metroBoard() >= 0 && !panelOpen && !riding) {
+    pr.style.display = 'block';
+    pr.textContent = '[E] 搭乘艋舺橘線（選擇目的地）';
   } else if (metroAt() && !panelOpen) {
     const m = metroAt()!;
     pr.style.display = 'block';
@@ -4843,6 +4902,7 @@ async function boot() {
       metro = buildMetro({
         scene,
         addSeg,
+        removeSeg,
         snap: (x, z) => {
           for (let rad = 0; rad < 120; rad += 3)
             for (let a = 0; a < 6.28; a += 0.4) {
@@ -5218,7 +5278,6 @@ async function boot() {
     setTime: (m: number) => {
       gameMin = m;
     },
-    UT,
     start: () => start!.c,
     scene,
     gm: () => gameMin,
@@ -5227,6 +5286,12 @@ async function boot() {
     sandbags,
     metro: () => metro,
     metroUse,
+    metroBoard,
+    metroStats,
+    svc,
+    rideTo,
+    openRide,
+    UT,
     surv: () => surv,
     SV,
     openSurv,

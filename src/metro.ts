@@ -327,6 +327,17 @@ const M = {
   emerg: new THREE.MeshBasicMaterial({ color: 0x5aff8a }),
   lamp: new THREE.MeshBasicMaterial({ color: 0x3a3a34 }),
   lampOn: new THREE.MeshBasicMaterial({ color: 0xfff1c8 }),
+  // v22.2 track / tunnel / live-state materials (power-dependent ones are recoloured in setPower)
+  conc: std(0x6c6a66, { roughness: 0.95 }),
+  sleeper: std(0x8e8b84, { roughness: 0.9 }),
+  railTop: std(0xc9ccd0, { metalness: 0.8, roughness: 0.25 }),
+  cover: std(0xd8cfa8, { roughness: 0.8 }),
+  flood: std(0xd9a400, { metalness: 0.4, roughness: 0.5 }),
+  tunnel: std(0x26282a, { roughness: 1 }),
+  tlamp: new THREE.MeshBasicMaterial({ color: 0xfff1c8 }),
+  sigR: new THREE.MeshBasicMaterial({ color: 0xff2a1a }),
+  sigG: new THREE.MeshBasicMaterial({ color: 0x2aff6a }),
+  paddle: std(0xe8681c, { transparent: true, opacity: 0.85, roughness: 0.3 }),
 };
 const BOX = new THREE.BoxGeometry(1, 1, 1);
 
@@ -379,8 +390,10 @@ export type MetroDeps = {
   scene: THREE.Scene;
   addSeg: (s: Seg, low?: boolean) => void;
   snap: (x: number, z: number) => V2;
+  removeSeg: (s: Seg) => void;
 };
 const OXZ = (i: number) => [-1200 + i * 240, -7000] as const;
+export const stationOrigin = OXZ;
 // interior layout constants (local)
 const EXITS = [-17, 17]; // B1 exit passages (x)
 const BANKS = [-12, 12]; // stair/escalator banks B1 → B2 (x centre, 4.4 m wide)
@@ -460,6 +473,7 @@ function entrance(
 
 /** builds the surface entrances now and returns stations; interiors come from ensureInterior() */
 export function buildMetro(d: MetroDeps): Station[] {
+  DEPS = d;
   return STATIONS.map((st, i) => {
     const [OX, OZ] = OXZ(i);
     const r = prng(1000 + i * 77);
@@ -495,19 +509,28 @@ export function buildMetro(d: MetroDeps): Station[] {
       { id: `m${i}:0`, p: [OX - 20, OZ + 0.5], type: 'store' }, // kiosk
       { id: `m${i}:1`, p: [OX + 16, OZ + 1.8], type: 'pharmacy' }, // service counter first-aid
       { id: `m${i}:2`, p: [OX - 6, OZ - 3.5], type: 'home' }, // refugee bundle
-      { id: `m${i}:3`, p: [OX + 8, OZ + 30.1], type: 'store' }, // in the train
-      { id: `m${i}:4`, p: [OX - 20, OZ + 30.1], type: 'home' }, // in the train
+      { id: `m${i}:3`, p: [OX + 8, OZ + 21.4], type: 'store' }, // dropped on the platform
+      { id: `m${i}:4`, p: [OX - 20, OZ + 26.6], type: 'home' }, // by the seats
       { id: `m${i}:5`, p: [OX + 21, OZ + 8], type: 'home' }, // lockers
     ];
     // collision is cheap, register it now so loot and walls are consistent before the meshes stream in
-    interiorSegs(d.addSeg, OX, OZ);
+    SEGS[i] = interiorSegs(d.addSeg, OX, OZ);
     return S;
   });
 }
 
-function interiorSegs(addSeg: MetroDeps['addSeg'], OX: number, OZ: number) {
+type SegState = { jam: Seg[]; maint: Seg[]; gap: Seg; on: boolean | null };
+const SEGS: SegState[] = [];
+const CABS = [-10.4, -8, -6.4, -4.8, -3.2, -1.6, 0, 1.6, 3.2, 4.8, 6.4, 8]; // gate cabinet x positions
+function interiorSegs(addSeg: MetroDeps['addSeg'], OX: number, OZ: number): SegState {
   const W = (ax: number, az: number, bx: number, bz: number, low = false) =>
     addSeg({ a: [OX + ax, OZ + az], b: [OX + bx, OZ + bz] }, low);
+  // a seg that is created but not registered (power-dependent)
+  const S = (ax: number, az: number, bx: number, bz: number): Seg => ({
+    a: [OX + ax, OZ + az],
+    b: [OX + bx, OZ + bz],
+    h: 1.0,
+  });
   // B1 concourse x∈[-24,24] z∈[-6,12], exit passages north at x = ±17
   W(-24, -6, -19.2, -6);
   W(-14.8, -6, 14.8, -6);
@@ -519,14 +542,13 @@ function interiorSegs(addSeg: MetroDeps['addSeg'], OX: number, OZ: number) {
   }
   W(-24, -6, -24, 12);
   W(24, -6, 24, 12);
-  // gate line z = 4: glass fence + gate cabinets (middle lanes jammed shut, outer lanes passable)
-  W(-24, 4, -8.4, 4, true);
+  // gate line z = 4: glass fence + gate cabinets. The middle lanes jam shut only when the power is out
+  // (toggled in setPower); the wide accessible gate is the west-most lane x∈[-10.4,-8]
+  W(-24, 4, -10.6, 4, true);
   W(8.4, 4, 24, 4, true);
-  for (let k = -5; k <= 5; k++) {
-    const x = k * 1.6;
-    W(x, 3.2, x, 4.8, true);
-    if (k < 5 && Math.abs(k + 0.5) < 3) W(x + 0.2, 4, x + 1.4, 4, true);
-  }
+  for (const x of CABS) W(x, 3.1, x, 4.9, true);
+  const jam: Seg[] = [];
+  for (let k = -3; k <= 2; k++) jam.push(S(k * 1.6 + 0.2, 4, k * 1.6 + 1.4, 4));
   // B1 south wall with the two bank openings, bank corridors over the north track
   W(-24, 12, -14.2, 12);
   W(-9.8, 12, 9.8, 12);
@@ -536,15 +558,26 @@ function interiorSegs(addSeg: MetroDeps['addSeg'], OX: number, OZ: number) {
     W(x + 2.2, 12, x + 2.2, 20);
   }
   // B2 island platform x∈[-34,34] z∈[20,28]; screen doors both sides (north side open at the banks)
-  W(-34, 20, -34, 28);
-  W(34, 20, 34, 28);
+  // end walls stop at z = 26.5: the strip z∈[26.5,28] is the maintenance gate down to the south track
+  for (const sx of [-1, 1]) {
+    W(sx * 34, 20, sx * 34, 26.5);
+    // walkable tunnel stub (only reachable through the maintenance gate while the power is out),
+    // ending at the closed steel flood gate at x = ±46.5
+    W(sx * 34, 26.5, sx * 46.5, 26.5);
+    W(sx * 28, 32.8, sx * 46.5, 32.8);
+    W(sx * 46.5, 26.5, sx * 46.5, 32.8);
+    W(sx * 28, 28, sx * 28, 28.6);
+    W(sx * 28, 31.6, sx * 28, 32.8);
+  }
+  const maint = [S(-34, 26.5, -34, 28), S(34, 26.5, 34, 28)];
   W(-34, 20, -14.2, 20);
   W(-9.8, 20, 9.8, 20);
   W(14.2, 20, 34, 20);
-  // south screen doors: one door pair jammed open at x = 0 into the train
+  // south screen doors: while the power is out one door pair is jammed open at x = 0 into the parked train
   W(-34, 28, -1, 28);
   W(1, 28, 34, 28);
-  // train body z∈[28.6, 31.6], door gap at x∈[-1, 1]
+  const gap = S(-1, 28, 1, 28);
+  // parked train body z∈[28.6, 31.6], door gap at x∈[-1, 1] (only reachable when it is parked)
   W(-28, 28.6, -1, 28.6);
   W(1, 28.6, 28, 28.6);
   W(-28, 31.6, 28, 31.6);
@@ -553,6 +586,8 @@ function interiorSegs(addSeg: MetroDeps['addSeg'], OX: number, OZ: number) {
   // pillars on the island (they carry the roof beam)
   for (let x = -28; x <= 28; x += 8)
     if (Math.abs(Math.abs(x) - 12) > 3) (W(x - 0.4, 24, x + 0.4, 24), W(x, 23.6, x, 24.4));
+  const st: SegState = { jam, maint, gap, on: null };
+  return st;
 }
 
 /** builds a station interior the first time it is needed (lazy streaming) */
@@ -609,17 +644,18 @@ export function ensureInterior(scene: THREE.Scene, S: Station, i: number) {
   b.box(M.green, 13, 0, 4, 5, 1.1, 1.2);
   b.box(M.glass, 13, 1.1, 4, 5, 1.3, 0.05);
   b.box(M.white, 13, 2.4, 4, 5.2, 0.15, 1.3);
-  // gates
-  for (let k = -5; k <= 5; k++) {
-    const x = k * 1.6;
-    b.box(M.steel, x, 0, 4, 0.35, 1.0, 1.6);
-    b.box(M.orange, x, 1.0, 4, 0.36, 0.05, 1.6);
-    b.box(M.black, x, 1.05, 3.4, 0.2, 0.02, 0.2);
-    if (k < 5 && Math.abs(k + 0.5) < 3) b.box(M.glass, x + 0.8, 0.45, 4, 1.25, 0.55, 0.05);
+  // gates: steel cabinets with an orange cap, our own card-reader pad and LED panels at both ends, and
+  // orange flap paddles (live meshes, see setPower / metroTick); the west lane is the wide accessible gate
+  for (const x of CABS) {
+    b.box(M.steel, x, 0, 4, 0.3, 0.95, 1.8);
+    b.box(M.orange, x, 0.95, 4, 0.32, 0.06, 1.8);
+    b.box(M.black, x, 1.01, 3.4, 0.24, 0.015, 0.34);
+    b.box(M.black, x, 1.01, 4.6, 0.24, 0.015, 0.34);
+    b.box(M.dark, x, 0, 4, 0.34, 0.08, 1.84);
   }
   // glass fence between the gates and the walls
   for (const [a, c] of [
-    [-24, -8.4],
+    [-24, -10.6],
     [8.4, 10.5],
     [15.5, 24],
   ]) {
@@ -668,30 +704,27 @@ export function ensureInterior(scene: THREE.Scene, S: Station, i: number) {
   wall(-19.1, 12, 9.8, 0.3, 0.9);
   wall(0, 12, 19.6, 0.3, 0.9);
   wall(19.1, 12, 9.8, 0.3, 0.9);
-  // ===== north track pit (empty) between B1 and the island =====
-  b.box(M.ballast, 0, -0.6, 16, 72, 0.58, 7.6);
-  for (const z of [15.3, 16.7]) b.box(M.rail, 0, -0.02, z, 72, 0.06, 0.08);
-  for (let x = -34; x <= 34; x += 0.8) b.box(M.wood, x, -0.04, 16, 0.25, 0.04, 2.2);
+  // ===== tracks: concrete trackbed, sleepers, running rails, covered third rail, drainage trough,
+  // track lamps; both run on into the tunnels (x = ±110) =====
+  track(b, 16, -1);
+  track(b, 30.1, 1);
   // ===== B2 island platform =====
   b.floor(stoneTex(), 0, 24, 68, 8);
   b.box(M.tactile, 0, 0.015, 20.5, 68, 0.01, 0.5);
   b.box(M.tactile, 0, 0.015, 27.5, 68, 0.01, 0.5);
-  // full-height screen doors: north (far, no train) and south (train side). South framing kept light.
-  for (const [z, hh] of [
-    [20, 2.6],
-    [28, 2.6],
-  ] as const) {
-    for (let x = -34; x < 34; x += 2.2) {
-      if (z === 20 && BANKS.some(c => Math.abs(x + 1.1 - c) < 2.6)) continue;
-      const open = z === 28 && Math.abs(x + 1.1) < 1.2;
-      b.box(M.steel, x, 0, z, 0.1, hh, 0.12);
-      if (!open) b.box(M.glass, x + 1.1, 0, z, 2.0, hh - 0.2, 0.04);
-      b.box(M.green, x + 1.1, hh - 0.2, z, 2.2, 0.2, 0.16);
-      // queue markings: green arrows each side of each door, orange stop line in the middle
-      b.box(M.green, x + 0.5, 0.016, z + (z === 20 ? 1.1 : -1.1), 0.2, 0.01, 1.0);
-      b.box(M.green, x + 1.7, 0.016, z + (z === 20 ? 1.1 : -1.1), 0.2, 0.01, 1.0);
-      b.box(M.orange, x + 1.1, 0.016, z + (z === 20 ? 0.9 : -0.9), 0.6, 0.01, 0.12);
+  // full-height screen doors: north (far side, fixed glass) and south (train side, live sliding leaves)
+  for (const z of [20, 28]) {
+    for (let k = -15; k <= 15; k++) {
+      const c = k * 2.2;
+      if (z === 20 && BANKS.some(q => Math.abs(c - q) < 2.6)) continue;
+      b.box(M.steel, c - 1.1, 0, z, 0.1, 2.6, 0.12);
+      if (z === 20 || !DOORS.includes(c)) b.box(M.glass, c, 0, z, 2.0, 2.4, 0.04);
+      b.box(M.green, c, 2.4, z, 2.2, 0.2, 0.16);
+      b.box(M.green, c - 0.6, 0.016, z + (z === 20 ? 1.1 : -1.1), 0.2, 0.01, 1.0);
+      b.box(M.green, c + 0.6, 0.016, z + (z === 20 ? 1.1 : -1.1), 0.2, 0.01, 1.0);
+      b.box(M.orange, c, 0.016, z + (z === 20 ? 0.9 : -0.9), 0.6, 0.01, 0.12);
     }
+    b.box(M.steel, 34.1, 0, z, 0.1, 2.6, 0.12);
   }
   // pillars (carry the roof beam) with name panels, extinguisher cabinets, CCTV
   b.box(M.orange, 0, 3.2, 24, 68, 0.3, 0.5);
@@ -714,31 +747,10 @@ export function ensureInterior(scene: THREE.Scene, S: Station, i: number) {
   // dropped stuff on the platform
   for (let k = 0; k < 6; k++)
     b.box([M.blanket2, M.dark, M.card][k % 3], -30 + r() * 60, 0, 21.5 + r() * 5, 0.5, 0.3, 0.35, r() * 3);
-  // B2 end walls (low on the camera side)
-  wall(-34, 24, 0.3, 8, 1.0);
-  wall(34, 24, 0.3, 8, 1.0);
-  // ===== parked train (south track) — no roof so it reads from above; strong livery =====
-  const TL = 56;
-  b.box(M.ballast, 0, -0.6, 30.1, 72, 0.58, 4.4);
-  b.box(M.train, 0, 0, 28.65, TL, 1.4, 0.1);
-  b.box(M.train, 0, 0, 31.55, TL, 1.4, 0.1);
-  b.box(M.green, -TL / 2, 0, 30.1, 0.6, 2.4, 3);
-  b.box(M.green, TL / 2, 0, 30.1, 0.6, 2.4, 3);
-  b.box(M.win, -TL / 2 - 0.31, 1.2, 30.1, 0.02, 0.8, 2.2);
-  b.box(M.win, TL / 2 + 0.31, 1.2, 30.1, 0.02, 0.8, 2.2);
-  b.box(M.train, 0, 0, 30.1, TL, 0.03, 2.8); // light floor so the car reads from above
-  b.box(M.orange, 0, 0.035, 30.1, TL, 0.005, 0.5);
-  b.box(M.orange, 0, 1.4, 28.65, TL, 0.08, 0.14);
-  b.box(M.orange, 0, 1.4, 31.55, TL, 0.08, 0.14);
-  b.box(M.orange, 0, 0.55, 28.59, TL, 0.16, 0.02);
-  b.box(M.green, 0, 0.75, 28.59, TL, 0.06, 0.02);
-  for (let c = -2; c <= 1; c++) b.box(M.black, (c + 0.5) * 14, 0, 30.1, 0.15, 1.6, 2.9); // car gangways
-  for (let x = -26; x <= 26; x += 3.5) {
-    if (Math.abs(x) > 1.2) b.box(M.win, x, 0.85, 28.58, 2.2, 0.45, 0.02);
-    b.box(M.seat, x, 0, 31.1, 2.6, 0.45, 0.6);
-    b.box(M.steel, x + 1.75, 1.3, 30.1, 0.05, 0.05, 2.8);
-    b.box(M.steel, x + 1.75, 0, 30.1, 0.04, 1.3, 0.04);
-  }
+  // B2 end walls (low on the camera side), with the maintenance gate gap z∈[26.5,28]
+  wall(-34, 23.25, 0.3, 6.5, 1.0);
+  wall(34, 23.25, 0.3, 6.5, 1.0);
+  for (const sx of [-1, 1]) portal(b, tw, sx);
   b.done();
   // ===== textured planes: signs, maps, posters, boards =====
   const NT = nameTex(S.name, S.no);
@@ -772,9 +784,10 @@ export function ensureInterior(scene: THREE.Scene, S: Station, i: number) {
   );
   b.plane(kt, -20, 2.5, 0.42, 3.6, 0.38);
   b.plane(picto('fire'), 3.4, 0.9, 24.42, 0.4, 0.4);
+  const D = buildDyn(g, i);
   for (const x of [-20, 20]) {
     b.plane(boardTex(), x, 2.75, 20.6, 2.6, 0.5);
-    b.plane(boardTex(), x, 2.75, 27.4, 2.6, 0.5);
+    b.plane(D.board.tex, x, 2.75, 27.4, 2.6, 0.5);
   }
   const pr = tex('prio', () =>
     canvasTex(128, 64, c => {
@@ -806,10 +819,491 @@ export function ensureInterior(scene: THREE.Scene, S: Station, i: number) {
     g.add(e);
   }
 }
-/** emergency-light flicker */
-export function metroTick(t: number) {
+// ===== v22.2: tracks, tunnel portals, live gates / screen doors / day-1 train service =====
+const DOORS = [-19.8, -13.2, -6.6, 0, 6.6, 13.2, 19.8]; // train door / live screen-door bay centres (x)
+const TL = 56; // train length
+
+/** one track: concrete trackbed, twin-block sleepers, running rails, covered third rail, drainage trough,
+ * track lamps — runs on to x = ±110 inside the tunnels */
+function track(b: Builder, z: number, side: number) {
+  const L = 220;
+  b.box(M.conc, 0, -0.62, z, L, 0.59, 4.4);
+  b.box(M.black, 0, -0.034, z, L, 0.01, 0.34); // drainage trough
+  b.box(M.dark, 0, -0.036, z, L, 0.008, 0.5);
+  for (let x = -L / 2; x <= L / 2; x += 0.65)
+    for (const dz of [-0.72, 0.72]) b.box(M.sleeper, x, -0.035, z + dz, 0.3, 0.06, 0.78);
+  for (const dz of [-0.72, 0.72]) {
+    b.box(M.rail, 0, -0.03, z + dz, L, 0.11, 0.07);
+    b.box(M.railTop, 0, 0.08, z + dz, L, 0.025, 0.08);
+  }
+  // third rail on the outer side with its insulators and protective cover
+  const tz = z + side * 1.55;
+  for (let x = -L / 2; x <= L / 2; x += 4) b.box(M.cover, x, -0.03, tz, 0.12, 0.12, 0.12);
+  b.box(M.steel, 0, 0.09, tz, L, 0.07, 0.08);
+  b.box(M.cover, 0, 0.17, tz, L, 0.03, 0.24);
+  b.box(M.cover, 0, 0.1, tz + side * 0.11, L, 0.08, 0.02);
+  // track lamps along the trackbed edge (lit while the power is on)
+  for (let x = -L / 2 + 3; x <= L / 2; x += 6) b.box(M.tlamp, x, -0.02, z + side * 2.05, 0.3, 0.12, 0.08);
+  if (side > 0) b.box(M.tunnel, 0, -0.05, 32.95, L, 1.05, 0.3); // outer tunnel wall (camera side → low)
+}
+
+/** tunnel portals at one platform end (sx = ±1): arch lintels with our orange/green ring over both tracks,
+ * dark tunnel walls, ribs, track lamps, signals, a covered tunnel beyond x = ±47 and the maintenance gate */
+function portal(b: Builder, tw: THREE.Material, sx: number) {
+  const X = (v: number) => sx * v;
+  for (const [zc, w] of [
+    [29.65, 6.3],
+    [16, 8],
+  ] as const) {
+    b.box(tw, X(34.15), 2.5, zc, 0.3, 1.1, w);
+    b.box(M.orange, X(34.15 - 0.17), 2.55, zc, 0.04, 0.16, w);
+    b.box(M.green, X(34.15 - 0.17), 2.75, zc, 0.04, 0.1, w);
+    b.box(M.dark, X(34.15 - 0.17), 2.5, zc, 0.04, 0.05, w);
+  }
+  // rock between the two tunnels, north tunnel outer wall, covered tunnel roof
+  b.box(M.tunnel, X(72.25), 0, 23.05, 76.5, 2.7, 6.9);
+  b.box(M.tunnel, X(67), 0, 12.3, 86, 2.7, 0.6);
+  b.box(M.tunnel, X(81), 2.7, 22.4, 58, 0.25, 21.6); // covered tunnel from x = ±52 hides trains in transit
+  // tunnel ring ribs + track lamps on the walls
+  for (let x = 36; x <= 46; x += 3.3) {
+    b.box(M.dark, X(x), 0, 26.62, 0.25, 2.7, 0.14);
+    b.box(M.dark, X(x), 0, 32.78, 0.25, 1.1, 0.14);
+    b.box(M.dark, X(x), 0, 19.48, 0.25, 2.7, 0.14);
+    b.box(M.dark, X(x), 0, 12.62, 0.25, 2.7, 0.14);
+    b.box(M.tlamp, X(x + 1.6), 2.2, 26.62, 0.4, 0.12, 0.1);
+    b.box(M.tlamp, X(x + 1.6), 2.2, 12.62, 0.4, 0.12, 0.1);
+  }
+  // signals at the tunnel mouths (black head, red + green aspects)
+  for (const [z, f] of [
+    [26.75, 1],
+    [19.35, -1],
+  ] as const) {
+    b.box(M.black, X(35.2), 1.6, z, 0.36, 0.8, 0.16);
+    b.box(M.sigR, X(35.2), 2.1, z + f * 0.09, 0.16, 0.16, 0.02);
+    b.box(M.sigG, X(35.2), 1.8, z + f * 0.09, 0.16, 0.16, 0.02);
+    b.box(M.steel, X(35.2), 0, z, 0.08, 1.6, 0.08);
+  }
+  // maintenance gate posts + steps, cable cabinet behind the parked train end
+  b.box(M.steel, X(34), 0, 26.5, 0.12, 1.2, 0.12);
+  b.box(M.steel, X(34), 0, 28, 0.12, 1.2, 0.12);
+  b.box(M.yellow, X(34), 0.005, 27.25, 0.3, 0.01, 1.5);
+  b.box(M.dark, X(28.3), 0, 32.2, 0.6, 1.1, 1.1);
+}
+
+const cardTex = () =>
+  tex('card', () =>
+    canvasTex(64, 64, c => {
+      c.fillStyle = '#111';
+      c.fillRect(0, 0, 64, 64);
+      c.strokeStyle = '#e8681c';
+      c.lineWidth = 5;
+      for (const r of [10, 19, 28]) {
+        c.beginPath();
+        c.arc(14, 50, r, -1.4, -0.2);
+        c.stroke();
+      }
+      c.fillStyle = '#1f5a3a';
+      c.fillRect(34, 36, 22, 16);
+    }),
+  );
+const ledTex = (k: 'go' | 'x' | 'off') =>
+  tex('led' + k, () =>
+    canvasTex(64, 48, c => {
+      c.fillStyle = '#050505';
+      c.fillRect(0, 0, 64, 48);
+      if (k === 'off') return;
+      c.fillStyle = k === 'go' ? '#3aff7a' : '#ff3a2a';
+      c.font = '900 40px sans-serif';
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.fillText(k === 'go' ? '↑' : '✕', 32, 26);
+    }),
+  );
+const LED = {
+  go: new THREE.MeshBasicMaterial({ map: ledTex('go'), side: 2 }),
+  x: new THREE.MeshBasicMaterial({ map: ledTex('x'), side: 2 }),
+  off: new THREE.MeshBasicMaterial({ map: ledTex('off'), side: 2 }),
+};
+const hazTex = () =>
+  tex('haz', () =>
+    canvasTex(256, 128, c => {
+      for (let k = -4; k < 12; k++) {
+        c.fillStyle = k % 2 ? '#111' : '#e8b800';
+        c.beginPath();
+        c.moveTo(k * 32, 128);
+        c.lineTo(k * 32 + 32, 128);
+        c.lineTo(k * 32 + 96, 0);
+        c.lineTo(k * 32 + 64, 0);
+        c.fill();
+      }
+      c.fillStyle = '#111';
+      c.fillRect(30, 38, 196, 52);
+      c.fillStyle = '#fff';
+      c.font = '800 26px sans-serif';
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.fillText('防水閘門・關閉', 128, 64);
+    }),
+  );
+const maintTex = () =>
+  tex('maint', () =>
+    canvasTex(256, 64, c => {
+      c.fillStyle = '#e8b800';
+      c.fillRect(0, 0, 256, 64);
+      c.fillStyle = '#111';
+      c.font = '800 28px sans-serif';
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.fillText('維修通道・非請勿入', 128, 33);
+    }),
+  );
+
+type Part = { m: THREE.Object3D; x0: number };
+type Leaf = { ps: Part[]; dir: number; w: number; c: number };
+type Dyn = {
+  i: number;
+  train: THREE.Group;
+  tdoors: Leaf[];
+  psd: Leaf[];
+  paddles: { m: THREE.Object3D; dir: number; lane: number; cx: number; rot: number }[];
+  leds: THREE.Mesh[];
+  flood: { m: THREE.Object3D; y0: number }[];
+  maint: { m: THREE.Object3D; sx: number }[];
+  board: { ctx: CanvasRenderingContext2D; tex: THREE.CanvasTexture; txt: string };
+  tl: THREE.PointLight[];
+  phase: string;
+};
+const DYN: Dyn[] = [];
+let DEPS: MetroDeps | null = null;
+const bx = (m: THREE.Material, x: number, y: number, z: number, sx: number, sy: number, sz: number) => {
+  const o = new THREE.Mesh(BOX, m);
+  o.scale.set(sx, sy, sz);
+  o.position.set(x, y + sy / 2, z);
+  o.castShadow = m !== M.glass;
+  return o;
+};
+
+/** the live (state-changing) parts of a station: train, door leaves, gate paddles + LEDs, flood gates, board */
+function buildDyn(g: THREE.Group, i: number): Dyn {
+  // ---- train (own group, moves along the south track) ----
+  const train = new THREE.Group();
+  train.position.z = 0;
+  g.add(train);
+  const tb = new Builder(train);
+  const gaps = (z: number, y: number, h: number, d: number, m: THREE.Material) => {
+    let a = -TL / 2;
+    for (const c of [...DOORS, TL / 2 + 0.7]) {
+      const e = c - 0.7;
+      if (e > a) tb.box(m, (a + e) / 2, y, z, e - a, h, d);
+      a = c + 0.7;
+    }
+  };
+  gaps(28.65, 0, 1.4, 0.1, M.train);
+  gaps(28.59, 0.55, 0.16, 0.02, M.orange);
+  gaps(28.59, 0.75, 0.06, 0.02, M.green);
+  tb.box(M.train, 0, 0, 31.55, TL, 1.4, 0.1);
+  tb.box(M.green, -TL / 2, 0, 30.1, 0.6, 2.4, 3);
+  tb.box(M.green, TL / 2, 0, 30.1, 0.6, 2.4, 3);
+  tb.box(M.win, -TL / 2 - 0.31, 1.2, 30.1, 0.02, 0.8, 2.2);
+  tb.box(M.win, TL / 2 + 0.31, 1.2, 30.1, 0.02, 0.8, 2.2);
+  tb.box(M.lampOn, -TL / 2 - 0.31, 0.5, 29.1, 0.02, 0.15, 0.3);
+  tb.box(M.lampOn, -TL / 2 - 0.31, 0.5, 31.1, 0.02, 0.15, 0.3);
+  tb.box(M.red, TL / 2 + 0.31, 0.5, 29.1, 0.02, 0.15, 0.3);
+  tb.box(M.red, TL / 2 + 0.31, 0.5, 31.1, 0.02, 0.15, 0.3);
+  tb.box(M.train, 0, 0, 30.1, TL, 0.03, 2.8); // light floor so the car reads from above
+  tb.box(M.orange, 0, 0.035, 30.1, TL, 0.005, 0.5);
+  tb.box(M.orange, 0, 1.4, 28.65, TL, 0.08, 0.14);
+  tb.box(M.orange, 0, 1.4, 31.55, TL, 0.08, 0.14);
+  for (let c = -2; c <= 1; c++) tb.box(M.black, (c + 0.5) * 14, 0, 30.1, 0.15, 1.6, 2.9); // car gangways
+  for (let j = 0; j < 8; j++) {
+    const x = -23.1 + j * 6.6;
+    tb.box(M.win, x, 0.85, 28.58, 2.6, 0.45, 0.02);
+    tb.box(M.seat, x, 0, 31.1, 3.6, 0.45, 0.6);
+  }
+  for (const c of DOORS) {
+    tb.box(M.steel, c, 1.3, 30.1, 0.05, 0.05, 2.8);
+    tb.box(M.steel, c, 0, 30.1, 0.04, 1.3, 0.04);
+    tb.box(M.black, c, 0.04, 28.75, 1.4, 0.01, 0.22);
+  }
+  tb.done();
+  const tl: THREE.PointLight[] = [];
+  for (const x of [-14, 14]) {
+    const l = new THREE.PointLight(0xfff4dc, 0, 20, 1.3);
+    l.position.set(x, 2.2, 30.1);
+    train.add(l);
+    tl.push(l);
+  }
+  const tdoors: Leaf[] = [];
+  for (const c of DOORS)
+    for (const dir of [-1, 1]) {
+      const m = bx(M.orange, c + dir * 0.35, 0, 28.63, 0.7, 1.4, 0.07);
+      const w = bx(M.win, c + dir * 0.35, 0.75, 28.59, 0.4, 0.5, 0.02);
+      train.add(m, w);
+      tdoors.push({
+        ps: [
+          { m, x0: m.position.x },
+          { m: w, x0: w.position.x },
+        ],
+        dir,
+        w: 0.7,
+        c,
+      });
+    }
+  // ---- platform screen doors (south) ----
+  const psd: Leaf[] = [];
+  for (const c of DOORS)
+    for (const dir of [-1, 1]) {
+      const gl = bx(M.glass, c + dir * 0.5, 0, 28, 1.0, 2.4, 0.04);
+      const fr = bx(M.steel, c + dir * 0.03, 0, 28, 0.06, 2.4, 0.06);
+      const st = bx(M.orange, c + dir * 0.5, 1.1, 28.03, 1.0, 0.08, 0.02);
+      g.add(gl, fr, st);
+      psd.push({ ps: [gl, fr, st].map(m => ({ m, x0: m.position.x })), dir, w: 0.95, c });
+    }
+  // ---- gate paddles + LEDs + card readers ----
+  const paddles: Dyn['paddles'] = [];
+  for (let j = 0; j < CABS.length - 1; j++) {
+    const a = CABS[j] + 0.15,
+      e = CABS[j + 1] - 0.15,
+      L = (e - a) / 2 - 0.03;
+    for (const [hx, dir] of [
+      [a, 1],
+      [e, -1],
+    ] as const) {
+      const piv = new THREE.Group();
+      piv.position.set(hx, 0.35, 4);
+      const p = new THREE.Mesh(BOX, M.paddle);
+      p.scale.set(L, 0.55, 0.03);
+      p.position.set((dir * L) / 2, 0.275, 0);
+      piv.add(p);
+      g.add(piv);
+      paddles.push({ m: piv, dir, lane: j, cx: (CABS[j] + CABS[j + 1]) / 2, rot: 0 });
+    }
+  }
+  const leds: THREE.Mesh[] = [];
+  for (const x of CABS) {
+    for (const [z, ry] of [
+      [3.09, Math.PI],
+      [4.91, 0],
+    ] as const) {
+      const l = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 0.18), LED.off);
+      l.position.set(x, 0.75, z);
+      l.rotation.y = ry;
+      g.add(l);
+      leds.push(l);
+    }
+    for (const z of [3.4, 4.6]) {
+      const r = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.3), new THREE.MeshBasicMaterial({ map: cardTex() }));
+      r.rotation.x = -Math.PI / 2;
+      r.position.set(x, 1.03, z);
+      g.add(r);
+    }
+  }
+  // wide accessible gate marker (our own simple wheel pictogram on the floor)
+  {
+    const t = tex('acc', () =>
+      canvasTex(64, 64, c => {
+        c.fillStyle = '#1f5a3a';
+        c.fillRect(0, 0, 64, 64);
+        c.strokeStyle = '#fff';
+        c.lineWidth = 5;
+        c.beginPath();
+        c.arc(30, 40, 14, 0, 7);
+        c.stroke();
+        c.fillStyle = '#fff';
+        c.beginPath();
+        c.arc(30, 14, 6, 0, 7);
+        c.fill();
+        c.fillRect(27, 20, 6, 18);
+      }),
+    );
+    const f = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.9), new THREE.MeshBasicMaterial({ map: t }));
+    f.rotation.x = -Math.PI / 2;
+    f.position.set(-9.2, 0.02, 2.6);
+    g.add(f);
+  }
+  // ---- flood gates (down = closed while the power is out; sunk into the trackbed while trains run) ----
+  const flood: Dyn['flood'] = [];
+  const maint: Dyn['maint'] = [];
+  for (const sx of [-1, 1]) {
+    const fg = new THREE.Group();
+    fg.add(bx(M.flood, sx * 46.5, 0, 29.65, 0.4, 2.6, 6.3));
+    for (let k = 0; k < 3; k++) fg.add(bx(M.steel, sx * 46.5 - sx * 0.22, 0.4 + k * 0.8, 29.65, 0.04, 0.1, 6.3));
+    const hp = new THREE.Mesh(
+      new THREE.PlaneGeometry(4.2, 2.1),
+      new THREE.MeshBasicMaterial({ map: hazTex(), side: 2 }),
+    );
+    hp.position.set(sx * 46.5 - sx * 0.25, 1.3, 29.65);
+    hp.rotation.y = Math.PI / 2;
+    fg.add(hp);
+    g.add(fg);
+    flood.push({ m: fg, y0: 0 });
+    // maintenance gate leaf, hinged at z = 26.5
+    const mg = new THREE.Group();
+    mg.position.set(sx * 34, 0, 26.5);
+    const leaf = bx(M.steel, 0, 0.1, 0.75, 0.05, 1.0, 1.4);
+    const bar = bx(M.yellow, 0, 0.6, 0.75, 0.07, 0.08, 1.4);
+    const sg = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.3, 0.33),
+      new THREE.MeshBasicMaterial({ map: maintTex(), side: 2 }),
+    );
+    sg.position.set(-sx * 0.05, 0.85, 0.75);
+    sg.rotation.y = Math.PI / 2;
+    mg.add(leaf, bar, sg);
+    g.add(mg);
+    maint.push({ m: mg, sx });
+  }
+  // ---- live departure board ----
+  const cv = document.createElement('canvas');
+  cv.width = 512;
+  cv.height = 96;
+  const btex = new THREE.CanvasTexture(cv);
+  btex.colorSpace = THREE.SRGBColorSpace;
+  const D: Dyn = {
+    i,
+    train,
+    tdoors,
+    psd,
+    paddles,
+    leds,
+    flood,
+    maint,
+    board: { ctx: cv.getContext('2d')!, tex: btex, txt: '' },
+    tl,
+    phase: '',
+  };
+  DYN.push(D);
+  return D;
+}
+
+/** v22.2 deterministic day-1 timetable (same for every player: driven by the shared game clock).
+ * Cycle 12 game-min per station, offset 3 min per station: arrive (2), doors open (0.4), dwell, close (0.4),
+ * depart into the east tunnel (2), empty track. */
+export const SVC_CYCLE = 12;
+export type Svc = {
+  phase: 'in' | 'opening' | 'open' | 'closing' | 'out' | 'none';
+  x: number;
+  doors: number;
+  next: number;
+};
+export function svc(i: number, gm: number): Svc {
+  const p = (((gm + i * 3) % SVC_CYCLE) + SVC_CYCLE) % SVC_CYCLE;
+  if (p < 2) return { phase: 'in', x: -80 * (1 - p / 2) ** 2, doors: 0, next: 0 };
+  if (p < 2.4) return { phase: 'opening', x: 0, doors: (p - 2) / 0.4, next: 0 };
+  if (p < 6) return { phase: 'open', x: 0, doors: 1, next: 0 };
+  if (p < 6.4) return { phase: 'closing', x: 0, doors: 1 - (p - 6) / 0.4, next: 0 };
+  if (p < 8.4) return { phase: 'out', x: 80 * ((p - 6.4) / 2) ** 2, doors: 0, next: SVC_CYCLE - p };
+  return { phase: 'none', x: 999, doors: 0, next: SVC_CYCLE - p };
+}
+/** the next station along the line for the departure boards */
+export const nextStation = (i: number) => STATIONS[(i + 1) % STATIONS.length].name;
+
+let AC: AudioContext | null = null;
+export const metroStats = { chimes: 0, power: null as boolean | null };
+/** two-tone door chime (ours: a falling major third on open, falling fourth on close) */
+function chime(open: boolean) {
+  metroStats.chimes++;
+  try {
+    AC ||= new AudioContext();
+    if (AC.state === 'suspended') AC.resume();
+    const n = AC.currentTime;
+    (open ? [784, 622] : [698, 523]).forEach((f, k) => {
+      const o = AC!.createOscillator(),
+        gn = AC!.createGain(),
+        t0 = n + k * 0.32;
+      o.type = 'sine';
+      o.frequency.value = f;
+      gn.gain.setValueAtTime(0.0001, t0);
+      gn.gain.exponentialRampToValueAtTime(0.16, t0 + 0.02);
+      gn.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.6);
+      o.connect(gn).connect(AC!.destination);
+      o.start(t0);
+      o.stop(t0 + 0.7);
+    });
+  } catch {
+    /* audio unavailable */
+  }
+}
+
+function setPower(on: boolean) {
+  metroStats.power = on;
+  M.tlamp.color.set(on ? 0xfff1c8 : 0x34332e);
+  M.sigG.color.set(on ? 0x2aff6a : 0x123018);
+  M.sigR.color.set(on ? 0x5a1410 : 0x5a1410);
+  M.lamp.color.set(on ? 0xfff1c8 : 0x3a3a34);
+}
+function applySegs(st: SegState, on: boolean) {
+  if (!DEPS || st.on === on) return;
+  const { addSeg, removeSeg } = DEPS;
+  if (on) {
+    if (st.on === false) st.jam.forEach(removeSeg);
+    st.maint.forEach(s => addSeg(s, true));
+    addSeg(st.gap, true);
+  } else {
+    if (st.on === true) (st.maint.forEach(removeSeg), removeSeg(st.gap));
+    st.jam.forEach(s => addSeg(s, true));
+  }
+  st.on = on;
+}
+function drawBoard(D: Dyn, txt: string, l2: string, warn: boolean) {
+  if (D.board.txt === txt + l2) return;
+  D.board.txt = txt + l2;
+  const c = D.board.ctx;
+  c.fillStyle = '#0a0a0a';
+  c.fillRect(0, 0, 512, 96);
+  c.font = '600 34px monospace';
+  c.textBaseline = 'middle';
+  c.fillStyle = warn ? '#e44' : '#ff8a2a';
+  c.fillText(txt, 16, 30);
+  c.fillStyle = warn ? '#e44' : '#7fdc8a';
+  c.font = '600 26px monospace';
+  c.fillText(l2, 16, 72);
+  D.board.tex.needsUpdate = true;
+}
+
+/** per-frame: emergency-light flicker (power out), gates, screen doors, the day-1 trains and the boards */
+export function metroTick(t: number, gm = 0, power = false, px = 0, pz = 0) {
   for (const L of lights) {
     const f = Math.sin(t * 13 + L.ph) * Math.sin(t * 3.1 + L.ph * 2);
-    L.l.intensity = L.base * (f > 0.93 ? 0.15 : 0.85 + 0.15 * Math.sin(t * 40 + L.ph));
+    L.l.intensity = power ? L.base * 1.3 : L.base * (f > 0.93 ? 0.15 : 0.85 + 0.15 * Math.sin(t * 40 + L.ph));
+  }
+  if (metroStats.power !== power) setPower(power);
+  SEGS.forEach(s => applySegs(s, power));
+  for (const D of DYN) {
+    const [OX, OZ] = OXZ(D.i);
+    const lx = px - OX,
+      lz = pz - OZ;
+    const here = Math.abs(lx) < 60 && lz > -12 && lz < 40;
+    const v: Svc = power ? svc(D.i, gm) : { phase: 'open', x: 0, doors: 1, next: 0 };
+    D.train.visible = v.phase !== 'none';
+    D.train.position.x = v.x;
+    D.tl.forEach(l => (l.intensity = power && D.train.visible ? 7 : 0));
+    // doors: in service all pairs move together; parked (power out) only the middle pair is jammed open
+    const op = (c: number) => (power ? v.doors : c === 0 ? 1 : 0);
+    for (const lf of [...D.tdoors, ...D.psd]) for (const p of lf.ps) p.m.position.x = p.x0 + lf.dir * lf.w * op(lf.c);
+    if (power && here && D.phase && D.phase !== v.phase) {
+      const op0 = D.phase === 'opening' || D.phase === 'open',
+        op1 = v.phase === 'opening' || v.phase === 'open';
+      if (op0 !== op1) chime(op1);
+    }
+    D.phase = v.phase;
+    // gates: powered → paddles swing open for whoever walks up; dead → middle lanes jammed shut
+    for (const p of D.paddles) {
+      const jam = p.lane >= 3 && p.lane <= 8;
+      const want = power ? Math.abs(lx - p.cx) < 0.9 && Math.abs(lz - 4) < 1.6 : !jam;
+      p.rot += ((want ? -p.dir * 1.45 : 0) - p.rot) * 0.2;
+      p.m.rotation.y = p.rot;
+    }
+    D.leds.forEach((l, k) => {
+      const lane = Math.floor(k / 2);
+      l.material = power ? LED.go : lane >= 3 && lane <= 8 && k % 2 === 0 ? LED.x : LED.off;
+    });
+    for (const f of D.flood) f.m.position.y = power ? -3.4 : 0;
+    for (const m of D.maint) m.m.rotation.y = power ? 0 : m.sx * 1.2;
+    const nx = nextStation(D.i);
+    if (!power) drawBoard(D, '往 －－　－－:－－', '全線停駛　請勿進入軌道', true);
+    else if (v.phase === 'in') drawBoard(D, `往 ${nx}　列車進站`, '請退至黃線後方', false);
+    else if (v.phase === 'opening' || v.phase === 'open') drawBoard(D, `往 ${nx}　請上車`, `${LINE}　按 E 搭乘`, false);
+    else if (v.phase === 'closing') drawBoard(D, `往 ${nx}　車門關閉`, '請勿強行上下車', false);
+    else drawBoard(D, `往 ${nx}　${Math.max(1, Math.ceil(v.next - 0.01))} 分`, `下一班列車　${LINE}`, false);
   }
 }
