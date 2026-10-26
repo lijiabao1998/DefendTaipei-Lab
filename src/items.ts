@@ -386,10 +386,17 @@ export const ITEMS: Record<string, ItemDef> = {
   hammer: { name: '鐵鎚', w: 0.8, kind: 'tool' },
   radio: { name: '手搖收音機', w: 0.5, kind: 'tool', desc: '可向地下電台「自由之聲」查證情報（消耗）' },
   bucket: { name: '水桶', w: 1.0, kind: 'tool', desc: '在戶外「使用」放下，下雨時會接雨水（停水後的救命水源）' },
+  cig: { name: '長壽菸（一包）', w: 0.05, kind: 'tool', desc: '戰時最通行的貨幣' },
+  battery: { name: '3 號電池', w: 0.05, kind: 'tool', desc: '收音機、手電筒都要，換東西很好用' },
+  scrap: { name: '廢五金', w: 0.8, kind: 'tool', desc: '螺絲、鐵條、白鐵管，蓋東西用' },
+  cloth: { name: '舊棉被布', w: 0.5, kind: 'tool' },
+  seeds: { name: '地瓜葉扦插苗', w: 0.1, kind: 'tool' },
+  veg: { name: '地瓜葉', w: 0.2, kind: 'food', hunger: 10 },
   rainwater: { name: '雨水（寶特瓶裝）', w: 0.6, kind: 'drink', thirst: 30, desc: '接來的雨水，沒煮過，但總比沒有好' },
 };
 export const LOOT: Record<string, [string, number, number][]> = {
   store: [
+    ['cig', 2, 2],
     ['noodle', 5, 3],
     ['rice', 4, 3],
     ['water', 6, 3],
@@ -402,6 +409,7 @@ export const LOOT: Record<string, [string, number, number][]> = {
     ['snack', 3, 2],
   ],
   pharmacy: [
+    ['cig', 1, 1],
     ['bandage', 6, 3],
     ['medkit', 2, 1],
     ['pill', 5, 3],
@@ -409,6 +417,10 @@ export const LOOT: Record<string, [string, number, number][]> = {
     ['tissue', 2, 1],
   ],
   home: [
+    ['cig', 2, 2],
+    ['battery', 2, 3],
+    ['cloth', 2, 1],
+    ['seeds', 1, 1],
     ['tmap', 1, 1],
     ['hose', 1, 1],
     ['can', 3, 2],
@@ -506,6 +518,8 @@ export const LOOT: Record<string, [string, number, number][]> = {
   ],
   tapw: [['water', 1, 1]],
   hardware: [
+    ['scrap', 4, 2],
+    ['battery', 2, 3],
     ['hose', 3, 1],
     ['patch', 3, 2],
     ['carbat', 1, 1],

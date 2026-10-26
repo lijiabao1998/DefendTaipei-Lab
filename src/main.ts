@@ -49,6 +49,8 @@ import {
 } from './textures';
 import { plaDrop } from './pla-loot';
 import { joy, initJoystick } from './joystick';
+import { buildMetro, type Station } from './metro';
+import * as SV from './survival';
 import { VehicleSystem, VehicleKind } from './vehicles';
 import { furnish, nightMarket, setPower } from './interiors';
 import { buildDecay } from './decay';
@@ -341,7 +343,7 @@ function initPortraitButtons() {
   menu.id = 'pmenu';
   menu.className = 'hidden';
   menu.innerHTML =
-    '<b>⏸ 已暫停</b><button data-a="go">繼續</button><button data-a="map">地圖</button><button data-a="save">存檔</button>';
+    '<b>⏸ 已暫停</b><button data-a="go">繼續</button><button data-a="map">地圖</button><button data-a="surv">避難所</button><button data-a="save">存檔</button>';
   const close = () => {
     menu.classList.add('hidden');
     paused = false;
@@ -353,7 +355,10 @@ function initPortraitButtons() {
     b =>
       ((b as HTMLElement).onclick = () => {
         const a = (b as HTMLElement).dataset.a;
-        if (a === 'map') {
+        if (a === 'surv') {
+          close();
+          openSurv('home');
+        } else if (a === 'map') {
           close();
           gmap?.toggle();
         } else if (a === 'save') {
@@ -901,7 +906,7 @@ function rocCineStep(dt: number) {
     const d = document.createElement('div');
     d.id = 'evacend';
     d.className = 'win';
-    d.innerHTML = `<h1>奪回萬華</h1><h2>結局：國軍與萬華的街坊並肩，把佔領軍趕出了艋舺。</h2><table><tr><td>存活天數</td><td>${day} 天</td></tr><tr><td>奪回街區</td><td>${liberated.size} / ${NSEC}</td></tr><tr><td>擊倒佔領軍</td><td>${player.kills}</td></tr><tr><td>擊毀裝甲</td><td>${armor ? armor.list.filter(a => a.dead).length : 0}</td></tr></table><p>另有兩種結局：搭直升機或小艇撤離至福特號航空母艦。</p><button onclick="location.reload()">再玩一次</button>`;
+    d.innerHTML = `<h1>奪回萬華</h1><h2>結局：國軍與萬華的街坊並肩，把佔領軍趕出了艋舺。</h2><p class="survend">${SV.endingText(surv)}</p><table><tr><td>存活天數</td><td>${day} 天</td></tr><tr><td>奪回街區</td><td>${liberated.size} / ${NSEC}</td></tr><tr><td>擊倒佔領軍</td><td>${player.kills}</td></tr><tr><td>擊毀裝甲</td><td>${armor ? armor.list.filter(a => a.dead).length : 0}</td></tr></table><p>另有兩種結局：搭直升機或小艇撤離至福特號航空母艦。</p><button onclick="location.reload()">再玩一次</button>`;
     document.body.appendChild(d);
   }
 }
@@ -2672,7 +2677,12 @@ const isNight = () => {
 let DAYH = 1;
 const MPS = () => 1440 / (DAYH * 3600); // game minutes per real second
 let speed = 1;
-let paused = false; // v21.5.1 menu pause (local only)
+let metro: Station[] = [];
+let paused = false;
+// v22 survival layer state (saved; day events seeded by day number)
+let surv: SV.SurvState = SV.newSurv();
+let survOpen = false;
+let survDay = -1; // v21.5.1 menu pause (local only)
 const SPEEDS = [1, 3, 20];
 function dangerNear() {
   return sols.some(
@@ -2792,6 +2802,7 @@ addEventListener('keydown', e => {
   }
   if (e.code === 'KeyQ') shove();
   if (e.code === 'KeyG') toggleCover();
+  if (e.code === 'KeyH' && started) survOpen ? closeSurv() : openSurv('home');
   if (e.code === 'Escape') closePanel();
 });
 addEventListener('keyup', e => (keys[e.code] = false));
@@ -3027,8 +3038,173 @@ function nearestDoor() {
   }
   return best;
 }
+let pendingCont: Cont | null = null;
+function atHome() {
+  const h = surv.home;
+  return !!h && Math.hypot(player.pos.x - h[0], player.pos.z - h[1]) < 4;
+}
+function tradeAt() {
+  return SV.TRADE_SPOTS.find(t => Math.hypot(player.pos.x - t.x, player.pos.z - t.z) < 4) || null;
+}
+function closeSurv() {
+  survOpen = false;
+  document.getElementById('surv')?.remove();
+}
+const iname = (k: string) => ITEMS[k]?.name || k;
+const costTxt = (c: Record<string, number>) =>
+  Object.entries(c)
+    .map(([k, n]) => `${iname(k)}×${n}`)
+    .join('、');
+/** v22 overlay: home shelter / barter stall / moral choice */
+function openSurv(kind: 'home' | 'trade' | 'moral') {
+  closeSurv();
+  survOpen = true;
+  const d = document.createElement('div');
+  d.id = 'surv';
+  const S = surv;
+  const btn = (a: string, t: string, dis = false) => `<button data-a="${a}"${dis ? ' disabled' : ''}>${t}</button>`;
+  const render = () => {
+    let h = '';
+    if (kind === 'home') {
+      const here = atHome();
+      h += `<h3>🏠 避難所・第 ${S.day} 天 ${SV.isNight(gameMin) ? '🌙 夜晚（出去搜刮）' : '☀ 白天（巡邏多，留在家）'}</h3>`;
+      h += `<p>${S.ev || ''}　平均心情 ${SV.avgMood(S)}　物資緊縮 ×${S.scarcity.toFixed(2)}　良心 ${S.karma}</p><table>`;
+      for (const g of S.group)
+        h += `<tr class="${g.dead ? 'dead' : g.here ? '' : 'away'}"><td><b>${g.name}</b><br><small>${g.role}</small></td><td>${
+          g.dead
+            ? '💀 已過世'
+            : g.here
+              ? `飽 ${Math.round(g.hunger)}｜病 ${Math.round(g.sick)}｜傷 ${Math.round(g.hurt)}｜心情 ${Math.round(g.mood)}`
+              : '還沒來'
+        }</td></tr>`;
+      h += `</table><p>存糧：${
+        Object.entries(S.stash)
+          .filter(([, n]) => n > 0)
+          .map(([k, n]) => `${iname(k)}×${n}`)
+          .join('、') || '空的'
+      }</p>`;
+      h += '<div class="row">';
+      for (const [k, u] of Object.entries(SV.UPG)) {
+        const has = S.upg[k as SV.Upg];
+        const ok = Object.entries(u.cost).every(([i, n]) => (player.inv[i] || 0) >= n);
+        h += btn(
+          'u:' + k,
+          has ? `✔ ${u.name}` : `${u.name}<small>${costTxt(u.cost)}｜${u.desc}</small>`,
+          !!has || !ok || !here,
+        );
+      }
+      h += '</div><div class="row">';
+      h +=
+        btn('dep', '把食物／水／藥放進存糧', !here) + btn('pray', '🙏 神明廳拜拜', !here) + btn('x', '關閉') + '</div>';
+      if (!here) h += '<p><em>回到家（出生點）才能建造和存放。</em></p>';
+      h += `<ul>${S.log
+        .slice(0, 6)
+        .map(t => `<li>${t}</li>`)
+        .join('')}</ul>`;
+    } else if (kind === 'trade') {
+      const t = tradeAt();
+      h += `<h3>🤝 ${t ? t.name : '以物易物'}</h3><p>你有 長壽菸×${player.inv.cig || 0}。今天的行情（物資緊縮 ×${S.scarcity.toFixed(2)}）：</p><div class="row">`;
+      for (const k of Object.keys(SV.VAL)) {
+        if (k === 'cig') continue;
+        const pz = SV.price(S, k);
+        h += btn('b:' + k, `買 ${iname(k)}<small>${pz} 包菸</small>`, (player.inv.cig || 0) < pz);
+        if ((player.inv[k] || 0) > 0) h += btn('s:' + k, `賣 ${iname(k)}<small>得 ${Math.max(1, pz - 1)} 包菸</small>`);
+      }
+      h += '</div>' + btn('x', '離開');
+    } else {
+      h +=
+        '<h3>🚪 這戶還有人住</h3><p>門縫裡，一位獨居的阿公縮在床邊，櫃子裡是他的藥和最後一點米。</p><div class="row">';
+      h +=
+        btn('take', '還是拿走（大家心情 −，良心 −）') +
+        btn('give', '留一包米給他（良心 +）', !(player.inv.rice > 0)) +
+        btn('leave', '輕輕把門帶上') +
+        '</div>';
+    }
+    d.innerHTML = h;
+  };
+  d.onclick = e => {
+    const b = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
+    if (!b || b.disabled) return;
+    const a = b.dataset.a!;
+    if (a === 'x') return closeSurv();
+    if (a.startsWith('u:')) {
+      const k = a.slice(2) as SV.Upg;
+      for (const [i, n] of Object.entries(SV.UPG[k].cost)) player.inv[i] -= n;
+      S.upg[k] = 1;
+      log(`🔨 避難所：${SV.UPG[k].name} 完成`, '#9f9');
+    } else if (a === 'dep') {
+      for (const k of Object.keys(player.inv)) {
+        const it = ITEMS[k];
+        if (it && (it.kind === 'food' || it.kind === 'drink' || it.kind === 'med') && player.inv[k] > 0) {
+          S.stash[k] = (S.stash[k] || 0) + player.inv[k];
+          delete player.inv[k];
+        }
+      }
+      log('物資放進了存糧。', '#9f9');
+    } else if (a === 'pray') log(SV.pray(S), '#fd9');
+    else if (a.startsWith('b:')) {
+      const k = a.slice(2);
+      player.inv.cig -= SV.price(S, k);
+      addItem(k, 1);
+    } else if (a.startsWith('s:')) {
+      const k = a.slice(2);
+      player.inv[k]--;
+      if (player.inv[k] <= 0) delete player.inv[k];
+      addItem('cig', Math.max(1, SV.price(S, k) - 1));
+    } else if (a === 'take' || a === 'give' || a === 'leave') {
+      const c = pendingCont!;
+      pendingCont = null;
+      closeSurv();
+      if (a === 'take') {
+        S.karma--;
+        S.stole++;
+        S.group.forEach(g => (g.mood = Math.max(0, g.mood - 8)));
+        log('你拿走了阿公的東西。回家的路上，誰都沒說話。', '#e99');
+        (c as any).seen = 1;
+        interact();
+      } else if (a === 'give') {
+        player.inv.rice--;
+        S.karma += 2;
+        S.gave++;
+        S.group.forEach(g => (g.mood = Math.min(100, g.mood + 5)));
+        log('你留下一包米。阿公合掌說了聲多謝。', '#9f9');
+      } else {
+        S.karma++;
+        log('你輕輕把門帶上。', '#ccc');
+      }
+      return;
+    }
+    render();
+  };
+  render();
+  document.body.appendChild(d);
+}
+/** v21.6 the metro entrance / exit the player stands at, if any */
+function metroAt() {
+  for (const st of metro) {
+    if (Math.hypot(player.pos.x - st.ent[0], player.pos.z - st.ent[1]) < 1.6) return { st, down: true };
+    if (Math.hypot(player.pos.x - st.exit[0], player.pos.z - st.exit[1]) < 2.2) return { st, down: false };
+  }
+  return null;
+}
+function metroUse() {
+  const m = metroAt();
+  if (!m) return false;
+  const [x, z] = m.down ? m.st.inn : m.st.out;
+  player.pos.set(x, 0, z);
+  player.vel.set(0, 0, 0);
+  log(m.down ? `🚇 進入北都地下鐵 ${m.st.name}站（停駛中）` : `回到地面：${m.st.name}站出口`, '#fc8');
+  return true;
+}
 function interact() {
   if (npcInteract()) return;
+  if (metroUse()) return;
+  if (survOpen) return closeSurv();
+  {
+    const t = tradeAt();
+    if (t && !nearestCont()) return openSurv('trade');
+  }
+  if (atHome() && !nearestCont() && !drive.nearest(player.pos)) return openSurv('home');
   if (drive.cur) {
     const v = drive.cur;
     const o = drive.exit()!;
@@ -3092,6 +3268,23 @@ function interact() {
       (c as any).tapT = gameMin + 90;
       c.items.water = (c.items.water || 0) + 1;
       log('接了一瓶自來水。', '#9cf');
+    }
+  }
+  if (c && !(c as any).seen) {
+    const id = c.id;
+    let hsh = 0;
+    for (let i = 0; i < id.length; i++) hsh = (hsh * 31 + id.charCodeAt(i)) | 0;
+    // v22 moral choice: some homes still have an old person living in them
+    if (c.label === '櫥櫃' && Math.abs(hsh) % 5 === 0 && !(c as any).asked) {
+      (c as any).asked = 1;
+      pendingCont = c;
+      return openSurv('moral');
+    }
+    (c as any).seen = 1;
+    if (SV.isNight(gameMin) && Math.abs(hsh) % 3 === 0) {
+      const k = ['cig', 'battery', 'can', 'rice', 'pill'][Math.abs(hsh) % 5];
+      c.items[k] = (c.items[k] || 0) + 1;
+      log('🌙 夜裡摸黑翻找，多找到一些東西。', '#adf');
     }
   }
   if (c) {
@@ -3500,6 +3693,7 @@ function save() {
     SAVE,
     JSON.stringify({
       r: ROLE.id,
+      surv,
       g: player.gender,
       p: [player.pos.x, player.pos.z],
       hp: player.hp,
@@ -3559,6 +3753,19 @@ function update(dt: number) {
   const gm = (dt * tscale * MPS()) / 60; // game hours
   updateWeather(dt, gm);
   updateStory(gm);
+  {
+    // v22: every 06:00 the shelter's day is resolved
+    const dn = Math.floor((gameMin - 360) / 1440);
+    if (survDay < 0) survDay = dn;
+    else if (dn > survDay) {
+      survDay = dn;
+      const out = SV.dayTick(surv, WX.amt > 0.2, {
+        power: on => (UT.power = on),
+        water: on => (UT.water = on),
+      });
+      out.forEach(t => log(t, '#fd9'));
+    }
+  }
   player.hunger -= gm * 2.2;
   player.thirst -= gm * 3.2;
   player.fatigue += player.sleeping ? -gm * 14 : gm * 2.6;
@@ -4128,6 +4335,16 @@ function drawHud(inside: Bld | null) {
   if (np && !panelOpen) {
     pr.style.display = 'block';
     pr.textContent = np;
+  } else if (!panelOpen && !survOpen && tradeAt() && !c) {
+    pr.style.display = 'block';
+    pr.textContent = `[E] ${tradeAt()!.name}`;
+  } else if (!panelOpen && !survOpen && atHome() && !c) {
+    pr.style.display = 'block';
+    pr.textContent = '[E] 避難所（升級／存糧／拜拜）';
+  } else if (metroAt() && !panelOpen) {
+    const m = metroAt()!;
+    pr.style.display = 'block';
+    pr.textContent = m.down ? `[E] 進站：北都地下鐵 ${m.st.name}站` : `[E] 出站回地面（${m.st.name}）`;
   } else if (c && !panelOpen) {
     pr.style.display = 'block';
     pr.textContent = `[E] 搜刮 ${c.label}${Object.keys(c.items).length ? '' : '（空）'}`;
@@ -4280,7 +4497,7 @@ function endPrologue() {
 const PRO_NEWS: [number, string, string][] = [
   [3, '📱 早安推播', '今日台北：多雲 26°C，午後局部陣雨。'],
   [12, '📱 新聞快訊', '國防部：共軍於台海周邊實施「聯合演習」，政府呼籲民眾照常上班上課。'],
-  [24, '📱 交通', '捷運板南線正常營運；西門町周邊道路車多請改道。'],
+  [24, '📱 交通', '北都地下鐵正常營運；西門町周邊道路車多請改道。'],
   [38, '📱 新聞快訊', '多處網站遭受大規模網路攻擊，部分銀行 App 暫停服務。'],
 ];
 function updatePrologue(dt: number) {
@@ -4609,6 +4826,26 @@ async function boot() {
       evac: () => (evac ? (evac.pos as V2) : null),
       home: () => start!.c as V2,
     });
+    // v21.6 北都地下鐵 stations (interior only; walk into an entrance to go down)
+    {
+      let sd = 2166;
+      const r = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+      metro = buildMetro({
+        scene,
+        addSeg,
+        snap: (x, z) => {
+          for (let rad = 0; rad < 120; rad += 3)
+            for (let a = 0; a < 6.28; a += 0.4) {
+              const px = x + Math.cos(a) * rad,
+                pz = z + Math.sin(a) * rad;
+              const rd = roadDist(px, pz);
+              if (rd > 3 && rd < 7 && !bldAt(px, pz) && !bldAt(px, pz + 2) && !bldAt(px, pz - 4)) return [px, pz];
+            }
+          return [x, z];
+        },
+      });
+      for (const st of metro) for (const l of st.loot) makeCont(l.id, l.p, l.type, undefined, rollLoot(l.type, r));
+    }
     if (player.inv.rocradio) mapIntelOutposts('解放軍哨點（國軍情資）');
     if (MOBILE) {
       const mb = document.createElement('button');
@@ -4744,6 +4981,7 @@ async function boot() {
       if (sv.ex) UT.ev.ex = 1;
       if (sv.inf) INF = sv.inf;
       if (sv.ut) Object.assign(UT, sv.ut);
+      if (sv.surv) surv = sv.surv;
       const map = new Map<string, any>(sv.conts.map((c: any) => [c[0], c]));
       for (const c of conts) {
         const s = map.get(c.id);
@@ -4766,6 +5004,7 @@ async function boot() {
     if (MP) startNet();
     $('title').style.display = 'none';
     started = true;
+    if (!surv.home) surv.home = [player.pos.x, player.pos.z];
     document.body.classList.add('ingame');
     document.getElementById('startbar')?.remove();
     {
@@ -4976,6 +5215,12 @@ async function boot() {
     roadDist,
     shotRay,
     sandbags,
+    metro: () => metro,
+    metroUse,
+    surv: () => surv,
+    SV,
+    openSurv,
+    closeSurv,
     MB,
     addSeg,
     removeSeg,
