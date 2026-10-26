@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { GLYPHS, GMAT, atlas } from './roadglyphs';
 import { PAVE, worldUV } from './paving';
+import { Forest } from './trees';
 type Seg = [number, number, number, number, number, string, number, string, number?, number?];
 type Node = [number, number, number, [number, number, number][], number?];
 type TileData = { tx: number; tz: number; seed: number; segs: Seg[]; nodes: Node[]; clip?: [number, number, number][] };
@@ -32,7 +33,35 @@ export type RoadDeps = {
   bldAt: (x: number, z: number) => any;
   power: () => boolean;
   war: () => boolean;
+  addSeg?: (s: { a: [number, number]; b: [number, number]; h?: number }) => void;
+  removeSeg?: (s: any) => void;
 };
+// v21.4 raised-walk height lookup (2 m cells) so feet stand on the 15 cm sidewalks, per-tile ownership for unload
+type WR = { x: number; z: number; c: number; s: number; hl: number; hw: number; h: number; k: string };
+const WALK = new Map<string, WR[]>();
+const WOWN = new Map<string, Set<string>>();
+const TSEG = new Map<string, any[]>();
+function addWalk(r: WR) {
+  const e = Math.hypot(r.hl, r.hw),
+    own = WOWN.get(r.k) || WOWN.set(r.k, new Set()).get(r.k)!;
+  for (let i = Math.floor((r.x - e) / 2); i <= Math.floor((r.x + e) / 2); i++)
+    for (let j = Math.floor((r.z - e) / 2); j <= Math.floor((r.z + e) / 2); j++) {
+      const ck = i + ',' + j;
+      (WALK.get(ck) || WALK.set(ck, []).get(ck)!).push(r);
+      own.add(ck);
+    }
+}
+/** height of the paved walk under (x, z), 0 on the road / ground */
+export function walkH(x: number, z: number) {
+  const a = WALK.get(Math.floor(x / 2) + ',' + Math.floor(z / 2));
+  if (!a) return 0;
+  for (const r of a) {
+    const dx = x - r.x,
+      dz = z - r.z;
+    if (Math.abs(dx * r.c + dz * r.s) < r.hl && Math.abs(-dx * r.s + dz * r.c) < r.hw) return r.h;
+  }
+  return 0;
+}
 const M = (c: number, o: Partial<THREE.MeshStandardMaterialParameters> = {}) =>
   new THREE.MeshStandardMaterial({
     color: c,
@@ -231,6 +260,14 @@ export class RoadTiles {
     this.loading.delete(k);
     if (!t) return;
     this.d.scene.remove(t.g);
+    for (const ck of WOWN.get(k) || []) {
+      const a = WALK.get(ck)?.filter(r => r.k !== k);
+      if (a?.length) WALK.set(ck, a);
+      else WALK.delete(ck);
+    }
+    WOWN.delete(k);
+    for (const sg of TSEG.get(k) || []) this.d.removeSeg?.(sg);
+    TSEG.delete(k);
     t.g.traverse(o => {
       const m = o as THREE.Mesh;
       if (m.isMesh && !(m.geometry as any).shared) m.geometry.dispose();
@@ -245,6 +282,7 @@ export class RoadTiles {
     const war = this.d.war();
     const G: Record<string, THREE.BufferGeometry[]> = {};
     const put = (m: string, g: THREE.BufferGeometry) => (G[m] ||= []).push(g);
+    const forest = new Forest();
     const quad = (m: string, x: number, z: number, ang: number, l: number, w: number, y = 0.045) => {
       const g = new THREE.PlaneGeometry(l, w);
       g.rotateX(-Math.PI / 2);
@@ -325,20 +363,21 @@ export class RoadTiles {
         for (const [a0, b0] of spans) {
           const l = b0 - a0;
           const [cx, cz] = at((a0 + b0) / 2, sgn * (w / 2 + 0.09));
-          if (!bldAt(cx, cz))
-            put(
-              paint === 'R' ? 'curbR' : paint === 'Y' ? 'curbY' : 'curbG',
-              worldUV(
-                (() => {
-                  const g = new THREE.BoxGeometry(l, 0.18, 0.18);
-                  g.rotateY(-ang);
-                  g.translate(cx, 0.09, cz);
-                  return g;
-                })(),
-                2,
-                ang,
-              ),
-            );
+          if (!bldAt(cx, cz)) {
+            // v21.4 lowered curb (斜坡 ramp) for 1.2 m where the walk meets a crossing
+            const rA = a0 > 0.5 && l > 4 ? 1.2 : 0,
+              rB = b0 < L - 0.5 && l > 4 ? 1.2 : 0;
+            const cb = (t0: number, t1: number, h: number, m: string) => {
+              const [qx, qz] = at((t0 + t1) / 2, sgn * (w / 2 + 0.09));
+              const g = new THREE.BoxGeometry(t1 - t0, h, 0.18);
+              g.rotateY(-ang);
+              g.translate(qx, h / 2, qz);
+              put(m, worldUV(g, 2, ang));
+            };
+            cb(a0 + rA, b0 - rB, 0.18, paint === 'R' ? 'curbR' : paint === 'Y' ? 'curbY' : 'curbG');
+            if (rA) cb(a0, a0 + rA, 0.04, 'curbG');
+            if (rB) cb(b0 - rB, b0, 0.04, 'curbG');
+          }
           const n = Math.max(1, Math.ceil(l / 4)),
             pl = l / n;
           for (let k = 0; k < n; k++) {
@@ -356,6 +395,16 @@ export class RoadTiles {
             g.rotateY(-ang);
             g.translate(wx, 0.075, wz);
             put('walk', worldUV(g, 2, ang));
+            addWalk({
+              x: wx,
+              z: wz,
+              c: Math.cos(ang),
+              s: Math.sin(ang),
+              hl: (pl + 0.02) / 2,
+              hw: ws / 2 + 0.1,
+              h: 0.15,
+              k: key,
+            });
             const first = k === 0 && a0 > 0.5,
               last = k === n - 1 && b0 < L - 0.5;
             // yellow 導盲 warning strip where the walk meets the crossing
@@ -386,15 +435,16 @@ export class RoadTiles {
               pg.rotateY(-ang);
               pg.translate(px, 0.153, pz);
               put('pit', pg);
-              const tr = new THREE.CylinderGeometry(0.1, 0.14, 2.8, 6);
-              tr.translate(px, 1.55, pz);
-              put('wood', tr);
-              const cr = new THREE.IcosahedronGeometry(1.3 + pr() * 0.5, 0);
-              cr.scale(1, 0.8, 1);
-              cr.translate(px, 3.6, pz);
-              if (!cr.attributes.uv)
-                cr.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(cr.attributes.position.count * 2), 2));
-              put('leaf', cr);
+              const tr = forest.street(px, pz, pr, -ang);
+              if (this.d.addSeg && tr > 0)
+                for (const [qa, qb] of [
+                  [tr, 0],
+                  [0, tr],
+                ]) {
+                  const sg = { a: [px - qa, pz - qb] as [number, number], b: [px + qa, pz + qb] as [number, number] };
+                  this.d.addSeg(sg);
+                  (TSEG.get(key) || TSEG.set(key, []).get(key)!).push(sg);
+                }
             }
           }
         }
@@ -689,6 +739,7 @@ export class RoadTiles {
       tile.g.add(me);
       gs.forEach(g => g.dispose());
     }
+    forest.build(tile.g);
     tile.g.name = 'tile ' + key;
     this.d.scene.add(tile.g);
     this.stats.built++;

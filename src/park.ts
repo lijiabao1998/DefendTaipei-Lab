@@ -1,5 +1,6 @@
 // Round 7: turn big empty lots into 鄰里公園 or 停車場 (instead of bare concrete with stray pillars).
 import * as THREE from 'three';
+import { Forest } from './trees';
 type V2 = [number, number];
 export type PCtx = {
   scene: THREE.Scene;
@@ -29,6 +30,7 @@ const B = (x: number, y: number, z: number, tx = 0, ty = 0, tz = 0) =>
 const Cy = (r: number, h: number, ty = 0, seg = 8) => new THREE.CylinderGeometry(r, r, h, seg).translate(0, ty, 0);
 export function buildParks(c: PCtx) {
   const rnd = prng(7777);
+  const forest = new Forest();
   const S = 3;
   const cells = new Map<string, V2>();
   const key = (i: number, j: number) => i + ',' + j;
@@ -136,13 +138,16 @@ export function buildParks(c: PCtx) {
             va(B(0.4, 0.04, 0.2, 0.9, 0.45, 0), 0xe8e8e0);
             V.slice(-7).forEach(v => v.g.translate(x, 0, z));
           } else if (r < 0.35) {
-            va(Cy(0.15, 2.4, 1.2, 6).translate(x, 0, z), 0x5a4030);
-            va(
-              new THREE.SphereGeometry(1.4 + rnd() * 0.6, 8, 6).scale(1, 0.8, 1).translate(x, 3.0, z),
-              [0x2f6a2a, 0x3a7a30, 0x285a24][Math.floor(rnd() * 3)],
-            );
-            c.addSeg({ a: [x - 0.2, z], b: [x + 0.2, z] });
-          } else if (r < 0.5) {
+            // v21.4 real Taipei park species (榕樹 / 樟樹 / 大王椰子 …) + undergrowth
+            const t = forest.park(x + (rnd() - 0.5), z + (rnd() - 0.5), rnd);
+            if (rnd() < 0.5) forest.add('shrub', x + 1, z - 0.8, rnd() * 6, 0.7 + rnd() * 0.5);
+            const tr = Math.max(0.2, t.r);
+            c.addSeg({ a: [x - tr, z], b: [x + tr, z] });
+            c.addSeg({ a: [x, z - tr], b: [x, z + tr] });
+          } else if (r < 0.42) {
+            forest.add('shrub', x, z, rnd() * 6, 0.8 + rnd() * 0.6);
+            if (rnd() < 0.3) forest.add('plamp', x + 1.2, z + 1.2, 0);
+          } else if (r < 0.55) {
             const ry = rnd() < 0.5 ? 0 : Math.PI / 2;
             const g = [
               B(1.6, 0.06, 0.45, 0, 0.45, 0),
@@ -228,5 +233,6 @@ export function buildParks(c: PCtx) {
     me.receiveShadow = true;
     c.scene.add(me);
   }
+  forest.build(c.scene);
   return { parks, lots, clusters: clusters.map(cl => [cx + cl[0][0] * S, cz + cl[0][1] * S]) };
 }

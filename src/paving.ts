@@ -5,6 +5,7 @@
 // buildings, cast-iron manholes and tree pits. All textures are canvas-generated once and shared; geometry uses
 // world-planar UVs so tiles line up across meshes and streamed tiles.
 import * as THREE from 'three';
+import { shrink } from './texq';
 
 const cv = (w: number, h: number, draw: (c: CanvasRenderingContext2D, r: () => number) => void, seed = 7) => {
   const el = document.createElement('canvas');
@@ -13,7 +14,7 @@ const cv = (w: number, h: number, draw: (c: CanvasRenderingContext2D, r: () => n
   let s = seed;
   const r = () => (s = (s * 16807) % 2147483647) / 2147483647;
   draw(el.getContext('2d')!, r);
-  const t = new THREE.CanvasTexture(el);
+  const t = new THREE.CanvasTexture(shrink(el)); // v21.4 half-res on mobile
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4;

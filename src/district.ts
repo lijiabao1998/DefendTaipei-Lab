@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { canvasTex, roadMat } from './textures';
 import { lotTex } from './paving';
+import { Forest } from './trees';
 import { placeRooftop, dressRoof, pickRoofMat, roofClass } from './rooftin';
 import { VehicleSystem, type VehicleKind } from './vehicles';
 
@@ -246,17 +247,8 @@ function lampGeo(): THREE.BufferGeometry {
   parts.push(head);
   return mergeGeometries(parts.map(g => g.toNonIndexed()));
 }
-function treeGeo() {
-  const t = new THREE.CylinderGeometry(0.12, 0.18, 2.6, 6);
-  t.translate(0, 1.3, 0);
-  const c = new THREE.IcosahedronGeometry(1.6, 0);
-  c.scale(1, 0.85, 1);
-  c.translate(0, 3.4, 0);
-  return [t, c] as const;
-}
 const CAGE = cageGeo(),
   LAMP = lampGeo(),
-  [TRUNK, CROWN] = treeGeo(),
   PLANT = new THREE.IcosahedronGeometry(0.28, 0),
   CLOTH = new THREE.PlaneGeometry(0.45, 0.6);
 const WALLTINT = [0xf2eee4, 0xe6ddc8, 0xd9d4cc, 0xefe2d2, 0xd4dbd6, 0xe8d6c8, 0xcfcab9, 0xdfe6e2];
@@ -463,7 +455,19 @@ export class District {
       plants: THREE.Matrix4[] = [],
       cloth: [THREE.Matrix4, number][] = [],
       lamps: THREE.Matrix4[] = [],
-      trees: THREE.Matrix4[] = [];
+      forest = new Forest();
+    // trunk blocker (collision + bullet cover)
+    const trunk = (x: number, z: number, r: number) => {
+      if (r <= 0) return;
+      for (const [a, b] of [
+        [r, 0],
+        [0, r],
+      ]) {
+        const sg: Seg = { a: [x - a, z - b], b: [x + a, z + b] };
+        segs.push(sg);
+        this.d.addSeg(sg);
+      }
+    };
     const fronts: Front[] = [];
     const m4 = new THREE.Matrix4(),
       q = new THREE.Quaternion(),
@@ -501,10 +505,11 @@ export class District {
               z = az + uz * s + ux * sd * (w / 2 + 0.7);
             const ang = Math.atan2(uz * sd, -ux * sd); // arm points over the road
             lamps.push(place(x, 0, z, ang, 1, 1, 1));
-            if (rnd() < 0.35)
-              trees.push(
-                place(x + ux * 6, 0, z + uz * 6, rnd() * 6, 0.8 + rnd() * 0.5, 0.8 + rnd() * 0.5, 0.8 + rnd() * 0.5),
-              );
+            if (rnd() < 0.35) {
+              const tx = x + ux * 6,
+                tz = z + uz * 6;
+              trunk(tx, tz, forest.street(tx, tz, rnd, ang));
+            }
           }
       }
     }
@@ -673,17 +678,20 @@ export class District {
       const kr = rnd();
       veh.push({ x, z, ang: Math.atan2(ux, uz), kind: kr < 0.35 ? 'taxi' : kr < 0.55 ? 'truck' : 'car' });
     }
-    // trees in parks inside this tile
+    // v21.4 parks inside this tile: dense mixed Taipei park trees (big 榕樹 canopies), shrubs, benches, lamps
     const T = this.ix.T;
     for (const pk of this.ix.park) {
       let n = 0;
-      for (let s = 0; s < 30 && n < 18; s++) {
+      for (let s = 0; s < 70 && n < 34; s++) {
         const x = cx + (rnd() - 0.5) * T,
           z = cz + (rnd() - 0.5) * T;
-        if (pip([x, z], pk.p) && !this.d.inCore(x, z)) {
-          trees.push(place(x, 0, z, rnd() * 6, 0.9 + rnd() * 0.6, 0.9 + rnd() * 0.6, 0.9 + rnd() * 0.6));
-          n++;
-        }
+        if (!pip([x, z], pk.p) || this.d.inCore(x, z)) continue;
+        n++;
+        const v = rnd();
+        if (v < 0.6) trunk(x, z, forest.park(x, z, rnd).r);
+        else if (v < 0.85) forest.add('shrub', x, z, rnd() * 6, 0.8 + rnd() * 0.6, 0, 0.85 + rnd() * 0.3);
+        else if (v < 0.93) forest.add('bench', x, z, rnd() * 6);
+        else forest.add('plamp', x, z, 0);
       }
     }
     const add = (gs: THREE.BufferGeometry[], mat: THREE.Material, par: THREE.Object3D, shadow = true) => {
@@ -724,8 +732,7 @@ export class District {
       cloth.map(c => c[1]),
     );
     inst(LAMP, lampMat, lamps, detail);
-    inst(TRUNK, trunkMat, trees, detail);
-    inst(CROWN, leafMat, trees, detail);
+    forest.build(detail, true);
     if (veh.length) {
       const vg = new THREE.Group();
       new VehicleSystem(vg as any).build(veh, mergeGeometries, rnd);

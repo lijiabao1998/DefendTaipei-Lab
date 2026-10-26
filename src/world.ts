@@ -3,7 +3,13 @@
 import type * as THREE from 'three';
 
 export type V2 = [number, number];
-export type Seg = { a: V2; b: V2; door?: Door; low?: boolean };
+export type Seg = {
+  a: V2;
+  b: V2;
+  door?: Door;
+  low?: boolean;
+  h?: number; /* v21.4 cover height (m), undefined = full wall */
+};
 export type Door = { b: Bld; p: V2; a: V2; c: V2; barricaded: boolean; seg?: Seg; mesh?: THREE.Mesh };
 export type Bld = {
   sign?: THREE.Mesh;

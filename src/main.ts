@@ -147,6 +147,7 @@ function roadDist(x: number, z: number) {
 }
 function addSeg(s: Seg, low = false) {
   if (low) s.low = true;
+  if (low && s.h == null) s.h = 1.0; // sandbags / jersey barriers / hedges: chest-high cover
   segs.push(s);
   nav?.markSeg(s.a, s.b, 1);
   const x0 = Math.min(s.a[0], s.b[0]),
@@ -1193,7 +1194,7 @@ function buildMap(data: any) {
             [hw, hl],
             [-hw, hl],
           ].map(([a, b]) => [x + a * nx + b * ux, z + a * nz + b * uz] as V2);
-          for (let q = 0; q < 4; q++) addSeg({ a: cs[q], b: cs[(q + 1) % 4] });
+          for (let q = 0; q < 4; q++) addSeg({ a: cs[q], b: cs[(q + 1) % 4], h: kind === 'truck' ? 2.8 : 1.45 });
         }
       }
     }
@@ -1604,6 +1605,8 @@ const roadT = new RoadTiles({
   bldAt: (x, z) => bldAt(x, z),
   power: () => UT.power,
   war: () => !PRO.on || PRO.stage >= 2,
+  addSeg: s => addSeg(s as Seg),
+  removeSeg: s => removeSeg(s as Seg),
 });
 const JN = new Set<string>();
 const jk = (x: number, z: number) => Math.round(x) + ',' + Math.round(z);
