@@ -49,7 +49,7 @@ import {
 } from './textures';
 import { plaDrop } from './pla-loot';
 import { joy, initJoystick } from './joystick';
-import { buildMetro, type Station } from './metro';
+import { buildMetro, ensureInterior, metroTick, type Station } from './metro';
 import * as SV from './survival';
 import { VehicleSystem, VehicleKind } from './vehicles';
 import { furnish, nightMarket, setPower } from './interiors';
@@ -3179,21 +3179,28 @@ function openSurv(kind: 'home' | 'trade' | 'moral') {
   render();
   document.body.appendChild(d);
 }
-/** v21.6 the metro entrance / exit the player stands at, if any */
+/** v21.6 / v22.1 the metro entrance / exit the player stands at, if any */
 function metroAt() {
-  for (const st of metro) {
-    if (Math.hypot(player.pos.x - st.ent[0], player.pos.z - st.ent[1]) < 1.6) return { st, down: true };
-    if (Math.hypot(player.pos.x - st.exit[0], player.pos.z - st.exit[1]) < 2.2) return { st, down: false };
-  }
+  for (const st of metro)
+    for (const gt of st.gates) {
+      if (Math.hypot(player.pos.x - gt.ent[0], player.pos.z - gt.ent[1]) < 1.8) return { st, gt, down: true };
+      if (Math.hypot(player.pos.x - gt.exit[0], player.pos.z - gt.exit[1]) < 2.2) return { st, gt, down: false };
+    }
   return null;
 }
 function metroUse() {
   const m = metroAt();
   if (!m) return false;
-  const [x, z] = m.down ? m.st.inn : m.st.out;
+  if (m.down) ensureInterior(scene, m.st, metro.indexOf(m.st));
+  const [x, z] = m.down ? m.gt.inn : m.gt.out;
   player.pos.set(x, 0, z);
   player.vel.set(0, 0, 0);
-  log(m.down ? `🚇 進入北都地下鐵 ${m.st.name}站（停駛中）` : `回到地面：${m.st.name}站出口`, '#fc8');
+  log(
+    m.down
+      ? `🚇 由 ${m.gt.no} 號出口進入北都地下鐵 ${m.st.name}站（停電・停駛中）`
+      : `從 ${m.gt.no} 號出口回到地面（${m.st.name}）`,
+    '#fc8',
+  );
   return true;
 }
 function interact() {
@@ -3735,6 +3742,7 @@ function update(dt: number) {
   if (dead && player.rig) animate(player.rig, 'death', 0, dt);
   for (const s of sols) if (s.state === 'dead' && s.rig.deadT < 1) animate(s.rig, 'death', 0, dt);
   if (evac) evac.update(dt, evacOpen());
+  if (metro.length) metroTick(performance.now() / 1000);
   if (evac && evacOpen()) gmap?.intel('evac0', evac.pos[0], evac.pos[1], 'evac', '撤離點');
   if (started) {
     gmap?.update();
@@ -4344,7 +4352,9 @@ function drawHud(inside: Bld | null) {
   } else if (metroAt() && !panelOpen) {
     const m = metroAt()!;
     pr.style.display = 'block';
-    pr.textContent = m.down ? `[E] 進站：北都地下鐵 ${m.st.name}站` : `[E] 出站回地面（${m.st.name}）`;
+    pr.textContent = m.down
+      ? `[E] 進站：北都地下鐵 ${m.st.name}站 ${m.gt.no} 號出口`
+      : `[E] 往 ${m.gt.no} 號出口回地面（${m.st.name}）`;
   } else if (c && !panelOpen) {
     pr.style.display = 'block';
     pr.textContent = `[E] 搜刮 ${c.label}${Object.keys(c.items).length ? '' : '（空）'}`;
