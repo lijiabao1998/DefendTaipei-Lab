@@ -164,4 +164,29 @@ check(
       .join(',') || 'ok'
   })`,
 );
+// v21.4 cover shooting: low cover stops rounds to a crouched target but not a standing one, walls always do,
+// the shooter's own cover is ignored, and the player can take cover next to it
+const cov = await p.evaluate(() => {
+  const g = window.__game,
+    X = 5000,
+    Z = 5000;
+  const low = { a: [X, Z - 1], b: [X, Z + 1], h: 1.0 },
+    wall = { a: [X + 20, Z - 1], b: [X + 20, Z + 1] };
+  g.addSeg(low);
+  g.addSeg(wall);
+  const r = {
+    standing: g.shotRay([X - 12, Z], [X + 0.6, Z], 1.4, 1.25),
+    crouched: g.shotRay([X - 12, Z], [X + 0.6, Z], 1.4, 0.75),
+    wall: g.shotRay([X + 10, Z], [X + 25, Z], 1.4, 1.25),
+    own: g.shotRay([X + 0.6, Z], [X - 12, Z], 1.4, 0.75),
+    cover: g.findCover(X + 0.6, Z)?.low,
+  };
+  g.removeSeg(low);
+  g.removeSeg(wall);
+  return r;
+});
+check(
+  cov.standing >= 1 && cov.crouched < 1 && cov.wall < 1 && cov.own >= 1 && cov.cover === true,
+  'cover blocks shots by height / wall / own cover ignored ' + JSON.stringify(cov),
+);
 await finish();

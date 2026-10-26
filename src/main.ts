@@ -55,6 +55,7 @@ import { buildDecay } from './decay';
 import { buildAlley } from './alley';
 import { updateOcclusion, OCC } from './occlusion';
 import { lotTex } from './paving';
+import { walkH } from './roads';
 import { dressWalkup, District, type TileInfo } from './district';
 
 // ---------- utils ----------
@@ -201,6 +202,93 @@ function los(p: V2, q: V2) {
     }
   }
   return true;
+}
+// ---------- v21.4 cover shooting ----------
+// Bullets are a 2-D ray against the wall/cover segments with a height: walls (h undefined) always stop it, cover
+// (cars 1.45 m, sandbags / barriers / hedges 1 m, trunks) only where the ray passes below its top. Cover within `own`
+// metres of the shooter is ignored (you fire over / lean around your own cover). Returns the clear fraction (1 = hit).
+function shotRay(p: V2, q: V2, ys: number, yt: number, own = 1.0) {
+  const dx = q[0] - p[0],
+    dz = q[1] - p[1];
+  const d = Math.hypot(dx, dz) || 1;
+  const n = Math.ceil(d / (CELL * 0.5)) + 1;
+  const seen = new Set<Seg>();
+  let best = 1;
+  for (let i = 0; i <= n; i++) {
+    const a = grid.get(gk(p[0] + dx * (i / n), p[1] + dz * (i / n)));
+    if (!a) continue;
+    for (const s of a) {
+      if (seen.has(s)) continue;
+      seen.add(s);
+      const ex = s.b[0] - s.a[0],
+        ez = s.b[1] - s.a[1];
+      const den = dx * ez - dz * ex;
+      if (Math.abs(den) < 1e-9) continue;
+      const t = ((s.a[0] - p[0]) * ez - (s.a[1] - p[1]) * ex) / den,
+        u = ((s.a[0] - p[0]) * dz - (s.a[1] - p[1]) * dx) / den;
+      if (t < 0 || t > best || u < 0 || u > 1 || t * d < own) continue;
+      if (s.h != null && ys + (yt - ys) * t > s.h) continue;
+      best = t;
+    }
+  }
+  return best;
+}
+/** aim-point height of the player: crouched behind low cover → 0.75 m (pops up to 1.25 m while firing) */
+const coverStats = { enemyShots: 0, blocked: 0 };
+/** cover spot for a soldier: just behind (relative to the target) the nearest cover segment within 8 m */
+function solCover(s: { pos: THREE.Vector3 }, tg: V2): V2 | null {
+  let best: V2 | null = null,
+    bd = 8;
+  const dT = Math.hypot(tg[0] - s.pos.x, tg[1] - s.pos.z);
+  for (const g of nearSegs(s.pos.x, s.pos.z)) {
+    if (g.door || g.h == null) continue;
+    const mx = (g.a[0] + g.b[0]) / 2,
+      mz = (g.a[1] + g.b[1]) / 2;
+    const tx = mx - tg[0],
+      tz = mz - tg[1],
+      tl = Math.hypot(tx, tz) || 1;
+    if (tl > dT || tl < 4) continue;
+    const c: V2 = [mx + (tx / tl) * 0.7, mz + (tz / tl) * 0.7];
+    const d = Math.hypot(c[0] - s.pos.x, c[1] - s.pos.z);
+    if (d < bd && !bldAt(c[0], c[1]) && los([s.pos.x, s.pos.z], c)) ((best = c), (bd = d));
+  }
+  return best;
+}
+const playerAimH = () => (player.cover?.low && player.cd <= 0.05 ? 0.75 : player.sneak ? 0.9 : 1.25);
+/** nearest cover segment within r of (x, z): low (h ≤ 1.6, crouch) or tall (lean-peek) */
+function findCover(x: number, z: number, r = 1.4) {
+  let best: { s: Seg; d: number } | null = null;
+  for (const s of nearSegs(x, z)) {
+    if (s.door) continue;
+    const ex = s.b[0] - s.a[0],
+      ez = s.b[1] - s.a[1];
+    const t = clamp(((x - s.a[0]) * ex + (z - s.a[1]) * ez) / (ex * ex + ez * ez || 1), 0, 1);
+    const d = Math.hypot(s.a[0] + ex * t - x, s.a[1] + ez * t - z);
+    if (d < r && (!best || d < best.d)) best = { s, d };
+  }
+  return best && { low: (best.s.h ?? 99) <= 1.6, x, z, seg: best.s };
+}
+function toggleCover() {
+  if (player.cover) {
+    player.cover = null;
+    log('離開掩體');
+  } else {
+    const c = findCover(player.pos.x, player.pos.z);
+    if (!c) return log('附近沒有掩體');
+    player.cover = c;
+    log(c.low ? '進入掩體：蹲低（開火時探身）' : '進入掩體：貼牆側身射擊', '#9cf');
+  }
+  updateCoverUI();
+}
+function updateCoverUI() {
+  let el = document.getElementById('coverind');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'coverind';
+    document.body.appendChild(el);
+  }
+  el.textContent = player.cover ? (player.cover.low ? '🛡 掩體・蹲低' : '🛡 掩體・側身') : '';
+  el.style.display = player.cover ? 'block' : 'none';
 }
 function collide(pos: THREE.Vector3, r: number) {
   for (let it = 0; it < 2; it++)
@@ -1316,6 +1404,7 @@ const player = {
   kills: 0,
   sleeping: false,
   light: false,
+  cover: null as null | { low: boolean; x: number; z: number; seg: Seg },
 };
 type Sol = {
   rig: Rig;
@@ -1328,6 +1417,10 @@ type Sol = {
   pgoal?: V2;
   speed?: number;
   aiming?: boolean;
+  cov?: V2 | null;
+  covT?: number;
+  crouch?: boolean;
+  peekT?: number;
   id: number;
   mesh: THREE.Group;
   pos: THREE.Vector3;
@@ -2567,6 +2660,7 @@ addEventListener('keydown', e => {
     tryVault();
   }
   if (e.code === 'KeyQ') shove();
+  if (e.code === 'KeyG') toggleCover();
   if (e.code === 'Escape') closePanel();
 });
 addEventListener('keyup', e => (keys[e.code] = false));
@@ -3012,15 +3106,17 @@ function playerAttack() {
       fireAT(k, d, dir);
       return;
     }
+    // v21.4 the round stops at the first wall / cover it meets (aimed at chest height)
+    const P0: V2 = [player.pos.x, player.pos.z];
     let hit: Sol | null = null,
-      hd = d.range;
+      hd = d.range * shotRay(P0, [player.pos.x + dir.x * d.range, player.pos.z + dir.z * d.range], 1.35, 1.25);
     for (const s of sols) {
       if (s.state === 'dead') continue;
       const to = s.pos.clone().sub(player.pos);
       const t = to.dot(dir);
       if (t < 0 || t > hd) continue;
       const perp = to.clone().sub(dir.clone().multiplyScalar(t)).length();
-      if (perp < 0.55 && los([player.pos.x, player.pos.z], [s.pos.x, s.pos.z])) {
+      if (perp < 0.55 && shotRay(P0, [s.pos.x, s.pos.z], 1.35, s.crouch ? 0.75 : 1.25) >= 1) {
         hit = s;
         hd = t;
       }
@@ -3033,7 +3129,7 @@ function playerAttack() {
         const to = a.g.position.clone().sub(player.pos);
         to.y = 0;
         const t = to.dot(dir);
-        if (t > 0 && t < d.range && to.clone().sub(dir.clone().multiplyScalar(t)).length() < 2.2) {
+        if (t > 0 && t < hd + 2 && to.clone().sub(dir.clone().multiplyScalar(t)).length() < 2.2) {
           armor.hit(a.g.position.x, a.g.position.z, d.dmg, false);
           break;
         }
@@ -3441,7 +3537,11 @@ function update(dt: number) {
       mv.addScaledVector(f, -joy.y).addScaledVector(r, joy.x);
     }
     const running = (keys.ShiftLeft || keys.ShiftRight || jm > 0.93) && !player.sneak && player.fatigue < 95;
-    let sp = player.sneak ? 1.6 : running ? 6 : 3.4;
+    let sp = player.cover ? 1.4 : player.sneak ? 1.6 : running ? 6 : 3.4;
+    if (player.cover && Math.hypot(player.pos.x - player.cover.x, player.pos.z - player.cover.z) > 1.8) {
+      player.cover = null;
+      updateCoverUI();
+    }
     if (jm > 0.12 && !running) sp *= Math.max(0.3, Math.min(1, (jm - 0.12) / 0.7));
     if (player.fatigue > 80) sp *= 0.7;
     if (weight() > 12 * (ROLE.skills.carry ?? 1)) sp *= 0.8;
@@ -3494,20 +3594,25 @@ function update(dt: number) {
     player.anim =
       panelOpen && curCont
         ? 'loot'
-        : eqk === 'gun' && !running
-          ? 'aim'
-          : player.sneak
-            ? 'sneak'
-            : running && player.moving > 3.5
-              ? 'run'
-              : player.moving > 0.15
-                ? 'walk'
-                : 'idle';
+        : player.cover?.low && player.cd <= 0.05
+          ? 'sneak'
+          : eqk === 'gun' && !running
+            ? 'aim'
+            : player.sneak
+              ? 'sneak'
+              : running && player.moving > 3.5
+                ? 'run'
+                : player.moving > 0.15
+                  ? 'walk'
+                  : 'idle';
   } else player.anim = 'sleep';
   setWeapon(player.rig, player.equip);
   setLodFocus(player.pos);
   animate(player.rig, player.anim, player.moving, dt);
-  if (!drive.cur) player.mesh.position.copy(player.pos);
+  if (!drive.cur) {
+    player.mesh.position.copy(player.pos);
+    player.mesh.position.y += walkH(player.pos.x, player.pos.z); // v21.4 stand on the raised walk
+  }
   // v21.2 shader cutaway around the camera→player line (see occlusion.ts); camera itself unchanged
   updateOcclusion(player.pos.x, player.pos.y, player.pos.z);
   // buildings cutaway
@@ -3548,7 +3653,10 @@ function update(dt: number) {
     const facing =
       Math.abs(Math.atan2(Math.sin(Math.atan2(dz, dx) - s.dir), Math.cos(Math.atan2(dz, dx) - s.dir))) < Math.PI / 5;
     const sees =
-      (dist < range && (facing || dist < 1.6) && !player.sleeping && los([s.pos.x, s.pos.z], pp)) ||
+      (dist < range &&
+        (facing || dist < 1.6) &&
+        !player.sleeping &&
+        shotRay([s.pos.x, s.pos.z], pp, 1.6, playerAimH() + 0.1, 0.6) >= 1) ||
       (player.sleeping && dist < 2.5);
     if (sees) {
       s.alert += dt * (1.6 - dist / range) * 1.6;
@@ -3595,14 +3703,41 @@ function update(dt: number) {
       if (sees && dist < 24) {
         goal = dist > 8 ? pp : null;
         s.dir = Math.atan2(dz, dx);
-        if (s.cd <= 0 && !(s.stun! > 0)) {
+        // v21.4 enemies use cover: run to the nearest cover between them and you, then crouch / peek and fire
+        s.covT = (s.covT || 0) - dt;
+        if (s.covT <= 0) {
+          s.covT = 5 + rnd() * 3;
+          s.cov = solCover(s, pp);
+        }
+        let atCov = false;
+        if (s.cov) {
+          const cd2 = Math.hypot(s.cov[0] - s.pos.x, s.cov[1] - s.pos.z);
+          if (cd2 > 0.5) {
+            goal = s.cov;
+            sp = 3.2;
+          } else {
+            goal = null;
+            atCov = true;
+          }
+        }
+        s.peekT = (s.peekT || 0) + dt;
+        s.crouch = atCov && s.peekT % 3 < 1.5;
+        if (s.cd <= 0 && !(s.stun! > 0) && !s.crouch && (!s.cov || atCov || dist < 8)) {
           s.rig.shootT = 0.14;
           s.cd = 1.1 + rnd() * 0.6;
           noise(s.pos.x, s.pos.z, 40);
-          const hitP = (0.55 - dist / 60) * (player.sneak ? 0.7 : 1) * (night ? 0.7 : 1);
-          const miss = new THREE.Vector3(player.pos.x + (rnd() - 0.5) * 3, 0, player.pos.z + (rnd() - 0.5) * 3);
-          tracer(s.pos, rnd() < hitP ? player.pos : miss);
-          if (rnd() < hitP) {
+          // v21.4 ray against walls / cover first, then the hit roll (lower vs a covered target)
+          const clear = shotRay([s.pos.x, s.pos.z], pp, 1.4, playerAimH(), 1.0);
+          const hitP = (0.55 - dist / 60) * (player.sneak ? 0.7 : 1) * (night ? 0.7 : 1) * (player.cover ? 0.5 : 1);
+          const hitIt = clear >= 1 && rnd() < hitP;
+          const miss =
+            clear < 1
+              ? new THREE.Vector3(s.pos.x + (pp[0] - s.pos.x) * clear, 0, s.pos.z + (pp[1] - s.pos.z) * clear)
+              : new THREE.Vector3(player.pos.x + (rnd() - 0.5) * 3, 0, player.pos.z + (rnd() - 0.5) * 3);
+          tracer(s.pos, hitIt ? player.pos : miss);
+          coverStats.enemyShots++;
+          if (clear < 1) coverStats.blocked++;
+          if (hitIt) {
             player.rig.hurtT = 0.35;
             player.rig.hurtSide = rnd() < 0.5 ? -1 : 1;
             player.stun = 0.35;
@@ -3631,7 +3766,8 @@ function update(dt: number) {
       }
     }
     let moved = 0;
-    s.aiming = s.state === 'combat' && sees && dist < 24 && !(s.stun! > 0);
+    if (s.state !== 'combat') ((s.cov = null), (s.crouch = false));
+    s.aiming = s.state === 'combat' && sees && dist < 24 && !(s.stun! > 0) && !s.crouch;
     if (s.stun! > 0) {
       s.stun! -= dt;
       goal = null;
@@ -3680,8 +3816,14 @@ function update(dt: number) {
       }
     }
     if (!moved) s.vs = (s.vs || 0) * Math.max(0, 1 - dt * 6);
-    animate(s.rig, s.aiming ? 'aim' : moved > 2.9 ? 'run' : moved > 0.2 ? 'carry' : 'idle', moved, dt);
+    animate(
+      s.rig,
+      s.crouch && !moved ? 'sneak' : s.aiming ? 'aim' : moved > 2.9 ? 'run' : moved > 0.2 ? 'carry' : 'idle',
+      moved,
+      dt,
+    );
     s.mesh.position.copy(s.pos);
+    s.mesh.position.y += walkH(s.pos.x, s.pos.z);
     {
       const ty = Math.PI / 2 - s.dir;
       const d0 = Math.atan2(Math.sin(ty - s.mesh.rotation.y), Math.cos(ty - s.mesh.rotation.y));
@@ -4329,6 +4471,12 @@ async function boot() {
       mb.style.display = 'none';
       mb.onclick = () => gmap?.toggle();
       document.body.appendChild(mb);
+      const cb = document.createElement('button');
+      cb.id = 'coverbtn';
+      cb.textContent = '🛡';
+      cb.title = '掩體';
+      cb.onclick = () => toggleCover();
+      document.body.appendChild(cb);
     }
     (window as any).__game && ((window as any).__game.map = gmap);
   });
@@ -4652,6 +4800,13 @@ async function boot() {
     scene,
     gm: () => gameMin,
     roadDist,
+    shotRay,
+    addSeg,
+    removeSeg,
+    findCover,
+    toggleCover,
+    coverStats,
+    solCover,
     tp: (x: number, z: number) => player.pos.set(x, 0, z),
     damageSol,
     toggleInv,

@@ -968,3 +968,36 @@ body.mobile #charsel .ch small {
   border-radius: 6px;
   pointer-events: none;
 }
+
+/* v21.4 cover */
+#coverind {
+  display: none;
+  position: fixed;
+  z-index: 20;
+  left: 50%;
+  bottom: calc(96px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  border-radius: 12px;
+  background: rgba(20, 40, 60, 0.75);
+  border: 1px solid #6af;
+  color: #cdf;
+  font-size: 14px;
+  pointer-events: none;
+}
+#coverbtn {
+  display: none;
+}
+body.mobile #coverbtn {
+  display: block;
+  position: fixed;
+  z-index: 20;
+  right: 12px;
+  top: calc(266px + env(safe-area-inset-top));
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 1px solid #6af;
+  background: rgba(20, 30, 40, 0.8);
+  font-size: 22px;
+}
