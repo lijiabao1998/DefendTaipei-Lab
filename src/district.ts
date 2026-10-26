@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { canvasTex, roadMat } from './textures';
+import { lotTex } from './paving';
 import { placeRooftop, dressRoof, pickRoofMat, roofClass } from './rooftin';
 import { VehicleSystem, type VehicleKind } from './vehicles';
 
@@ -294,26 +295,10 @@ export class District {
     this.ix = await (await fetch(this.d.base + 'data/district/index.json')).json();
     const [x0, z0, x1, z1] = this.ix.bbox;
     // district ground (core ground sits on top, slightly higher)
-    // worn concrete / sidewalk tone (dense 萬華 lanes are mostly paved)
-    const gt = canvasTex(128, 128, c => {
-      c.fillStyle = '#8f8b84';
-      c.fillRect(0, 0, 128, 128);
-      for (let i = 0; i < 400; i++) {
-        const v = 110 + Math.random() * 60;
-        c.fillStyle = `rgba(${v},${v - 4},${v - 10},.25)`;
-        c.fillRect(Math.random() * 128, Math.random() * 128, 1 + Math.random() * 6, 1 + Math.random() * 6);
-      }
-      c.strokeStyle = 'rgba(60,55,50,.25)';
-      for (let x = 0; x <= 128; x += 32) {
-        c.beginPath();
-        c.moveTo(x, 0);
-        c.lineTo(x, 128);
-        c.moveTo(0, x);
-        c.lineTo(128, x);
-        c.stroke();
-      }
-    });
-    gt.repeat.set((x1 - x0 + 400) / 6, (z1 - z0 + 400) / 6);
+    // v21.3 paved like the core (shared canvas, own repeat)
+    const gt = lotTex.clone();
+    gt.needsUpdate = true;
+    gt.repeat.set((x1 - x0 + 400) / 2, (z1 - z0 + 400) / 2);
     const gm = new THREE.Mesh(
       new THREE.PlaneGeometry(x1 - x0 + 400, z1 - z0 + 400),
       new THREE.MeshStandardMaterial({ map: gt, roughness: 1 }),

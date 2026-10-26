@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { GLYPHS, GMAT, atlas } from './roadglyphs';
+import { PAVE, worldUV } from './paving';
 type Seg = [number, number, number, number, number, string, number, string, number?, number?];
 type Node = [number, number, number, [number, number, number][], number?];
 type TileData = { tx: number; tz: number; seed: number; segs: Seg[]; nodes: Node[]; clip?: [number, number, number][] };
@@ -63,6 +64,12 @@ const MAT = {
     polygonOffsetFactor: -4,
   }),
   curb: new THREE.MeshStandardMaterial({ color: 0x9a988f, roughness: 0.9 }),
+  curbG: PAVE.curb,
+  walk: PAVE.walk,
+  tactile: PAVE.tactile,
+  manhole: PAVE.manhole,
+  pit: PAVE.pit,
+  leaf: new THREE.MeshStandardMaterial({ color: 0x3f7a35, roughness: 0.9, flatShading: true }),
   pole: new THREE.MeshStandardMaterial({ color: 0x5a5e62, roughness: 0.6, metalness: 0.4 }),
   orange: new THREE.MeshStandardMaterial({ color: 0xe07a20, roughness: 0.6 }),
   mirror: new THREE.MeshStandardMaterial({ color: 0xc8d4dc, roughness: 0.05, metalness: 0.95 }),
@@ -310,18 +317,86 @@ export class RoadTiles {
       }; // §165 雙實線: 10 cm lines, 10 cm apart
       // curb with painted no-parking (§168 yellow / §169 red on the curb face and top)
       const curb = (sgn: number, w: number, paint: string) => {
+        // v21.3 granite curb 18 cm + paved sidewalk behind it (own RNG so markings stay as they were)
+        let ps = Math.abs(Math.floor(ax * 73.1 + az * 19.7 + bx * 7.3 + bz * 3.1 + sgn * 11)) % 2147483646 || 1;
+        const pr = () => (ps = (ps * 16807) % 2147483647) / 2147483647;
+        const sw = cls === 'main' ? 2.6 + pr() * 1.2 : 1.6 + pr() * 0.8;
+        const o0 = w / 2 + 0.18;
         for (const [a0, b0] of spans) {
           const l = b0 - a0;
-          const [cx, cz] = at((a0 + b0) / 2, sgn * (w / 2 + 0.08));
+          const [cx, cz] = at((a0 + b0) / 2, sgn * (w / 2 + 0.09));
           if (!bldAt(cx, cz))
-            solid(
-              paint === 'R' ? 'curbR' : paint === 'Y' ? 'curbY' : 'curb',
-              new THREE.BoxGeometry(l, 0.15, 0.18),
-              cx,
-              0.075,
-              cz,
-              -ang,
+            put(
+              paint === 'R' ? 'curbR' : paint === 'Y' ? 'curbY' : 'curbG',
+              worldUV(
+                (() => {
+                  const g = new THREE.BoxGeometry(l, 0.18, 0.18);
+                  g.rotateY(-ang);
+                  g.translate(cx, 0.09, cz);
+                  return g;
+                })(),
+                2,
+                ang,
+              ),
             );
+          const n = Math.max(1, Math.ceil(l / 4)),
+            pl = l / n;
+          for (let k = 0; k < n; k++) {
+            const tm = a0 + (k + 0.5) * pl;
+            // stop the walk at the building line (arcades keep their own tiled floor)
+            let ws = 0;
+            for (const f of [0.25, 0.5, 0.75, 1]) {
+              const [qx, qz] = at(tm, sgn * (o0 + sw * f - 0.1));
+              if (bldAt(qx, qz)) break;
+              ws = sw * f;
+            }
+            if (ws < 0.7) continue;
+            const [wx, wz] = at(tm, sgn * (o0 + ws / 2));
+            const g = new THREE.BoxGeometry(pl + 0.02, 0.15, ws);
+            g.rotateY(-ang);
+            g.translate(wx, 0.075, wz);
+            put('walk', worldUV(g, 2, ang));
+            const first = k === 0 && a0 > 0.5,
+              last = k === n - 1 && b0 < L - 0.5;
+            // yellow 導盲 warning strip where the walk meets the crossing
+            for (const [on, te] of [
+              [first, a0 + 0.35],
+              [last, b0 - 0.35],
+            ] as [boolean, number][])
+              if (on) {
+                const [tx, tz] = at(te, sgn * (o0 + ws / 2));
+                const tg = new THREE.PlaneGeometry(0.6, ws - 0.1);
+                tg.rotateX(-Math.PI / 2);
+                tg.rotateY(-ang);
+                tg.translate(tx, 0.152, tz);
+                put('tactile', worldUV(tg, 0.6, ang));
+              }
+            if (pr() < 0.07) {
+              const [mx, mz] = at(tm + (pr() - 0.5) * pl * 0.6, sgn * (o0 + ws * (0.3 + pr() * 0.4)));
+              const mg = new THREE.CircleGeometry(0.32, 16);
+              mg.rotateX(-Math.PI / 2);
+              mg.translate(mx, 0.153, mz);
+              put('manhole', mg);
+            }
+            if (cls === 'main' && ws > 2 && !first && !last && pr() < 0.3) {
+              // tree pit + street tree near the curb
+              const [px, pz] = at(tm, sgn * (o0 + 0.75));
+              const pg = new THREE.PlaneGeometry(1.1, 1.1);
+              pg.rotateX(-Math.PI / 2);
+              pg.rotateY(-ang);
+              pg.translate(px, 0.153, pz);
+              put('pit', pg);
+              const tr = new THREE.CylinderGeometry(0.1, 0.14, 2.8, 6);
+              tr.translate(px, 1.55, pz);
+              put('wood', tr);
+              const cr = new THREE.IcosahedronGeometry(1.3 + pr() * 0.5, 0);
+              cr.scale(1, 0.8, 1);
+              cr.translate(px, 3.6, pz);
+              if (!cr.attributes.uv)
+                cr.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(cr.attributes.position.count * 2), 2));
+              put('leaf', cr);
+            }
+          }
         }
       };
       // text / icon decal: reads toward the driver travelling along (dx,dz), first glyph furthest (§150)
@@ -610,7 +685,7 @@ export class RoadTiles {
     for (const [m, gs] of Object.entries(G)) {
       const me = new THREE.Mesh(mergeGeometries(gs), m[0] === 'G' ? GMAT[m.slice(1)] : (MAT as any)[m]);
       me.receiveShadow = true;
-      if (['curb', 'rubble'].includes(m)) me.castShadow = true;
+      if (['curb', 'curbG', 'curbR', 'curbY', 'rubble', 'leaf', 'wood'].includes(m)) me.castShadow = true;
       tile.g.add(me);
       gs.forEach(g => g.dispose());
     }

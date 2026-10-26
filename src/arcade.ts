@@ -2,6 +2,7 @@
 // floors; the shopfront is recessed ARC m behind them with a continuous lit ceiling. Arcades are only built on
 // edges that face a road, and never on an edge that sits in the carriageway.
 import * as THREE from 'three';
+import { ARCADE_MATS, worldUV } from './paving';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 type V2 = [number, number];
@@ -29,6 +30,7 @@ const G = {
   floor: [] as THREE.BufferGeometry[],
 };
 let curPts: V2[] = [];
+const floorG: THREE.BufferGeometry[][] = ARCADE_MATS.map(() => []);
 
 /** returns the arcade frame if this footprint edge can take one */
 export function arcadeFits(
@@ -85,7 +87,17 @@ export function buildArcade(A: Arc, roof: THREE.Object3D) {
   const [bx, bz] = at(dl / 2, 0.3);
   ceil.push(place(new THREE.BoxGeometry(dl, 0.22, ARC), cx, GF - 0.11, cz, ang));
   ceil.push(place(new THREE.BoxGeometry(dl, 0.45, 0.25), bx, GF - 0.2, bz, ang)); // beam over the columns
-  G.floor.push(place(new THREE.BoxGeometry(dl, 0.08, ARC), cx, 0.04, cz, ang));
+  // v21.3 each lot (bay) tiled by its own owner: pick one of the 騎樓 tile styles per bay, world-planar UVs
+  {
+    const nb = Math.max(1, n),
+      bl = dl / nb;
+    for (let k = 0; k < nb; k++) {
+      const [fx, fz] = at((k + 0.5) * bl, ARC / 2);
+      const hsh = Math.abs(Math.sin(fx * 12.9898 + fz * 78.233) * 43758.5453) % 1;
+      const si = Math.floor(hsh * ARCADE_MATS.length);
+      floorG[si].push(worldUV(place(new THREE.BoxGeometry(bl, 0.06, ARC), fx, 0.03, fz, ang), 1, -ang));
+    }
+  }
   for (let k = 0; k < n; k++) {
     const s = 0.35 + (k + 0.5) * step;
     const [lx, lz] = at(s, ARC / 2);
@@ -169,7 +181,7 @@ export function flushArcades(scene: THREE.Scene) {
     gs.length = 0;
   };
   add(G.col, new THREE.MeshStandardMaterial({ map: tileTex('#c9b9a0', '#8a7a64', 8, 1, 6), roughness: 0.45 }), true);
-  add(G.floor, new THREE.MeshStandardMaterial({ map: tileTex('#a8786a', '#6a4a40', 4, 4, 2), roughness: 0.7 }));
+  floorG.forEach((gs, i) => add(gs, ARCADE_MATS[i]));
   add(G.shut, new THREE.MeshStandardMaterial({ map: shutTex(), roughness: 0.6, metalness: 0.4 }));
 }
 

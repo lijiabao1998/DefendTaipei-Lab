@@ -54,6 +54,7 @@ import { furnish, nightMarket, setPower } from './interiors';
 import { buildDecay } from './decay';
 import { buildAlley } from './alley';
 import { updateOcclusion, OCC } from './occlusion';
+import { lotTex } from './paving';
 import { dressWalkup, District, type TileInfo } from './district';
 
 // ---------- utils ----------
@@ -844,7 +845,9 @@ function buildMap(data: any) {
   Object.assign(bounds, { minx: minx + 10, maxx: maxx - 10, minz: minz + 10, maxz: maxz - 10 });
   const W = maxx - minx,
     H = maxz - minz;
-  groundTex.repeat.set(W / 8, H / 8);
+  // v21.3 everything off the carriageway is paved (worn concrete + tile/brick patchwork, 1 texture = 2 m)
+  groundMat.map = lotTex;
+  lotTex.repeat.set((W + 200) / 2, (H + 200) / 2);
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(W + 200, H + 200), groundMat);
   ground.rotation.x = -Math.PI / 2;
   ground.position.set((minx + maxx) / 2, 0, (minz + maxz) / 2);
