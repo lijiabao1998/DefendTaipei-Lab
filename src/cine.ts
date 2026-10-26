@@ -1146,7 +1146,7 @@ export async function play(renderer: THREE.WebGLRenderer, mode: 'heli' | 'boat',
       {
         t0: 0,
         t1: 7,
-        cap: '深夜。真正的線人——橡皮艇在堤防下等你',
+        cap: '深夜。真正的聯絡人——橡皮艇在堤防下等你',
         cam: (k, t) => {
           const p = boatPos(t);
           return [p.clone().add(new V3(-14 + k * 4, 1.6, 4)), p.clone().add(new V3(20, 0.5, -1)), 40];

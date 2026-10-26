@@ -4,7 +4,7 @@
 // Sections, in order (search for "// ----------"):
 //   utils · renderer · world state (collision grid, line of sight) · sectors · build map · FPV + recon drones ·
 //   國軍 support · PLA armour · street lamps · characters · player role / vehicles / road tiles / traffic ·
-//   multiplayer glue · weather · airdrop · 線人 informant · curfew flashlights · time system, noise, log ·
+//   multiplayer glue · weather · airdrop · 聯絡人 informant · curfew flashlights · time system, noise, log ·
 //   effects · input · inventory UI · combat · save · story timeline · main loop + HUD · prologue · boot
 // Test/debug hooks are exposed on window.__game at the end of boot().
 import { buildEvacZone, playEvac, cine } from './evac';
@@ -2243,7 +2243,7 @@ function updateWeather(dt: number, gm: number) {
 let smoke: THREE.Points | null = null;
 let dropCont: Cont | null = null;
 
-// ---------- 線人 informant + boat route ----------
+// ---------- 聯絡人 informant + boat route ----------
 type InfState = {
   fake: boolean;
   anc: number;
@@ -2391,7 +2391,7 @@ function talkInformant() {
       INF.trap = 0;
       INF.esc = 0;
       INF.scouted = 0;
-      dlg('抓到叛徒線人', `他跪地求饒：「我說、我說！真的船在 ${RV[INF.spot].n}，${hhmm(INF.rvT)}！」`, []);
+      dlg('抓到假聯絡人', `他跪地求饒：「我說、我說！真的船在 ${RV[INF.spot].n}，${hhmm(INF.rvT)}！」`, []);
     } else {
       const sec = Math.min(NSEC - 1, sectorOf(infPos[0], infPos[1]));
       for (const s of sols)
@@ -2403,7 +2403,7 @@ function talkInformant() {
         }
       liberated.add(sec);
       dlg(
-        '抓到叛徒線人',
+        '抓到假聯絡人',
         `他供出了 ${sectorNames[sec]} 的佔領軍前哨位置。地下抵抗網連夜突襲——<b>${sectorNames[sec]} 已奪回！</b>`,
         [],
       );
@@ -2417,7 +2417,11 @@ function talkInformant() {
   }
   const opts: [string, () => void][] = [];
   if (!INF.verified) opts.push(['用收音機向「自由之聲」查證', verifyInf]);
-  dlg('🕶 線人（' + ANC[INF.anc] + '）', '「噓——聽說你想離開台北？有艘橡皮艇今晚走淡水河出海。」<br>' + rvLine(), opts);
+  dlg(
+    '🕶 聯絡人（' + ANC[INF.anc] + '）',
+    '「噓——聽說你想離開台北？有艘橡皮艇今晚走淡水河出海。」<br>' + rvLine(),
+    opts,
+  );
 }
 function nextNight() {
   const d = Math.floor(gameMin / 1440) * 1440;
@@ -2441,7 +2445,7 @@ function verifyInf() {
   phone(
     '📻 自由之聲（加密頻道）',
     INF.fake
-      ? '我們沒有派人在那裡接應。那個人是佔領軍的線民——別去，或者……讓他們嚐嚐自己的陷阱。'
+      ? '我們沒有派人在那裡接應。那個人是佔領軍的假聯絡人——別去，或者……讓他們嚐嚐自己的陷阱。'
       : '確認：那艘船是我們的人。準時到，祝你平安。',
   );
 }
@@ -2470,7 +2474,7 @@ function npcInteract() {
 function npcPrompt() {
   const P = player.pos;
   if (infRig?.root.visible && Math.hypot(P.x - infPos[0], P.z - infPos[1]) < 2.4)
-    return INF.hid ? '[E] 抓住叛徒線人' : '[E] 和線人交談';
+    return INF.hid ? '[E] 抓住假聯絡人' : '[E] 和聯絡人交談';
   if (elderRig && Math.hypot(P.x - elderPos[0], P.z - elderPos[1]) < 2.4) return '[E] 和廟口阿伯聊天';
   return '';
 }
@@ -2609,12 +2613,12 @@ function updateInformant(dt: number) {
       infRig.root.position.set(infPos[0], 0, infPos[1]);
       phone(
         '📻 自由之聲',
-        `有人看到那個出賣你的線人躲在 ${sectorNames[sectorOf(infPos[0], infPos[1])]} 一帶。抓住他！`,
+        `有人看到那個出賣你的聯絡人躲在 ${sectorNames[sectorOf(infPos[0], infPos[1])]} 一帶。抓住他！`,
       );
     }
     if (INF.saw && trapSols.every(s => s.state === 'dead')) {
       INF.esc = 1;
-      log('伏兵全滅。叛徒線人逃回街區躲了起來……', '#ffd27a');
+      log('伏兵全滅。假聯絡人逃回街區躲了起來……', '#ffd27a');
       INF.hid = freeNear([infPos[0] + 30, infPos[1] - 20]);
       infPos = INF.hid;
       infRig.root.position.set(infPos[0], 0, infPos[1]);
@@ -3826,7 +3830,7 @@ function doEvac(mode: 'heli' | 'boat' = 'heli') {
   playEvac(renderer, mode, () => {
     const d = document.createElement('div');
     d.id = 'evacend';
-    d.innerHTML = `<h1>您已成功撤離至 福特號航空母艦（USS Gerald R. Ford, CVN-78）</h1><h2>另一個結局：你活了下來，把萬華的故事帶出去。（撤離路線：${mode === 'boat' ? '小艇・淡水河出海' : '直升機・河濱撤離區'}）</h2><table><tr><td>撤離路線</td><td>${mode === 'boat' ? '🚤 小艇（線人接應）' : '🚁 直升機'}</td></tr><tr><td>存活天數</td><td>${day} 天（第 ${day} 天 ${hh2}）</td></tr><tr><td>奪回街區</td><td>${liberated.size} / ${NSEC}</td></tr><tr><td>擊倒佔領軍</td><td>${player.kills}</td></tr><tr><td>攜帶物品</td><td>${items} 件</td></tr></table><div><button id=evcont>繼續留在萬華（奪回之路）</button><button id=evnew>新遊戲</button></div><p style="font-size:12px;color:#678;margin-top:18px">虛構作品・艦艇與直升機為通用低多邊形模型</p>`;
+    d.innerHTML = `<h1>您已成功撤離至 福特號航空母艦（USS Gerald R. Ford, CVN-78）</h1><h2>另一個結局：你活了下來，把萬華的故事帶出去。（撤離路線：${mode === 'boat' ? '小艇・淡水河出海' : '直升機・河濱撤離區'}）</h2><table><tr><td>撤離路線</td><td>${mode === 'boat' ? '🚤 小艇（聯絡人接應）' : '🚁 直升機'}</td></tr><tr><td>存活天數</td><td>${day} 天（第 ${day} 天 ${hh2}）</td></tr><tr><td>奪回街區</td><td>${liberated.size} / ${NSEC}</td></tr><tr><td>擊倒佔領軍</td><td>${player.kills}</td></tr><tr><td>攜帶物品</td><td>${items} 件</td></tr></table><div><button id=evcont>繼續留在萬華（奪回之路）</button><button id=evnew>新遊戲</button></div><p style="font-size:12px;color:#678;margin-top:18px">虛構作品・艦艇與直升機為通用低多邊形模型</p>`;
     document.body.appendChild(d);
     $('evcont').onclick = () => {
       d.remove();
@@ -5559,34 +5563,15 @@ async function boot() {
     OCC,
     escapeCheck,
     unstuck,
+    autoStop: () => {
+      AUTO.path = [];
+      AUTO.i = 0;
+    },
     autoWalk: () => {
       const p = escapePath(player.pos.x, player.pos.z);
       AUTO.path = p || [];
       AUTO.i = 0;
       return p ? p.length : -1;
-    },
-    dbgAt: () => {
-      const x = player.pos.x,
-        z = player.pos.z;
-      return {
-        w: AUTO.path.slice(AUTO.i, AUTO.i + 4),
-        segs: [...nearSegs(x, z)]
-          .map(q => [q.a, q.b, !!q.low, q.h ?? null])
-          .filter((q: any) => {
-            const [a, b] = q as [V2, V2];
-            const dx = b[0] - a[0],
-              dz = b[1] - a[1];
-            const t = clamp(((x - a[0]) * dx + (z - a[1]) * dz) / (dx * dx + dz * dz || 1), 0, 1);
-            return Math.hypot(x - a[0] - dx * t, z - a[1] - dz * t) < 1.2;
-          }),
-        bar: roadT.barrierAt(x, z, 1.5),
-        wreck: roadT.wreckNear(x, z, 1.8),
-        vel: [player.vel.x, player.vel.z],
-        sleeping: player.sleeping,
-        vault: player.vaultT,
-        drive: !!drive.cur,
-        paused,
-      };
     },
     autoState: () => ({
       i: AUTO.i,
