@@ -70,6 +70,7 @@ import { updateOcclusion, OCC } from './occlusion';
 import { lotTex } from './paving';
 import { walkH } from './roads';
 import { dressWalkup, District, type TileInfo } from './district';
+import { buildDoorDeco, DoorView, doorSound, isHomeDoor, type LiveDoor } from './doors';
 import { SET, QPIX, isKey, K, keyLabel, markMusic, vibrate } from './settings';
 import { openSettings, openHelp, openAbout, modalOpen, closeModal } from './menu';
 
@@ -445,6 +446,48 @@ function escapeCheck(px: number, pz: number, R = 70) {
   }
   return { ok: false, dist: -1, x: px, z: pz };
 }
+/** v22.4.1 the BFS route (waypoints every ~1 m) from a point to the street, for the walk-out test autopilot */
+function escapePath(px: number, pz: number, R = 70): V2[] | null {
+  const S = 0.25,
+    N = Math.ceil(R / S);
+  const key = (i: number, j: number) => (i + N) * 8192 + (j + N);
+  const par = new Map<number, number>([[key(0, 0), -1]]);
+  const qu: [number, number, number][] = [[0, 0, 0]];
+  let qh = 0;
+  while (qh < qu.length && qh < 400000) {
+    const [i, j, d] = qu[qh++];
+    const x = px + i * S,
+      z = pz + j * S;
+    if (d > 12 && !bldAt(x, z) && roadDist(x, z) < 2.5) {
+      const out: V2[] = [];
+      for (let k = key(i, j); k !== -1; k = par.get(k)!) {
+        const a = Math.floor(k / 8192) - N,
+          b = (k % 8192) - N;
+        out.push([px + a * S, pz + b * S]);
+      }
+      return out.reverse();
+    }
+    for (const [di, dj] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ]) {
+      const a = i + di,
+        b = j + dj,
+        k = key(a, b);
+      if (Math.abs(a) > N || Math.abs(b) > N || par.has(k)) continue;
+      const nx = px + a * S,
+        nz = pz + b * S;
+      if (!los([x, z], [nx, nz]) || !walkable(nx, nz)) continue;
+      par.set(k, key(i, j));
+      qu.push([a, b, d + 1]);
+    }
+  }
+  return null;
+}
+/** test autopilot: steers the normal movement input (real collision, no teleport) along waypoints */
+const AUTO: { path: V2[]; i: number } = { path: [], i: 0 };
 /** fallback: if the player cannot reach a street, nudge to the nearest point that can (rings out to 25 m) */
 let nudges = 0;
 function unstuck() {
@@ -3095,6 +3138,39 @@ function updateVis(c: Cont) {
     v.im.count = Math.ceil(v.max * clamp((c.items[v.item] || 0) / init, 0, 1));
   }
 }
+// ---- v22.4.1 openable doors (homes start closed; a closed leaf blocks only the player) ----
+let doorView: DoorView | null = null;
+let exitMark: { m: THREE.Mesh; b: Bld | null } | null = null;
+function doorNear(r: number) {
+  let best: LiveDoor | null = null,
+    bd = r;
+  for (const d of doors as LiveDoor[]) {
+    const x = Math.hypot(d.p[0] - player.pos.x, d.p[1] - player.pos.z);
+    if (x < bd) ((bd = x), (best = d));
+  }
+  return best;
+}
+function toggleDoor(d: LiveDoor) {
+  if (d.barricaded) return log('門已經封死了（B 拆除）', '#f99');
+  d.open = !d.open;
+  doorSound(!!d.open);
+  noise(d.p[0], d.p[1], 4);
+  log(d.open ? '開門' : '關門', '#ccc');
+}
+function collideDoors(pos: THREE.Vector3, r = 0.35) {
+  for (const d of doors as LiveDoor[]) {
+    if (d.open || d.barricaded || Math.abs(d.p[0] - pos.x) > 3 || Math.abs(d.p[1] - pos.z) > 3) continue;
+    const ax = d.a[0],
+      az = d.a[1],
+      dx = d.c[0] - ax,
+      dz = d.c[1] - az;
+    const t = clamp(((pos.x - ax) * dx + (pos.z - az) * dz) / (dx * dx + dz * dz || 1), 0, 1);
+    const ox = pos.x - (ax + dx * t),
+      oz = pos.z - (az + dz * t),
+      L = Math.hypot(ox, oz);
+    if (L < r && L > 1e-6) ((pos.x = ax + dx * t + (ox / L) * r), (pos.z = az + dz * t + (oz / L) * r));
+  }
+}
 function nearestDoor() {
   let best: Door | null = null,
     bd = 2.2;
@@ -3390,6 +3466,10 @@ function rideTo(i: number, j: number) {
 }
 function interact() {
   if (npcInteract()) return;
+  {
+    const dn = doorNear(1.6);
+    if (dn && !dn.barricaded && (!dn.open || (!nearestCont() && !atHome()))) return toggleDoor(dn);
+  }
   if (metroUse()) return;
   if (document.getElementById('ride')) return document.getElementById('ride')!.remove();
   if (document.getElementById('shop')) return document.getElementById('shop')!.remove();
@@ -3499,6 +3579,7 @@ function interact() {
 const plankMat = new THREE.MeshStandardMaterial({ color: 0x9a7040 });
 function setBarricade(d: Door) {
   d.barricaded = true;
+  (d as LiveDoor).open = false;
   d.seg = { a: d.a, b: d.c };
   addSeg(d.seg);
   const l = Math.hypot(d.c[0] - d.a[0], d.c[1] - d.a[1]);
@@ -4074,6 +4155,12 @@ function update(dt: number) {
     if (keys[K('down')]) mv.sub(f);
     if (keys[K('right')]) mv.add(r);
     if (keys[K('left')]) mv.sub(r);
+    if (AUTO.i < AUTO.path.length) {
+      let w = AUTO.path[AUTO.i];
+      while (Math.hypot(w[0] - player.pos.x, w[1] - player.pos.z) < 0.3 && ++AUTO.i < AUTO.path.length)
+        w = AUTO.path[AUTO.i];
+      if (AUTO.i < AUTO.path.length) mv.set(w[0] - player.pos.x, 0, w[1] - player.pos.z).normalize();
+    }
     const jm = Math.min(1, Math.hypot(joy.x, joy.y));
     if (jm > 0.12) {
       mv.addScaledVector(f, -joy.y).addScaledVector(r, joy.x);
@@ -4115,6 +4202,7 @@ function update(dt: number) {
     if (player.vel.lengthSq() > 0.0004 && player.vaultT <= 0) {
       player.pos.addScaledVector(player.vel, dt);
       collide(player.pos, 0.35);
+      collideDoors(player.pos);
     }
     if (mv.lengthSq() > 0 && player.vaultT <= 0) {
       if (running) {
@@ -4550,7 +4638,21 @@ function drawHud(inside: Bld | null) {
     d = nearestDoor();
   const pr = $('prompt');
   const np = npcPrompt();
-  if (np && !panelOpen) {
+  const dn = doorNear(1.6);
+  doorView?.update(doors as LiveDoor[], player.pos.x, player.pos.z, 1 / 30, doorNear(3));
+  if (exitMark) {
+    exitMark.m.position.y = 3.1 + Math.sin(performance.now() / 250) * 0.25;
+    exitMark.m.rotation.y += 0.05;
+    if (!bldAt(player.pos.x, player.pos.z) && exitMark.b && !pip([player.pos.x, player.pos.z], exitMark.b.pts)) {
+      const hd = exitMark.b.door;
+      if (!hd || Math.hypot(hd.p[0] - player.pos.x, hd.p[1] - player.pos.z) > 4)
+        (scene.remove(exitMark.m), (exitMark = null), log('你走出了家門。', '#9cf'));
+    }
+  }
+  if (dn && !dn.barricaded && !panelOpen && !np && (!dn.open || (!c && !atHome()))) {
+    pr.style.display = 'block';
+    pr.textContent = `[E] ${dn.open ? '關門' : '開門'}${isHomeDoor(dn) ? '（家門）' : ''}｜[${keyLabel('barricade')}] 封門`;
+  } else if (np && !panelOpen) {
     pr.style.display = 'block';
     pr.textContent = np;
   } else if (!panelOpen && !survOpen && tradeAt() && !c) {
@@ -5191,6 +5293,11 @@ async function boot() {
     if (!skip && dest) startPrologue(from, dest.door!.p as V2, r.destLabel);
   };
   const go = (load: boolean, gender = 'm', roleId = 'courier', skipIntro = false) => {
+    if (!doorView) {
+      buildDoorDeco(scene, doors);
+      for (const d of doors as LiveDoor[]) d.open = !isHomeDoor(d);
+      doorView = new DoorView(scene);
+    }
     if (load && sv) {
       gender = sv.g || 'm';
       roleId = sv.r || (gender === 'f' ? 'nurse' : 'courier');
@@ -5241,6 +5348,23 @@ async function boot() {
     $('title').style.display = 'none';
     started = true;
     if (!surv.home) surv.home = [player.pos.x, player.pos.z];
+    {
+      // v22.4.1 day 1: mark the home's street door (map pin + a bobbing arrow until you have stepped outside)
+      const hb = bldAt(player.pos.x, player.pos.z);
+      const hd = hb?.door || doorNear(30);
+      if (hd && gameMin < 2 * 1440) {
+        gmap?.intel('homeexit', hd.p[0], hd.p[1], 'safe', '家門口（出口）');
+        const ar = new THREE.Mesh(
+          new THREE.ConeGeometry(0.35, 0.8, 4),
+          new THREE.MeshBasicMaterial({ color: 0xffa020, depthTest: false, transparent: true }),
+        );
+        ar.rotation.x = Math.PI;
+        ar.renderOrder = 9;
+        ar.position.set(hd.p[0], 3.2, hd.p[1]);
+        scene.add(ar);
+        exitMark = { m: ar, b: hb || null };
+      }
+    }
     document.body.classList.add('ingame');
     document.getElementById('startbar')?.remove();
     {
@@ -5360,7 +5484,7 @@ async function boot() {
   const drawSel = () => {
     sel.innerHTML = ROLES.map(r => {
       const o = r.look[selG];
-      return `<div class="ch" data-g="${selG}" data-r="${r.id}"><img class="pv" alt="" src="${rolePortrait(r.id, selG)}"><b>${r.names[selG === 'm' ? 0 : 1]}・${r.name}</b><small>${selG === 'm' ? '男' : '女'}・${r.age[selG === 'm' ? 0 : 1]} 歲<br>${r.blurb}<br><em>${r.perks.join('・')}</em></small></div>`;
+      return `<div class="ch" data-g="${selG}" data-r="${r.id}"><img class="pv" alt="" src="${rolePortrait(r.id, selG)}"><b>${r.names[selG === 'm' ? 0 : 1]}・${r.name}</b><small class="ag">${selG === 'm' ? '男' : '女'}・${r.age[selG === 'm' ? 0 : 1]} 歲</small><small class="bl">${r.blurb}</small><small class="pk"><em>${r.perks.join('・')}</em></small></div>`;
     }).join('');
     sel.querySelectorAll('.ch').forEach(
       el =>
@@ -5389,6 +5513,7 @@ async function boot() {
   drawSel();
   (window as any).__selG = (g: 'm' | 'f') => {
     selG = g;
+    gsw.querySelectorAll('button').forEach(x => x.classList.toggle('on', (x as HTMLElement).dataset.x === g));
     drawSel();
   };
   const dl = document.createElement('div');
@@ -5434,6 +5559,53 @@ async function boot() {
     OCC,
     escapeCheck,
     unstuck,
+    autoWalk: () => {
+      const p = escapePath(player.pos.x, player.pos.z);
+      AUTO.path = p || [];
+      AUTO.i = 0;
+      return p ? p.length : -1;
+    },
+    dbgAt: () => {
+      const x = player.pos.x,
+        z = player.pos.z;
+      return {
+        w: AUTO.path.slice(AUTO.i, AUTO.i + 4),
+        segs: [...nearSegs(x, z)]
+          .map(q => [q.a, q.b, !!q.low, q.h ?? null])
+          .filter((q: any) => {
+            const [a, b] = q as [V2, V2];
+            const dx = b[0] - a[0],
+              dz = b[1] - a[1];
+            const t = clamp(((x - a[0]) * dx + (z - a[1]) * dz) / (dx * dx + dz * dz || 1), 0, 1);
+            return Math.hypot(x - a[0] - dx * t, z - a[1] - dz * t) < 1.2;
+          }),
+        bar: roadT.barrierAt(x, z, 1.5),
+        wreck: roadT.wreckNear(x, z, 1.8),
+        vel: [player.vel.x, player.vel.z],
+        sleeping: player.sleeping,
+        vault: player.vaultT,
+        drive: !!drive.cur,
+        paused,
+      };
+    },
+    autoState: () => ({
+      i: AUTO.i,
+      n: AUTO.path.length,
+      p: [player.pos.x, player.pos.z],
+      inBld: !!bldAt(player.pos.x, player.pos.z),
+      road: roadDist(player.pos.x, player.pos.z),
+      home: surv.home,
+      door: (() => {
+        const b = bldAt(surv.home![0], surv.home![1]);
+        return b?.door ? b.door.p : null;
+      })(),
+      nudges,
+      cd: (() => {
+        const d = doorNear(1.3);
+        return !!d && !d.open && !d.barricaded;
+      })(),
+      prompt: $('prompt').style.display !== 'none' ? $('prompt').textContent : '',
+    }),
     spawnTest: (roleId: string, g: string, skip: boolean) => {
       player.gender = g;
       spawnRole(roleById(roleId), skip);
