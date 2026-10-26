@@ -298,7 +298,7 @@ export class District {
     // v21.3 paved like the core (shared canvas, own repeat)
     const gt = lotTex.clone();
     gt.needsUpdate = true;
-    gt.repeat.set((x1 - x0 + 400) / 2, (z1 - z0 + 400) / 2);
+    gt.repeat.set((x1 - x0 + 400) / 8, (z1 - z0 + 400) / 8);
     const gm = new THREE.Mesh(
       new THREE.PlaneGeometry(x1 - x0 + 400, z1 - z0 + 400),
       new THREE.MeshStandardMaterial({ map: gt, roughness: 1 }),

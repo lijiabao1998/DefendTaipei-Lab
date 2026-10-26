@@ -846,8 +846,8 @@ function buildMap(data: any) {
   const W = maxx - minx,
     H = maxz - minz;
   // v21.3 everything off the carriageway is paved (worn concrete + tile/brick patchwork, 1 texture = 2 m)
-  groundMat.map = lotTex;
-  lotTex.repeat.set((W + 200) / 2, (H + 200) / 2);
+  groundMat.map = lotTex; // 1 texture = 8 m
+  lotTex.repeat.set((W + 200) / 8, (H + 200) / 8);
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(W + 200, H + 200), groundMat);
   ground.rotation.x = -Math.PI / 2;
   ground.position.set((minx + maxx) / 2, 0, (minz + maxz) / 2);
@@ -4648,6 +4648,7 @@ async function boot() {
     start: () => start!.c,
     scene,
     gm: () => gameMin,
+    roadDist,
     tp: (x: number, z: number) => player.pos.set(x, 0, z),
     damageSol,
     toggleInv,

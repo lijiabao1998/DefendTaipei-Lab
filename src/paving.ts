@@ -90,8 +90,8 @@ export const lotTex = cv(
       c.fillStyle = `rgba(${v},${v - 3},${v - 9},.25)`;
       c.fillRect(r() * 512, r() * 512, 1 + r() * 3, 1 + r() * 3);
     }
-    const u = PX / 10;
-    for (let k = 0; k < 7; k++) {
+    const u = 64 / 10; // this texture spans 8 m (64 px/m)
+    for (let k = 0; k < 2; k++) {
       // tiled patches (30×30 grey / earth) and brick repairs
       const w = (2 + Math.floor(r() * 6)) * u * 3,
         h = (2 + Math.floor(r() * 5)) * u * 3,
