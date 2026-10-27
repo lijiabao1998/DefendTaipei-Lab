@@ -17,7 +17,10 @@ const stop = on('alert', e => kinds.push(e ? e.kind : 'bare'));
 const ran = runStoryEvent('act1_siren_test');
 stop();
 ok(ran?.id === 'act1_siren_test', 'act1_siren_test runs');
-ok(kinds.length === 1 && kinds[0] === 'test', `test-level alert.issue emits kind 'test' (${kinds.join(',') || 'none'})`);
+ok(
+  kinds.length === 1 && kinds[0] === 'test',
+  `test-level alert.issue emits kind 'test' (${kinds.join(',') || 'none'})`,
+);
 
 const clearKinds: string[] = [];
 const stopClear = on('alert', e => clearKinds.push(e ? e.kind : 'bare'));
