@@ -48,10 +48,11 @@ export function loadStory(): {
 
 function dispatch(step: StoryEmit) {
   // Draft actions → existing bus, plus `broadcast` for radio copy (no audio played here).
-  // alert.issue (including level 'test') uses the 萬安 siren: emit('alert', { kind: 'alert' }).
+  // alert.issue level 'test' is the short hourly test tone: emit('alert', { kind: 'test' }).
+  // any other issue level is the full 萬安 siren: emit('alert', { kind: 'alert' }).
   // alert.clear is 解除警報: emit('alert', { kind: 'clear' }).
   if (step.type === 'alert.issue') {
-    emit('alert', { kind: 'alert' });
+    emit('alert', { kind: step.level === 'test' ? 'test' : 'alert' });
     return;
   }
   if (step.type === 'alert.clear') {
