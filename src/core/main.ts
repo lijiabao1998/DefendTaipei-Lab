@@ -67,6 +67,7 @@ import {
   type Station,
 } from '../map/metro';
 import * as SV from '../systems/survival';
+import { clearSave, hasSave, readSave, writeSave } from '../systems/save';
 import { VehicleSystem, VehicleKind } from '../systems/vehicles';
 import { furnish, nightMarket, setPower } from '../map/interiors';
 import { buildDecay } from '../map/decay';
@@ -3293,7 +3294,7 @@ function togglePause(on = !pauseOpen(), fromBack = false) {
             b.textContent = '已存檔 ✓';
             setTimeout(() => (b.textContent = '存檔'), 1200);
           } else if (a === 'load') {
-            if (!localStorage.getItem(SAVE)) return log('沒有存檔', '#f99');
+            if (!hasSave()) return log('沒有存檔', '#f99');
             if (!confirm('讀取上次存檔？目前未存的進度會遺失。')) return;
             sessionStorage.setItem('dt.autoload', '1');
             NOSAVE = true;
@@ -4565,8 +4566,7 @@ function checkSectors(silent = false) {
   rocCheck(silent);
 }
 
-// ---------- save ----------
-const SAVE = 'defendtaipei-save-v1';
+// ---------- save (localStorage I/O lives in systems/save.ts; keys and JSON stay defendtaipei-save-v1 + dt.tiles) ----------
 // ---------- story: utilities timeline (有電有水 → 斷電 → 斷水) ----------
 const UT = { power: true, water: true, ev: {} as Record<string, 1> };
 const POWER_OFF = 2 * 1440 + 19 * 60,
@@ -4599,7 +4599,7 @@ function doEvac(mode: 'heli' | 'boat' = 'heli') {
       log('你決定留下來，繼續奪回萬華。', '#ffd27a');
     };
     $('evnew').onclick = () => {
-      (localStorage.removeItem(SAVE), localStorage.removeItem('dt.tiles'));
+      clearSave();
       location.reload();
     };
   });
@@ -4781,33 +4781,30 @@ function updateStory(gm: number) {
 function save() {
   if (!started || dead || NOSAVE) return;
   gmap?.save();
-  localStorage.setItem(
-    SAVE,
-    JSON.stringify({
-      r: ROLE.id,
-      surv,
-      g: player.gender,
-      p: [player.pos.x, player.pos.z],
-      hp: player.hp,
-      hu: player.hunger,
-      th: player.thirst,
-      fa: player.fatigue,
-      bl: player.bleed,
-      inv: player.inv,
-      eq: player.equip,
-      k: player.kills,
-      t: gameMin,
-      dl: DAYH,
-      wx: WX,
-      ex: UT.ev.ex || 0,
-      inf: INF,
-      ut: UT,
-      conts: conts.map(c => [c.id, c.items, c.p]),
-      dead: sols.filter(s => s.state === 'dead').map(s => s.id),
-      bar: doors.map((d, i) => (d.barricaded ? i : -1)).filter(i => i >= 0),
-      radio: radioLog,
-    }),
-  );
+  writeSave({
+    r: ROLE.id,
+    surv,
+    g: player.gender,
+    p: [player.pos.x, player.pos.z],
+    hp: player.hp,
+    hu: player.hunger,
+    th: player.thirst,
+    fa: player.fatigue,
+    bl: player.bleed,
+    inv: player.inv,
+    eq: player.equip,
+    k: player.kills,
+    t: gameMin,
+    dl: DAYH,
+    wx: WX,
+    ex: UT.ev.ex || 0,
+    inf: INF,
+    ut: UT,
+    conts: conts.map(c => [c.id, c.items, c.p]),
+    dead: sols.filter(s => s.state === 'dead').map(s => s.id),
+    bar: doors.map((d, i) => (d.barricaded ? i : -1)).filter(i => i >= 0),
+    radio: radioLog,
+  });
 }
 
 // ---------- main loop ----------
@@ -5629,7 +5626,7 @@ function drawHud(inside: Bld | null) {
 function die() {
   AU.death(0);
   dead = true;
-  (localStorage.removeItem(SAVE), localStorage.removeItem('dt.tiles'));
+  clearSave();
   closePanel();
   const t = $('title');
   t.style.display = 'flex';
@@ -5831,13 +5828,7 @@ async function boot() {
   buildMap(data);
   Object.assign(WORLD, WORLD_B);
   await prog(0.65, '佈置出生點附近的室內與巷弄…');
-  const sv = (() => {
-    try {
-      return JSON.parse(localStorage.getItem(SAVE) || 'null');
-    } catch {
-      return null;
-    }
-  })();
+  const sv = readSave();
   // ---- detailed blocks around spawn (剝皮寮 / 康定路 / 西門町 edge) ----
   const homes = blds.filter(b => b.door && b.type === 'home' && Math.abs(b.c[0]) < 167 && Math.abs(b.c[1]) < 167);
   const fx = {
@@ -6258,7 +6249,7 @@ async function boot() {
       checkSectors(true);
       conts.forEach(updateVis);
     } else {
-      (localStorage.removeItem(SAVE), localStorage.removeItem('dt.tiles'));
+      clearSave();
       gmap?.reset();
       roadT.reset();
       player.inv = { ...ROLE.inv };
@@ -6484,7 +6475,7 @@ async function boot() {
     phone: (w: string, m: string) => phone(w, m),
     save: () => save(),
     radio: () => ({ log: radioLog, bc: BC.bcStats, siren: BC.sirenOn() }),
-    siren: (k: 'alert' | 'clear') => siren(true, k),
+    siren: (k: 'alert' | 'clear') => emit('alert', { kind: k }),
     radioLogHtml: () => radioLogHtml(),
     clutter: () => ({
       stats: CL.clutterStats,

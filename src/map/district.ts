@@ -12,6 +12,7 @@ import { stair, leanTo, ac, brickPatch, brickMat, vsign, vsignMat, VSN, furnishR
 import { Forest } from './trees';
 import { placeRooftop, dressRoof, pickRoofMat, roofClass, roofDetMat, roofConc } from './rooftin';
 import { VehicleSystem, type VehicleKind } from '../systems/vehicles';
+import { readDistrictTiles, writeDistrictTiles } from '../systems/save';
 
 type V2 = [number, number];
 export type DBld = { p: V2[]; l?: number; n?: string; k?: string; s?: string; g?: 1 };
@@ -279,18 +280,12 @@ export class District {
   private busy = false;
   constructor(private d: DistrictDeps) {
     this.ready = this.init();
-    try {
-      this.saved = JSON.parse(localStorage.getItem('dt.tiles') || '{}');
-    } catch {
-      this.saved = {};
-    }
+    this.saved = readDistrictTiles();
   }
   /** per-tile player changes (looted containers, cleared posts…) */
   save(key: string, k: string, v: any) {
     (this.saved[key] ||= {})[k] = v;
-    try {
-      localStorage.setItem('dt.tiles', JSON.stringify(this.saved));
-    } catch {}
+    writeDistrictTiles(this.saved);
   }
   private async init() {
     this.ix = await (await fetch(this.d.base + 'data/district/index.json')).json();

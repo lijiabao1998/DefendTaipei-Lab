@@ -1,5 +1,7 @@
 // Project-Zomboid-style paper map rendered from the same OpenStreetMap data as the 3D world (© OpenStreetMap contributors, ODbL).
 // Fog of war, player notes, intel markers, 奪回/佔領 sector tint. Street names come from OSM `name` tags; no house numbers.
+import { readMapSave, writeMapSave } from '../systems/save';
+
 type V2 = [number, number];
 export type MapBld = { pts: V2[]; type: string; n?: string };
 export type MapRoad = { p: V2[]; t: string; n?: string };
@@ -46,7 +48,6 @@ const ZONE = (b: MapBld) => {
   if (b.type === 'police') return '#9cb0d0';
   return '#bdb6a2';
 };
-const KEY = 'defendtaipei-map-v2'; // v21: world grew to all of 萬華區 → new fog grid
 const FG = 320; // v21: finer fog grid for the 3 × 4.5 km district
 export class GameMap {
   el: HTMLDivElement;
@@ -89,7 +90,7 @@ export class GameMap {
     this.fog.width = this.fog.height = FG;
     this.fogA = new Uint8Array(FG * FG);
     try {
-      const s = JSON.parse(localStorage.getItem(KEY) || 'null');
+      const s = readMapSave();
       if (s) {
         this.notes = s.n || [];
         const f = atob(s.f || '');
@@ -338,7 +339,7 @@ export class GameMap {
     let f = '';
     for (let i = 0; i < this.fogA.length; i++) f += String.fromCharCode(this.fogA[i]);
     try {
-      localStorage.setItem(KEY, JSON.stringify({ n: this.notes, f: btoa(f) }));
+      writeMapSave({ n: this.notes, f: btoa(f) });
     } catch {
       /* quota */
     }
