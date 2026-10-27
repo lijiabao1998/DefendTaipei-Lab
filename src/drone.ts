@@ -11,6 +11,9 @@ export class Recon {
       hidden: () => boolean;
       spotted: (p: V2) => void;
       log: (m: string, c?: string) => void;
+      /** v22.11 seconds of exposure before a spot, and re-spot cooldown (night: faster) */
+      spotTime?: () => number;
+      spotCd?: () => number;
     },
     centres: V2[],
   ) {
@@ -68,8 +71,8 @@ export class Recon {
       d.cd -= dt;
       if (hd < 24 && !this.deps.hidden()) {
         d.spot += dt;
-        if (d.spot > 2.5 && d.cd <= 0) {
-          d.cd = 70;
+        if (d.spot > (this.deps.spotTime?.() ?? 2.5) && d.cd <= 0) {
+          d.cd = this.deps.spotCd?.() ?? 70;
           d.spot = 0;
           this.deps.spotted([P.x, P.z]);
         }

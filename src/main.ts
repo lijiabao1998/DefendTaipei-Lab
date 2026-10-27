@@ -26,6 +26,7 @@ import { iconURL, iconMat } from './icons';
 import { GF, FH, ARC, arcadeFits, buildArcade, flushArcades, setArcadeDeps, arcadeAudit } from './arcade';
 import { makeRig, animate, setWeapon, setLodFocus, Rig, AnimState, startMelee, meleeQ, hitStop } from './human';
 import { SwingTrail } from './trail';
+import * as SQ from './squadai';
 import { Nav, smooth } from './nav';
 import { RoadTiles } from './roads';
 import { Traffic } from './traffic';
@@ -804,7 +805,10 @@ function setupRecon(c: V2) {
           ].some(([dx, dz]) => bldAt(P.x + dx, P.z + dz))
         );
       },
+      spotTime: () => (isNight() ? 1.5 : 2.5),
+      spotCd: () => (isNight() ? 40 : 70),
       spotted: p => {
+        radio(p, null, '無人機回報目標位置');
         log('⚠ 解放軍偵察無人機發現你！砲擊與巡邏隊正趕來——快躲進騎樓或室內！', '#f66');
         slowDown('被無人機發現');
         for (let i = 0; i < SHELL.n; i++) {
@@ -1707,6 +1711,15 @@ type Sol = {
   /** v22.10 rifle-butt melee: cooldown and time until the blow lands */
   mCd?: number;
   mHit?: number;
+  /** v22.11 squad tactics */
+  day?: boolean;
+  role?: SQ.Role;
+  slot?: number;
+  sqN?: number;
+  flankT?: number;
+  retreatT?: number;
+  retreated?: boolean;
+  search?: V2[];
   id: number;
   mesh: THREE.Group;
   pos: THREE.Vector3;
@@ -1941,6 +1954,15 @@ function onTileLoad(t: TileInfo) {
     const q = big[Math.floor(r() * big.length)];
     if (dead[GARRISON + j] || q.p.length < 2) continue;
     rec.sols.push(dSoldier(t.key, GARRISON + j, q.p.slice(0, 6) as V2[], -1));
+  }
+  // v22.11 daytime: one extra patrol per tile (inactive during curfew, when flashlights + drones take over)
+  if (big.length && live + nP < DBUDGET.solCap && r() < 0.55) {
+    const q = big[Math.floor(r() * big.length)];
+    if (!dead[GARRISON + 2] && q.p.length >= 2) {
+      const ds = dSoldier(t.key, GARRISON + 2, q.p.slice(0, 6).reverse() as V2[], -1);
+      ds.day = true;
+      rec.sols.push(ds);
+    }
   }
 }
 function onTileUnload(key: string) {
@@ -2912,13 +2934,156 @@ function slowDown(why: string) {
     renderSpeed();
   }
 }
+const solActive = (s: Sol, night: boolean) => (!s.night || night) && (!s.day || !night);
+// ---------- v22.11 PLA radio net: a contact pulls nearby idle squads; callouts are audible / logged ----------
+let radioCd = 0;
+const aiStats = { radio: 0, flank: 0, retreat: 0, search: 0, grenades: 0, grenHit: 0, campMax: 0 };
+function radio(p: V2, from: Sol | null, what = '發現目標') {
+  if (radioCd > 0) return;
+  radioCd = SQ.AI.radioCd;
+  aiStats.radio++;
+  const ox = from ? from.pos.x : p[0],
+    oz = from ? from.pos.z : p[1];
+  let n = 0;
+  for (const o of sols) {
+    if (o === from || o.state === 'dead' || o.state === 'combat' || !solActive(o, isNight()) || o.post) continue;
+    if (Math.hypot(o.pos.x - ox, o.pos.z - oz) > SQ.AI.radioR) continue;
+    o.state = 'investigate';
+    o.target = [p[0], p[1]];
+    o.timer = 25;
+    o.alert = Math.max(o.alert, 0.6);
+    n++;
+  }
+  const d = Math.hypot(player.pos.x - ox, player.pos.z - oz);
+  if (d < 40) {
+    AU.radio(d);
+    log(`（無線電）「${what}，請求支援！」${n ? `——附近 ${n} 名士兵正趕來` : ''}`, '#f9a');
+  }
+}
+function callout(s: Sol, msg: string) {
+  const d = s.pos.distanceTo(player.pos);
+  if (d > 35) return;
+  AU.radio(d);
+  log(`（無線電）「${msg}」`, '#f9a');
+}
+// ---------- v22.11 grenades: flush a player who camps out of sight ----------
+type Gren = { s: V2; p: V2; t: number; fuse: number; mesh: THREE.Mesh; w?: { g: THREE.Group; on: boolean } };
+const grens: Gren[] = [];
+const grenGeo = new THREE.SphereGeometry(0.09, 8, 6),
+  grenMat = new THREE.MeshStandardMaterial({ color: 0x2f3a26, roughness: 0.7 });
+let grenCd = 12,
+  campT = 0;
+const campAt = new THREE.Vector3();
+function throwGrenade(s: Sol) {
+  grenCd = SQ.AI.grenCd;
+  aiStats.grenades++;
+  // lands near the last-known spot with a small, deterministic scatter
+  const j = (s.id * 37 + aiStats.grenades * 11) % 7;
+  const p: V2 = [s.lastSeen![0] + ((j % 3) - 1) * 0.9, s.lastSeen![1] + (Math.floor(j / 3) - 1) * 0.9];
+  const mesh = new THREE.Mesh(grenGeo, grenMat);
+  scene.add(mesh);
+  grens.push({ s: [s.pos.x, s.pos.z], p, t: 0, fuse: SQ.AI.grenFuse, mesh });
+  s.rig.shoveT = 0.35; // overhand throw reads from the shove pose
+  callout(s, '手榴彈！');
+  log('⚠ 手榴彈！快離開紅圈', '#f66');
+}
+function updateGrenades(dt: number, night: boolean) {
+  grenCd -= dt;
+  radioCd -= dt;
+  // camping: player stays within 2.5 m, out of every soldier's sight, while a squad knows roughly where
+  if (player.pos.distanceTo(campAt) > 2.5) {
+    campAt.copy(player.pos);
+    campT = 0;
+  }
+  const near = (q?: V2) => !!q && Math.hypot(q[0] - player.pos.x, q[1] - player.pos.z) < 5;
+  const hunters = sols.filter(
+    s =>
+      solActive(s, night) &&
+      ((s.state === 'combat' && near(s.lastSeen)) || (s.state === 'investigate' && s.alert >= 0.5 && near(s.target))),
+  );
+  if (hunters.length && !hunters.some(s => s.aiming)) campT += dt;
+  else campT = Math.max(0, campT - dt * 2);
+  aiStats.campMax = Math.max(aiStats.campMax, campT);
+  if (campT > SQ.AI.grenCamp && grenCd <= 0) {
+    const th = hunters.find(s => {
+      const d = s.pos.distanceTo(player.pos);
+      return d > SQ.AI.grenMin && d < SQ.AI.grenMax && !(s.stun! > 0) && !s.retreatT;
+    });
+    if (th) {
+      if (!th.lastSeen) th.lastSeen = [th.target![0], th.target![1]];
+      throwGrenade(th);
+      campT = 0;
+    }
+  }
+  for (let i = grens.length - 1; i >= 0; i--) {
+    const g = grens[i];
+    if (g.t < SQ.AI.grenFlight) {
+      g.t += dt;
+      const u = Math.min(1, g.t / SQ.AI.grenFlight);
+      g.mesh.position.set(
+        g.s[0] + (g.p[0] - g.s[0]) * u,
+        1.6 + 4 * u * (1 - u) - 1.5 * u,
+        g.s[1] + (g.p[1] - g.s[1]) * u,
+      );
+      if (u >= 1) {
+        g.w = blastFx.warn(g.p[0], g.p[1], SQ.AI.grenCore, SQ.AI.grenWound);
+        AU.clink(Math.hypot(player.pos.x - g.p[0], player.pos.z - g.p[1]));
+      }
+      continue;
+    }
+    g.fuse -= dt;
+    if (g.fuse > 0) continue;
+    grens.splice(i, 1);
+    scene.remove(g.mesh);
+    blastFx.unwarn(g.w);
+    const p = new THREE.Vector3(g.p[0], 0.3, g.p[1]);
+    blastFx.explode(p, 0.55);
+    const dp = Math.hypot(player.pos.x - p.x, player.pos.z - p.z);
+    AU.shellBoom(dp, !!bldAt(player.pos.x, player.pos.z), 0.5);
+    blastFx.kick(dp, 0.5);
+    noise(p.x, p.z, 40);
+    for (const o of sols)
+      if (o.state !== 'dead') {
+        const d = Math.hypot(o.pos.x - p.x, o.pos.z - p.z);
+        if (d < SQ.AI.grenWound) damageSol(o, SQ.grenadeDmg(d), true);
+      }
+    let dmg = SQ.grenadeDmg(dp);
+    if (dmg <= 0) continue;
+    if (bldAt(p.x, p.z) !== bldAt(player.pos.x, player.pos.z)) dmg *= 0.2;
+    else if (findCover(player.pos.x, player.pos.z, 1.2) && dp > 1.5) dmg *= 0.6;
+    aiStats.grenHit++;
+    player.hp -= dmg;
+    player.rig.hurtT = 0.4;
+    flashRed();
+    if (dmg > 15 && !player.bleed) {
+      player.bleed = true;
+      log('被手榴彈破片擊中，流血了！', '#f66');
+    }
+  }
+}
+// v22.11 squads re-formed every frame from soldiers in combat (sorted by id → identical on every client)
+function assignSquads(night: boolean) {
+  const cs = sols.filter(s => s.state === 'combat' && solActive(s, night) && s.mesh.visible);
+  for (const g of SQ.squads(cs.map(s => Object.assign(s, { x: s.pos.x, z: s.pos.z })) as (Sol & SQ.SquadMember)[]))
+    g.forEach((s, i) => {
+      const role = SQ.roleOf(i, g.length);
+      if ((role === 'flankL' || role === 'flankR') && s.role !== role && s.flankT === undefined) {
+        s.flankT = SQ.AI.flankT;
+        aiStats.flank++;
+        callout(s, role === 'flankL' ? '左翼包抄！' : '右翼包抄！');
+      }
+      s.role = role;
+      s.slot = i;
+      s.sqN = g.length;
+    });
+}
 function noise(x: number, z: number, r: number) {
   if (started && r >= 10) {
     const d = Math.hypot(player.pos.x - x, player.pos.z - z);
     if (d > 1.5 && d < r + 10) slowDown('附近有聲響');
   }
   for (const s of sols)
-    if (s.state !== 'dead' && s.state !== 'combat' && (!s.night || isNight()) && s.mesh.visible) {
+    if (s.state !== 'dead' && s.state !== 'combat' && solActive(s, isNight()) && s.mesh.visible) {
       if (Math.hypot(s.pos.x - x, s.pos.z - z) < r) {
         s.state = 'investigate';
         s.target = [x + (rnd() - 0.5) * 3, z + (rnd() - 0.5) * 3];
@@ -4813,6 +4978,8 @@ function update(dt: number) {
   const night = isNight();
   const pp: V2 = [player.pos.x, player.pos.z];
   let pathBudget = 4;
+  assignSquads(night);
+  updateGrenades(dt, night);
   for (const s of sols) {
     if (s.state === 'dead') continue;
     if (PRO.hide) {
@@ -4820,7 +4987,7 @@ function update(dt: number) {
       s.cone.visible = false;
       continue;
     }
-    const active = !s.night || night;
+    const active = solActive(s, night);
     s.mesh.visible = active;
     s.cone.visible = active;
     if (!active) continue;
@@ -4851,6 +5018,7 @@ function update(dt: number) {
       s.state = 'combat';
       log('你被佔領軍發現了！', '#f66');
       noise(s.pos.x, s.pos.z, 25);
+      radio(pp, s);
     }
     if (sees && s.state === 'combat') s.lastSeen = pp.slice() as V2;
     let goal: V2 | null = null,
@@ -4873,6 +5041,9 @@ function update(dt: number) {
         if (s.timer <= 0) {
           s.state = 'patrol';
           s.alert = 0;
+        } else if (s.search && s.search.length) {
+          s.target = s.search.shift()!;
+          s.timer = 8;
         } else {
           s.timer = Math.min(s.timer, 4);
           goal = null;
@@ -4891,7 +5062,10 @@ function update(dt: number) {
           s.cov = solCover(s, pp);
         }
         let atCov = false;
-        if (s.cov) {
+        // v22.11 flankers work round the side, suppressor holds cover (wounded retreat: below)
+        if (s.flankT !== undefined) s.flankT -= dt;
+        const flanking = (s.role === 'flankL' || s.role === 'flankR') && (s.flankT ?? 0) > 0 && dist > 4;
+        if (s.cov && !flanking) {
           const cd2 = Math.hypot(s.cov[0] - s.pos.x, s.cov[1] - s.pos.z);
           if (cd2 > 0.5) {
             goal = s.cov;
@@ -4901,8 +5075,15 @@ function update(dt: number) {
             atCov = true;
           }
         }
+        if (flanking) {
+          const fp = SQ.flankPoint([s.pos.x, s.pos.z], pp, s.role === 'flankL' ? 1 : -1);
+          if (!bldAt(fp[0], fp[1]) && Math.hypot(fp[0] - s.pos.x, fp[1] - s.pos.z) > 1.2) {
+            goal = fp;
+            sp = 3.4;
+          } else s.flankT = 0;
+        }
         s.peekT = (s.peekT || 0) + dt;
-        s.crouch = atCov && s.peekT % 3 < 1.5;
+        s.crouch = atCov && !SQ.peekUp(s.peekT, s.slot || 0);
         // v22.10 point-blank: rifle-butt strike with a readable wind-up instead of firing
         s.mCd = (s.mCd || 0) - dt;
         if (s.mHit !== undefined) {
@@ -4936,14 +5117,26 @@ function update(dt: number) {
           s.cd = Math.max(s.cd, 0.8);
           s.crouch = false;
         }
-        if (s.mHit === undefined && s.cd <= 0 && !(s.stun! > 0) && !s.crouch && (!s.cov || atCov || dist < 8)) {
+        if (
+          s.mHit === undefined &&
+          !(s.retreatT! > 0) &&
+          s.cd <= 0 &&
+          !(s.stun! > 0) &&
+          !s.crouch &&
+          (!s.cov || atCov || dist < 8)
+        ) {
           s.rig.shootT = 0.14;
-          s.cd = 1.1 + rnd() * 0.6;
+          s.cd = (1.1 + rnd() * 0.6) * (s.role === 'suppress' ? 0.6 : flanking ? 1.6 : 1);
           AU.gunshot('rifle', dist, !!bldAt(s.pos.x, s.pos.z) || !!bldAt(player.pos.x, player.pos.z));
           noise(s.pos.x, s.pos.z, 40);
           // v21.4 ray against walls / cover first, then the hit roll (lower vs a covered target)
           const clear = shotRay([s.pos.x, s.pos.z], pp, 1.4, playerAimH(), 1.0);
-          const hitP = (0.55 - dist / 60) * (player.sneak ? 0.7 : 1) * (night ? 0.7 : 1) * (player.cover ? 0.5 : 1);
+          const hitP =
+            (0.55 - dist / 60) *
+            (player.sneak ? 0.7 : 1) *
+            (night ? 0.7 : 1) *
+            (player.cover ? 0.5 : 1) *
+            (s.role === 'suppress' ? 0.6 : 1); // suppressive fire: more rounds, fewer hits
           const hitIt = clear >= 1 && rnd() < hitP;
           const miss =
             clear < 1
@@ -4967,18 +5160,44 @@ function update(dt: number) {
       } else if (s.lastSeen) {
         goal = s.lastSeen;
         sp = 3.2;
-        if (Math.hypot(goal[0] - s.pos.x, goal[1] - s.pos.z) < 1.2) {
+        if (
+          Math.hypot(goal[0] - s.pos.x, goal[1] - s.pos.z) < 1.2 ||
+          (s.role !== 'suppress' && (s.slot || 0) > 0 && Math.hypot(goal[0] - s.pos.x, goal[1] - s.pos.z) < 6)
+        ) {
+          // v22.11 coordinated search: split the last-known area (rooms if it was indoors), one sweep each
+          const lk = s.lastSeen;
+          const b = bldAt(lk[0], lk[1]);
+          s.search = SQ.searchPoints(lk, s.slot || 0, s.sqN || 1, b, (x, z) => bldAt(x, z) === b);
+          if ((s.slot || 0) === 0) {
+            aiStats.search++;
+            callout(s, b ? '目標躲進樓裡，分頭搜！' : '分散搜索！');
+          }
           s.lastSeen = undefined;
           s.state = 'investigate';
-          s.target = [s.pos.x + (rnd() - 0.5) * 10, s.pos.z + (rnd() - 0.5) * 10];
-          s.timer = 12;
+          s.target = s.search.shift()!;
+          s.timer = 10;
           s.alert = 0.5;
+          s.flankT = undefined;
         }
       } else {
         s.state = 'investigate';
         s.target = [s.pos.x, s.pos.z];
         s.timer = 8;
       }
+    }
+    // v22.11 wounded → fall back once, away from the player, holding fire
+    if (s.state === 'combat' && s.hp < SQ.AI.retreatHp && !s.retreated) {
+      s.retreated = true;
+      s.retreatT = SQ.AI.retreatT;
+      aiStats.retreat++;
+      callout(s, '我中彈了，掩護我！');
+    }
+    if (s.retreatT && s.retreatT > 0) {
+      s.retreatT -= dt;
+      goal = SQ.retreatPoint([s.pos.x, s.pos.z], pp, 6);
+      sp = 3.6;
+      s.cov = null;
+      s.crouch = false;
     }
     let moved = 0;
     if (s.state !== 'combat') ((s.cov = null), (s.crouch = false));
@@ -6151,6 +6370,17 @@ async function boot() {
   (window as any).__game = {
     roofStats,
     melee: () => ({ attack: playerAttack, sols, trail: swingTrail, rig: player.rig }),
+    ai: () => ({
+      radio,
+      stats: aiStats,
+      grens,
+      sols,
+      campT,
+      grenCd,
+      SQ,
+      setGrenCd: (v: number) => (grenCd = v),
+      radioCd,
+    }),
     OCC,
     escapeCheck,
     unstuck,

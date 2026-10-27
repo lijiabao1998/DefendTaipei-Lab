@@ -367,6 +367,26 @@ export function swish(dist = 0, heavy = false) {
   sr.start(t, Math.random());
   sr.stop(t + 0.25);
 }
+/** v22.11 PLA radio callout: squelch burst + two short beeps (audible tell for flanks / searches / grenades) */
+export function radio(dist = 0) {
+  const c = ctx();
+  if (!c) return;
+  cnt('radio');
+  const o = bus(c, dist, false, 6);
+  burst(c, o, { type: 'bandpass', hz: 2400, q: 1.2 }, { d: 0.12, v: 0.25 });
+  tone(c, o, 'square', 1250, 1250, { at: 0.14, d: 0.06, v: 0.12 });
+  tone(c, o, 'square', 1550, 1550, { at: 0.24, d: 0.06, v: 0.12 });
+  burst(c, o, { type: 'bandpass', hz: 1800, q: 0.9 }, { at: 0.34, d: 0.5, v: 0.08 });
+}
+/** grenade fuse tick / clink on landing */
+export function clink(dist = 0) {
+  const c = ctx();
+  if (!c) return;
+  cnt('clink');
+  const o = bus(c, dist, false, 5);
+  tone(c, o, 'triangle', 2600, 1900, { d: 0.07, v: 0.25 });
+  tone(c, o, 'triangle', 2300, 1700, { at: 0.12, d: 0.05, v: 0.15 });
+}
 export function meleeHit(dist = 0, blunt = false) {
   const c = ctx();
   if (!c) return;
