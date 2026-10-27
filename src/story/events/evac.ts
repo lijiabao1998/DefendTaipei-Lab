@@ -82,7 +82,7 @@ export function buildEvacZone(scene: THREE.Scene, x: number, z: number) {
 
 export function playEvac(renderer: THREE.WebGLRenderer, mode: 'heli' | 'boat', onEnd: () => void) {
   cine.on = true; // lazy-load the cinematic (carrier, HDRI sky, ocean) only when needed
-  import('./cine')
+  import('../cine')
     .then(m =>
       m.play(renderer, mode, () => {
         cine.on = false;

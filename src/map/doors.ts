@@ -2,7 +2,7 @@
 // player (homes: red iron gate, shops: dark-green metal door) that swing open/closed on interact, a pulsing ground
 // ring at the nearest door within 3 m. A closed door blocks only the player (soldiers path as before).
 import * as THREE from 'three';
-import type { Door, V2 } from './world';
+import type { Door, V2 } from '../core/world';
 
 export type LiveDoor = Door & { open?: boolean; ang?: number };
 const FR_H = 2.45,
@@ -58,7 +58,7 @@ export function buildDoorDeco(scene: THREE.Scene, doors: Door[]) {
   }
 }
 
-import { sfxCtx } from './audio';
+import { sfxCtx } from '../audio/audio';
 /** short metallic creak + latch clunk (synthesised) */
 export function doorSound(open: boolean) {
   try {

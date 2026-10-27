@@ -10,7 +10,7 @@
 // camera-side walls are cut down low so the interior reads from the fixed camera.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import type { V2, Seg } from './world';
+import type { V2, Seg } from '../core/world';
 
 export const METRO_ORANGE = 0xe8681c,
   METRO_GREEN = 0x1f5a3a;

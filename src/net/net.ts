@@ -1,6 +1,6 @@
 // Multiplayer client (v20): anonymous auth, room create/join by code, own-player prediction with server
 // reconciliation, snapshot+delta state replication (shared core), interpolated remote players, auto-reconnect.
-import { patch, TICK_HZ, type State, type Snapshot, type Delta, type Cmd } from './sim/core';
+import { patch, TICK_HZ, type State, type Snapshot, type Delta, type Cmd } from '../core/sim/core';
 export type NetEv = {
   onState?: (s: State, you: string) => void;
   onStatus?: (t: string) => void;

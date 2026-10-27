@@ -4,7 +4,7 @@
 // context, scaled by settings → 廣播. Sirens: 緊急警報 1 long 15 s + 2 short 5 s, 5 s gaps, ×3 (115 s, as
 // published for the real drills); 解除警報 one long tone (90 s real, shortened to 30 s here). Several detuned,
 // delayed street speakers + a synthetic reverb tail; muffled (low-pass) while the player is indoors.
-import { SET, markRadio } from './settings';
+import { SET, markRadio } from '../../ui/settings';
 
 let RC: AudioContext | null = null;
 const rctx = () => {

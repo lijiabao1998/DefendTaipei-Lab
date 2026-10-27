@@ -2,7 +2,7 @@
 // Exposed player in a zone → scope glint + red laser for AIM_T s → shot. Break line of sight (arcades, cars,
 // alleys, indoors) to lose the lock. Killing the sniper (scoped rifle, or climbing to the roof) clears the zone.
 import * as THREE from 'three';
-import type { V2, Bld } from './world';
+import type { V2, Bld } from '../core/world';
 
 export type Post = { id: string; name: string; j: V2; b: Bld; p: V2; y: number; r: number };
 export type Sniper = Post & {

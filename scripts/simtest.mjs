@@ -1,5 +1,5 @@
-// determinism + validation + delta round-trip test for src/sim/core.ts (run: node --experimental-strip-types)
-import { newState, addPlayer, applyCmd, step, hash, diff, patch, clone } from '../src/sim/core.ts';
+// determinism + validation + delta round-trip test for src/core/sim/core.ts (run: node --experimental-strip-types)
+import { newState, addPlayer, applyCmd, step, hash, diff, patch, clone } from '../src/core/sim/core.ts';
 const run = () => {
   const s = newState(1234, 0, 0, 10);
   addPlayer(s, 'a', 'A', 'courier', 'm', 0, 0);
