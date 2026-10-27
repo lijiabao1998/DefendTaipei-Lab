@@ -3140,8 +3140,9 @@ function noise(x: number, z: number, r: number) {
       }
     }
 }
-function log(msg: string, col = '#e8e2d0') {
+function log(msg: string, col = '#e8e2d0', cls = '') {
   const d = document.createElement('div');
+  if (cls) d.className = cls;
   d.textContent = msg;
   d.style.color = col;
   $('log').prepend(d);
@@ -4673,11 +4674,18 @@ const STORY: { t: number; id: string; who: string; msg: string; fx?: () => void 
 ];
 function phone(who: string, msg: string) {
   const el = $('phone');
-  el.innerHTML = `<b>${who}</b><br>${msg}`;
+  el.innerHTML = `<b>${who}</b><div class="pm">${msg}</div>`;
+  if (document.body.classList.contains('portrait')) {
+    // v23.0.1: portrait radio card directly under the status panel, same width
+    const r = $('stats').getBoundingClientRect();
+    el.style.left = r.left + 'px';
+    el.style.top = r.bottom + 6 + 'px';
+    el.style.width = r.width + 'px';
+  } else el.style.left = el.style.top = el.style.width = '';
   el.classList.add('on');
   clearTimeout((phone as any).t);
   (phone as any).t = setTimeout(() => el.classList.remove('on'), 9000);
-  log(`${who}：${msg}`, '#9fd0ff');
+  log(`${who}：${msg}`, '#9fd0ff', 'radio');
 }
 let spoilT = 0;
 const PERISH = ['bento', 'rice', 'oden', 'soymilk', 'milktea', 'danbing', 'chicken', 'sausage', 'egg'];
@@ -6432,6 +6440,7 @@ async function boot() {
   (window as any).__game = {
     roofStats,
     melee: () => ({ attack: playerAttack, sols, trail: swingTrail, rig: player.rig }),
+    phone: (w: string, m: string) => phone(w, m),
     clutter: () => ({
       stats: CL.clutterStats,
       live: [...clutLive].map(b => [b.id, (b as any).clut.use]),
