@@ -7,32 +7,32 @@
 //   multiplayer glue · weather · airdrop · 聯絡人 informant · curfew flashlights · time system, noise, log ·
 //   effects · input · inventory UI · combat · save · story timeline · main loop + HUD · prologue · boot
 // Test/debug hooks are exposed on window.__game at the end of boot().
-import { buildEvacZone, playEvac, cine } from './evac';
+import { buildEvacZone, playEvac, cine } from '../story/events/evac';
 import * as THREE from 'three';
-import { buildFacade } from './facade';
-import { buildParks } from './park';
-import { ArmorSystem, type ArmorKind } from './armor';
-import { Recon, boom, setBoomFx } from './drone';
-import { BlastFX } from './blastfx';
-import { SPEC, DriveSystem, type DKind } from './drive';
-import { ROLES, roleById, type Role } from './roles';
-import type { FPV } from './fpv';
-import type { GameMap } from './map';
-import { RocSystem, ROC_NAME, type RocKind } from './roc';
-import { placeRooftop, dressRoof, pickRoofMat, setShackNight, roofClass, roofStats } from './rooftin';
+import { buildFacade } from '../map/facade';
+import { buildParks } from '../map/park';
+import { ArmorSystem, type ArmorKind } from '../systems/armor';
+import { Recon, boom, setBoomFx } from '../systems/drone';
+import { BlastFX } from '../systems/blastfx';
+import { SPEC, DriveSystem, type DKind } from '../systems/drive';
+import { ROLES, roleById, type Role } from '../player/roles';
+import type { FPV } from '../systems/fpv';
+import type { GameMap } from '../map/map';
+import { RocSystem, ROC_NAME, type RocKind } from '../npc/roc';
+import { placeRooftop, dressRoof, pickRoofMat, setShackNight, roofClass, roofStats } from '../map/rooftin';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { ITEMS, LOOT } from './items';
-import { iconURL, iconMat } from './icons';
-import { GF, FH, ARC, arcadeFits, buildArcade, flushArcades, setArcadeDeps, arcadeAudit } from './arcade';
-import { makeRig, animate, setWeapon, setLodFocus, Rig, AnimState, startMelee, meleeQ, hitStop } from './human';
-import { SwingTrail } from './trail';
-import * as SQ from './squadai';
-import * as CL from './clutter';
-import * as BC from './broadcast';
-import { Nav, smooth } from './nav';
-import { RoadTiles } from './roads';
-import { Traffic } from './traffic';
-import { rolePortrait } from './portrait';
+import { ITEMS, LOOT } from '../systems/items';
+import { iconURL, iconMat } from '../ui/icons';
+import { GF, FH, ARC, arcadeFits, buildArcade, flushArcades, setArcadeDeps, arcadeAudit } from '../map/arcade';
+import { makeRig, animate, setWeapon, setLodFocus, Rig, AnimState, startMelee, meleeQ, hitStop } from '../npc/human';
+import { SwingTrail } from '../systems/trail';
+import * as SQ from '../npc/squadai';
+import * as CL from '../map/clutter';
+import * as BC from '../story/broadcasts/broadcast';
+import { Nav, smooth } from '../systems/nav';
+import { RoadTiles } from '../map/roads';
+import { Traffic } from '../systems/traffic';
+import { rolePortrait } from '../ui/portrait';
 import { type V2, type Seg, type Door, type Bld, type Cont, ROADW } from './world';
 import { clamp, pip, area, segInter, segX } from './geom';
 import {
@@ -51,9 +51,9 @@ import {
   extraSign,
   shopSignTex,
   contMat,
-} from './textures';
-import { plaDrop } from './pla-loot';
-import { joy, initJoystick } from './joystick';
+} from '../map/textures';
+import { plaDrop } from '../systems/pla-loot';
+import { joy, initJoystick } from '../player/joystick';
 import {
   buildMetro,
   ensureInterior,
@@ -65,22 +65,22 @@ import {
   setPried,
   type Shop,
   type Station,
-} from './metro';
-import * as SV from './survival';
-import { VehicleSystem, VehicleKind } from './vehicles';
-import { furnish, nightMarket, setPower } from './interiors';
-import { buildDecay } from './decay';
-import { buildAlley } from './alley';
-import { updateOcclusion, OCC } from './occlusion';
-import { lotTex } from './paving';
-import { walkH } from './roads';
-import { dressWalkup, District, type TileInfo } from './district';
-import { buildDoorDeco, DoorView, doorSound, isHomeDoor, type LiveDoor } from './doors';
-import { SniperSys, findPosts, sniperActive, type Sniper } from './sniper';
-import { Scope, SCOPED, ballistic } from './scope';
-import * as AU from './audio';
-import { SET, QPIX, isKey, K, keyLabel, markMusic, vibrate, applyBtnSize } from './settings';
-import { ctxLabel, ctxHint } from './touchctl';
+} from '../map/metro';
+import * as SV from '../systems/survival';
+import { VehicleSystem, VehicleKind } from '../systems/vehicles';
+import { furnish, nightMarket, setPower } from '../map/interiors';
+import { buildDecay } from '../map/decay';
+import { buildAlley } from '../map/alley';
+import { updateOcclusion, OCC } from '../map/occlusion';
+import { lotTex } from '../map/paving';
+import { walkH } from '../map/roads';
+import { dressWalkup, District, type TileInfo } from '../map/district';
+import { buildDoorDeco, DoorView, doorSound, isHomeDoor, type LiveDoor } from '../map/doors';
+import { SniperSys, findPosts, sniperActive, type Sniper } from '../systems/sniper';
+import { Scope, SCOPED, ballistic } from '../systems/scope';
+import * as AU from '../audio/audio';
+import { SET, QPIX, isKey, K, keyLabel, markMusic, vibrate, applyBtnSize } from '../ui/settings';
+import { ctxLabel, ctxHint } from '../player/touchctl';
 import {
   openPanel,
   openSettings,
@@ -91,8 +91,11 @@ import {
   histPush,
   histPop,
   setBackHandler,
-} from './menu';
+} from '../ui/menu';
 import { VERSION } from './version';
+import { emit, on } from './bus';
+import { MPQ, MP_ON } from '../debug/flags';
+import { PRO_NEWS } from '../story/broadcasts/prologue';
 
 // ---------- utils ----------
 let seed = 20261024;
@@ -770,7 +773,7 @@ function blast(p: THREE.Vector3, fromAbove: boolean) {
   }
 }
 async function launchFPV() {
-  const { FPV } = await import('./fpv');
+  const { FPV } = await import('../systems/fpv');
   fpv =
     fpv ||
     new FPV({
@@ -2081,10 +2084,7 @@ const traffic = new Traffic({
   },
 });
 // ---- multiplayer glue (v20, local server only) ----
-let net: import('./net').Net | null = null;
-const MPQ = new URLSearchParams(location.search);
-// v23.1.3: the multiplayer server is not deployed yet, so 多人連線 is shown as 即將開放 unless ?mpdebug=1 (or ?mp=/?room=) is set
-const MP_ON = MPQ.has('mpdebug') || MPQ.has('mp') || MPQ.has('room');
+let net: import('../net/net').Net | null = null;
 function soonToast(t: string) {
   let el = document.getElementById('soontoast');
   if (!el) {
@@ -2103,7 +2103,7 @@ const remRigs = new Map<string, Rig>(),
 const remPrev = new Map<string, [number, number]>();
 async function startNet() {
   if (!MP) return;
-  const { Net } = await import('./net');
+  const { Net } = await import('../net/net');
   net = new Net(MP.base, {
     onStatus: t => {
       const h = document.getElementById('mphud');
@@ -5675,6 +5675,8 @@ const PRO = {
   sir: null as any,
   msgs: 0,
 };
+// v23.2: the prologue's attack emits 'alert' on the event bus; the siren listens (synchronous, same timing as before)
+on('alert', e => siren(true, e.kind));
 function siren(on: boolean, kind: 'alert' | 'clear' = 'alert') {
   // v23.1 萬安-style street sirens (broadcast.ts); muffled indoors
   if (on) BC.airRaid(kind, () => !!bldAt(player.pos.x, player.pos.z), AU.sfxCtx());
@@ -5737,12 +5739,6 @@ function endPrologue() {
   document.getElementById('wake')?.remove();
   log('解放軍已攻入萬華，街上到處是哨兵與裝甲車。從現在起，活下去，一區一區奪回來。', '#ffd76a');
 }
-const PRO_NEWS: [number, string, string][] = [
-  [3, '📱 早安推播', '今日台北：多雲 26°C，午後局部陣雨。'],
-  [12, '📱 新聞快訊', '國防部：共軍於台海周邊實施「聯合演習」，政府呼籲民眾照常上班上課。'],
-  [24, '📱 交通', '北都地下鐵正常營運；西門町周邊道路車多請改道。'],
-  [38, '📱 新聞快訊', '多處網站遭受大規模網路攻擊，部分銀行 App 暫停服務。'],
-];
 function updatePrologue(dt: number) {
   if (!PRO.on) return;
   PRO.t += dt;
@@ -5766,7 +5762,7 @@ function updatePrologue(dt: number) {
     if (prog > 0.45 || PRO.t > 75 || left < 6) {
       PRO.stage = 2;
       PRO.t = 0;
-      siren(true);
+      emit('alert', { kind: 'alert' });
       traffic.panic();
       roadT.rebuild();
       scrFlash('rgba(200,20,10,.55)', 900);
@@ -6058,7 +6054,7 @@ async function boot() {
   await prog(0.85, '加蓋頂樓（目前街區）…');
   pumpRoofs(start.c[0], start.c[1], 1e9, 160);
   (window as any).__roofLeft = () => roofJobs.length;
-  import('./map').then(({ GameMap }) => {
+  import('../map/map').then(({ GameMap }) => {
     gmap = new GameMap({
       blds: blds as any,
       roads: roads as any,
@@ -6385,7 +6381,7 @@ async function boot() {
     const base = (mpw.querySelector('#mpbase') as HTMLInputElement).value.replace(/\/$/, '');
     mpMsg('建立中…');
     try {
-      const { Net } = await import('./net');
+      const { Net } = await import('../net/net');
       const code = await new Net(base).create();
       (mpw.querySelector('#mpcode') as HTMLInputElement).value = code;
       MP = { base, code };

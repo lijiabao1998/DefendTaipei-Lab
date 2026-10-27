@@ -456,3 +456,10 @@ node scripts/tiles.mjs           # 重新切 200 m 道路細節圖塊（public/d
 
 - 伺服器尚未上線：標題選單的「多人連線」改為暗色「多人連線（即將開放）」，點擊只顯示提示「多人連線即將開放，敬請期待」；角色選擇畫面的連線列也隱藏。
 - 測試用：網址加 `?mpdebug=1`（或 `?mp=`／`?room=`）即恢復原本的多人連線流程。
+
+## v23.2.0 — 程式碼模組化（純結構重整）
+
+- `src/` 依功能分成資料夾：`core/`（遊戲主迴圈、事件匯流排、模擬核心）、`map/`、`systems/`、`npc/`、`player/`、`story/`（`events/`、`broadcasts/`）、`audio/`、`ui/`、`net/`、`debug/`。各資料夾負責人見 [docs/MODULES.md](docs/MODULES.md)。
+- 新增 `src/core/bus.ts`：簡單的型別化事件匯流排（`emit`／`on`，同步執行）。序章空襲開始時改為發出 `alert` 事件，由警報器監聽後響起，時序與先前完全相同。
+- 序章手機推播資料移到 `src/story/broadcasts/prologue.ts`；網址測試旗標（`?mpdebug=1` 等）移到 `src/debug/flags.ts`。
+- 遊戲行為、畫面與鏡頭皆未改變。

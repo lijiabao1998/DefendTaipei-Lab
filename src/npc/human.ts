@@ -2,7 +2,7 @@
 // spring-driven procedural animation system (stride-locked gait, hip IK, lean, momentum, overlays).
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { fabricMat, Fabric } from './fabric';
+import { fabricMat, Fabric } from '../map/fabric';
 export type AnimState =
   'idle' | 'walk' | 'run' | 'sneak' | 'melee' | 'aim' | 'shoot' | 'loot' | 'hurt' | 'death' | 'sleep' | 'carry';
 export type RigOpts = {

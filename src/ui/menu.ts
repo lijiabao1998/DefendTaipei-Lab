@@ -1,7 +1,7 @@
 // v22.4 shared modal screens: 設定 (volume / 畫質 / language / sensitivity / vibration / key rebinding),
 // 操作說明 and 製作名單. Used from the title menu and the in-game pause menu.
 import { SET, saveSettings, ACTIONS, BIND, keyName, rebind, resetKeys, applyBtnSize, type Quality } from './settings';
-import { VERSION } from './version';
+import { VERSION } from '../core/version';
 
 /** touch device (phone / tablet): no Esc key, no mouse */
 export const TOUCH =

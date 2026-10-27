@@ -11,7 +11,7 @@ import { lotTex, ARCADE_MATS, worldUV } from './paving';
 import { stair, leanTo, ac, brickPatch, brickMat, vsign, vsignMat, VSN, furnishRoom } from './walkup';
 import { Forest } from './trees';
 import { placeRooftop, dressRoof, pickRoofMat, roofClass, roofDetMat, roofConc } from './rooftin';
-import { VehicleSystem, type VehicleKind } from './vehicles';
+import { VehicleSystem, type VehicleKind } from '../systems/vehicles';
 
 type V2 = [number, number];
 export type DBld = { p: V2[]; l?: number; n?: string; k?: string; s?: string; g?: 1 };

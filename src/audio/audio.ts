@@ -1,6 +1,6 @@
 // v22.6 procedural audio + v22.8 recorded CC0 gunshots (public/sfx/gun, see CREDITS.md). Two shared contexts:
 // SFX (settings → 音效) and AMB (ambience / rain / shelter life, tagged with markMusic → 音樂／環境).
-import { markMusic } from './settings';
+import { markMusic } from '../ui/settings';
 
 let SFX: AudioContext | null = null;
 let AMB: AudioContext | null = null;

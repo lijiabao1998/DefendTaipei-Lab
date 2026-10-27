@@ -1,8 +1,8 @@
 import { shrink } from './texq';
 // Hand-designed Taiwanese interiors placed procedurally inside real OSM footprints.
 import * as THREE from 'three';
-import { LOOT } from './items';
-import { iconMat, PSIZE } from './icons';
+import { LOOT } from '../systems/items';
+import { iconMat, PSIZE } from '../ui/icons';
 export type V2 = [number, number];
 export type Ctx = {
   rnd: () => number;

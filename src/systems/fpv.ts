@@ -1,4 +1,4 @@
-import { SET } from './settings';
+import { SET } from '../ui/settings';
 // FPV kamikaze drone (pilot view w/ analog video look + OSD) and PLA recon drones.
 import * as THREE from 'three';
 type V2 = [number, number];
