@@ -275,7 +275,7 @@ export class BlastFX {
       });
     }
     // dark smoke rising from the fireball, then grey-brown lingering smoke drifting with the wind
-    for (let i = 0; i < 60 * q * big; i++)
+    for (let i = 0; i < 80 * q * big; i++)
       this.smoke.spawn({
         k: 2,
         x: x + R() * 4,
@@ -287,7 +287,7 @@ export class BlastFX {
         age: -Math.random() * 0.25,
         life: 4 + Math.random() * 5,
         s0: 1.5 * big,
-        s1: (3.5 + Math.random() * 4) * big,
+        s1: (5 + Math.random() * 5) * big,
         a0: 1,
       });
     // dust / debris column: tall narrow plume of soil
@@ -358,7 +358,7 @@ export class BlastFX {
       s.m.visible = true;
       s.m.position.set(x, y + 0.12, z);
       s.m.rotation.z = Math.random() * 6.28;
-      s.m.scale.setScalar(5.5 * big * (0.85 + Math.random() * 0.3));
+      s.m.scale.setScalar(7 * big * (0.85 + Math.random() * 0.3));
     }
   }
   /** camera shake from a blast at distance d (m): small, fast-decaying offset only */
@@ -428,7 +428,7 @@ export class BlastFX {
     for (const s of this.scorch) {
       if (!s.m.visible) continue;
       s.age += dt;
-      (s.m.material as THREE.MeshBasicMaterial).opacity = Math.min(1, s.age * 8) * 0.92 * Math.max(0, 1 - s.age / 120);
+      (s.m.material as THREE.MeshBasicMaterial).opacity = Math.min(1, s.age * 8) * Math.max(0, 1 - s.age / 120);
       if (s.age > 120) s.m.visible = false;
     }
     // warnings: pulse faster as impact nears (caller removes them)
@@ -496,11 +496,11 @@ export class BlastFX {
         p.vz = p.vz * dr + wz * dt * (smoke ? 0.5 : 0.25);
         p.vy = smoke ? p.vy * dr + dt * 0.25 : p.vy * dr - dt * 5;
         // smoke starts near-black, fades to grey-brown; dust is soil brown
-        const lv = smoke ? 0.07 + Math.min(1, t * 2) * 0.26 : 0.4;
+        const lv = smoke ? 0.05 + Math.min(1, t * 1.6) * 0.2 : 0.36;
         r = lv * p.j * (smoke ? 1 : 1.05);
         g = lv * p.j * 0.9;
         b = lv * p.j * (smoke ? 0.8 : 0.7);
-        a = p.a0 * Math.min(1, t * 10) * (1 - t) ** (smoke ? 0.6 : 1.1);
+        a = Math.min(1, p.a0 * (smoke ? 1.35 : 1.1)) * Math.min(1, t * 10) * (1 - t) ** (smoke ? 0.5 : 1);
       }
       p.x += p.vx * dt;
       p.y = Math.max(0.1, p.y + p.vy * dt);
@@ -523,9 +523,9 @@ function scorchCanvas() {
   c.width = c.height = 128;
   const x = c.getContext('2d')!;
   const g = x.createRadialGradient(64, 64, 4, 64, 64, 64);
-  g.addColorStop(0, 'rgba(8,6,5,0.95)');
-  g.addColorStop(0.35, 'rgba(20,16,12,0.85)');
-  g.addColorStop(0.7, 'rgba(40,32,24,0.4)');
+  g.addColorStop(0, 'rgba(4,3,2,1)');
+  g.addColorStop(0.4, 'rgba(14,11,8,0.95)');
+  g.addColorStop(0.72, 'rgba(30,24,18,0.6)');
   g.addColorStop(1, 'rgba(40,32,24,0)');
   x.fillStyle = g;
   x.fillRect(0, 0, 128, 128);

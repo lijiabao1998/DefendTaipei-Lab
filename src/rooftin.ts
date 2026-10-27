@@ -819,8 +819,10 @@ export function dressRoof(
   rnd: () => number,
   pip: PIP,
   clutter: boolean,
+  out?: { det: THREE.BufferGeometry[]; conc: THREE.BufferGeometry[] },
 ) {
   const g: THREE.BufferGeometry[] = [];
+  const cg: THREE.BufferGeometry[] = []; // matte concrete / membrane pieces
   const pc = [0xb4b0a6, 0x9c9a92, 0xc8c4b8, 0x8a8e84][Math.floor(rnd() * 4)];
   let cx = 0,
     cz = 0;
@@ -945,17 +947,186 @@ export function dressRoof(
         at(col(new THREE.BoxGeometry(1.2, 0.03, 0.03).translate(0, 2.2, 0), 0x777777), p),
       ); // antenna
   }
-  for (const q of g) {
+  bigRoof(g, cg, pts, h, rnd, pip);
+  for (const q of [...g, ...cg]) {
     if (q.index) {
       const n = q.toNonIndexed();
       q.copy(n);
     }
     q.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(q.attributes.position.count * 2), 2));
   }
-  if (g.length) {
-    const me = new THREE.Mesh(mergeGeometries(g.map(strip)), detMat);
-    me.castShadow = true;
-    me.receiveShadow = true;
-    root.add(me);
+  if (out) {
+    out.det.push(...g.map(strip));
+    out.conc.push(...cg.map(strip));
+    return;
+  }
+  for (const [arr, m] of [
+    [g, detMat],
+    [cg, roofConc],
+  ] as const)
+    if (arr.length) {
+      const me = new THREE.Mesh(mergeGeometries(arr.map(strip)), m);
+      me.castShadow = true;
+      me.receiveShadow = true;
+      root.add(me);
+    }
+}
+export const roofDetMat = detMat;
+export const roofConc = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 });
+/** v22.9.1 Taipei flat-roof kit, scaled by roof area and spread over the whole footprint (not just the centre):
+ * 樓梯間 stair housing with door, worn waterproofing patches + drains, stainless / blue plastic tanks on steel
+ * stands, rows of AC condensers, a small 鐵皮 lean-to, antennas + a dish, satellite clutter. Deterministic via rnd. */
+function bigRoof(
+  g: THREE.BufferGeometry[],
+  cg: THREE.BufferGeometry[],
+  pts: [number, number][],
+  h: number,
+  rnd: () => number,
+  pip: PIP,
+) {
+  let A = 0,
+    x0 = 1e9,
+    x1 = -1e9,
+    z0 = 1e9,
+    z1 = -1e9,
+    best = 0,
+    th = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i],
+      c = pts[(i + 1) % pts.length];
+    A += a[0] * c[1] - c[0] * a[1];
+    x0 = Math.min(x0, a[0]);
+    x1 = Math.max(x1, a[0]);
+    z0 = Math.min(z0, a[1]);
+    z1 = Math.max(z1, a[1]);
+    const L = Math.hypot(c[0] - a[0], c[1] - a[1]);
+    if (L > best) ((best = L), (th = -Math.atan2(c[1] - a[1], c[0] - a[0])));
+  }
+  A = Math.abs(A / 2);
+  if (A < 60) return;
+  const inside = (x: number, z: number, r: number) =>
+    pip([x, z], pts) &&
+    pip([x + r, z + r], pts) &&
+    pip([x - r, z - r], pts) &&
+    pip([x + r, z - r], pts) &&
+    pip([x - r, z + r], pts);
+  const taken: [number, number, number][] = [];
+  const spot = (r: number): [number, number] | null => {
+    for (let k = 0; k < 14; k++) {
+      const x = x0 + rnd() * (x1 - x0),
+        z = z0 + rnd() * (z1 - z0);
+      if (!inside(x, z, r + 0.6)) continue;
+      if (taken.some(([tx, tz, tr]) => Math.hypot(tx - x, tz - z) < tr + r + 0.4)) continue;
+      taken.push([x, z, r]);
+      return [x, z];
+    }
+    return null;
+  };
+  const put = (arr: THREE.BufferGeometry[], q: THREE.BufferGeometry, c: number, p: [number, number], y = 0, r = th) => {
+    q.rotateY(r);
+    q.translate(p[0], h + y, p[1]);
+    if (q.attributes.uv) q.deleteAttribute('uv');
+    arr.push(col(q, c));
+  };
+  const B = (w: number, hh: number, d: number, ox = 0, oy = 0, oz = 0) =>
+    new THREE.BoxGeometry(w, hh, d).translate(ox, oy + hh / 2, oz);
+  const n = Math.min(1, A / 400);
+  // waterproofing: 2-6 patched membrane sheets (grey-green / tar black / faded silver) + drain stains
+  for (let i = 0; i < 2 + Math.floor(n * 4); i++) {
+    const w = 3 + rnd() * 6,
+      d = 2 + rnd() * 5,
+      p = spot(Math.max(w, d) * 0.35);
+    if (!p) continue;
+    const c = [0x5f6a5c, 0x2c2c2a, 0x8e9290, 0x6e665a][Math.floor(rnd() * 4)];
+    put(cg, new THREE.BoxGeometry(w, 0.02, d).translate(0, 0.02 + i * 0.003, 0), c, p, 0, th + (rnd() - 0.5) * 0.2);
+  }
+  // 樓梯間 stair housing (one per ~350 m²) with a rusty steel door and a small tank on top
+  for (let i = 0; i < Math.max(1, Math.round(A / 350)) && i < 3; i++) {
+    const w = 2.6 + rnd() * 0.8,
+      d = 3.2 + rnd() * 1.4,
+      hh = 2.6;
+    const p = spot(Math.max(w, d) * 0.6);
+    if (!p) continue;
+    const wc = [0xb8b2a4, 0xa8a69c, 0xc4bca8][Math.floor(rnd() * 3)];
+    put(cg, B(w, hh, d), wc, p);
+    put(cg, B(w + 0.3, 0.12, d + 0.3, 0, hh), 0x8a867c, p); // slab overhang
+    put(g, B(0.95, 2.05, 0.06, 0, 0, d / 2 + 0.02), 0x6a4a34, p); // door
+    for (let k = 0; k < 3; k++)
+      put(cg, B(0.06, 0.3 + rnd() * 1.4, 0.02, (rnd() - 0.5) * w, hh - 1.6, d / 2 + 0.01), 0x5a5048, p); // stains
+    if (rnd() < 0.7)
+      put(
+        g,
+        new THREE.CylinderGeometry(0.5, 0.5, 1.1, 10).translate(0, hh + 0.12 + 0.55, 0),
+        rnd() < 0.5 ? 0x3a6ab0 : 0xd8dcdc,
+        p,
+      );
+  }
+  // water tanks on steel stands: stainless horizontal / vertical, or blue plastic
+  for (let i = 0; i < 1 + Math.floor(n * 3); i++) {
+    const p = spot(1.3);
+    if (!p) continue;
+    const st = 0.6 + rnd() * 1.2,
+      kind = rnd();
+    for (const [ox, oz] of [
+      [-0.6, -0.6],
+      [0.6, -0.6],
+      [0.6, 0.6],
+      [-0.6, 0.6],
+    ])
+      put(g, B(0.08, st, 0.08, ox, 0, oz), 0x4a4440, p);
+    put(g, B(1.5, 0.08, 1.5, 0, st), 0x4a4440, p);
+    if (kind < 0.4)
+      put(
+        g,
+        new THREE.CylinderGeometry(0.65, 0.65, 1.9, 12).rotateZ(Math.PI / 2).translate(0, st + 0.73, 0),
+        0xdfe3e6,
+        p,
+      );
+    else
+      put(
+        g,
+        new THREE.CylinderGeometry(0.7, 0.7, 1.5, 12).translate(0, st + 0.83, 0),
+        kind < 0.7 ? 0xd4d8da : 0x2f5fa6,
+        p,
+      );
+  }
+  // AC condenser rows
+  for (let r = 0; r < 1 + Math.floor(n * 3); r++) {
+    const k = 2 + Math.floor(rnd() * 4),
+      p = spot(k * 0.5);
+    if (!p) continue;
+    for (let i = 0; i < k; i++) {
+      put(g, B(0.85, 0.62, 0.34, (i - k / 2) * 0.95, 0.1), 0xe2e0d8, p);
+      put(g, B(0.06, 0.1, 0.4, (i - k / 2) * 0.95, 0), 0x55504a, p);
+    }
+    put(
+      g,
+      new THREE.CylinderGeometry(0.03, 0.03, k * 0.95, 4).rotateZ(Math.PI / 2).translate(0, 0.8, 0.3),
+      0x9a9a96,
+      p,
+    ); // pipe run
+  }
+  // 鐵皮 lean-to / storage shed on larger roofs
+  if (A > 160 && rnd() < 0.7) {
+    const w = 3 + rnd() * 3,
+      d = 2.5 + rnd() * 2,
+      p = spot(Math.max(w, d) * 0.6);
+    if (p) {
+      const c = [0x5a7a8a, 0x8a5a3a, 0x9a9a92, 0x3f6a5a][Math.floor(rnd() * 4)];
+      put(g, B(w, 2.2, d), c, p);
+      put(g, new THREE.BoxGeometry(w + 0.4, 0.05, d + 0.5).rotateX(0.12).translate(0, 2.35, 0), 0x7a7a74, p);
+    }
+  }
+  // antennas + a satellite dish
+  for (let i = 0; i < 1 + Math.floor(n * 2); i++) {
+    const p = spot(0.4);
+    if (!p) continue;
+    const L = 2 + rnd() * 3;
+    put(g, new THREE.CylinderGeometry(0.03, 0.04, L, 4).translate(0, L / 2, 0), 0x8a8a8a, p);
+    for (let k = 0; k < 3; k++) put(g, B(0.9 - k * 0.2, 0.02, 0.02, 0, L - 0.3 - k * 0.35), 0x8a8a8a, p);
+  }
+  if (rnd() < 0.6) {
+    const p = spot(0.6);
+    if (p) put(g, new THREE.SphereGeometry(0.45, 8, 4, 0, 6.28, 0, 1.1).rotateX(1.1).translate(0, 0.9, 0), 0xdedcd6, p);
   }
 }

@@ -10,7 +10,7 @@ import { canvasTex, roadMat } from './textures';
 import { lotTex, ARCADE_MATS, worldUV } from './paving';
 import { stair, leanTo, ac, brickPatch, brickMat, vsign, vsignMat, VSN, furnishRoom } from './walkup';
 import { Forest } from './trees';
-import { placeRooftop, dressRoof, pickRoofMat, roofClass } from './rooftin';
+import { placeRooftop, dressRoof, pickRoofMat, roofClass, roofDetMat, roofConc } from './rooftin';
 import { VehicleSystem, type VehicleKind } from './vehicles';
 
 type V2 = [number, number];
@@ -489,6 +489,8 @@ export class District {
         new THREE.Vector3(sx, sy, sz),
       );
     let roofs = 0;
+    // v22.9.1 every roof in the tile gets parapets + roof kit, merged into two meshes per tile
+    const roofKit = { det: [] as THREE.BufferGeometry[], conc: [] as THREE.BufferGeometry[] };
     const roofB = new Map<THREE.Material, THREE.BufferGeometry[]>();
     // base road surfaces
     const rg: THREE.BufferGeometry[] = [];
@@ -768,9 +770,9 @@ export class District {
         roofs++;
         const rg2 = new THREE.Group();
         placeRooftop(rg2, pts, h, rnd, pip as any, rcls);
-        dressRoof(rg2, pts, h, rnd, pip as any, true);
         detail.add(rg2);
       }
+      dressRoof(detail, pts, h, rnd, pip as any, true, roofKit);
     }
     // kerbside cars / taxis / kei trucks
     for (const r of td.r) {
@@ -814,6 +816,8 @@ export class District {
       par.add(m);
     };
     for (const [m, arr] of roofB) add(arr, m, g);
+    add(roofKit.det, roofDetMat, detail);
+    add(roofKit.conc, roofConc, detail);
     add(brickG, brickMat, detail, false);
     add(vsG, vsignMat, detail, false);
     tileG.forEach((gs, i) => add(gs, ARCADE_MATS[i], g, false));
