@@ -5676,7 +5676,7 @@ const PRO = {
   msgs: 0,
 };
 // v23.2: the prologue's attack emits 'alert' on the event bus; the siren listens (synchronous, same timing as before)
-on('alert', e => siren(true, e.kind));
+on('alert', e => siren(true, e?.kind ?? 'alert'));
 function siren(on: boolean, kind: 'alert' | 'clear' = 'alert') {
   // v23.1 萬安-style street sirens (broadcast.ts); muffled indoors
   if (on) BC.airRaid(kind, () => !!bldAt(player.pos.x, player.pos.z), AU.sfxCtx());
