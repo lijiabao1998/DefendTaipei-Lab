@@ -8,7 +8,7 @@
 
 - 航艦（福特級外型參考的通用模型）、直升機、橡皮艇、護衛艦、艦載機、甲板人員、天際線與頂樓加蓋鐵皮屋：全部以程式碼手工建模（three.js），無第三方模型。
 - 海洋（Gerstner）、天空、雲、煙火、浪花、調色、景深、bloom：程式產生 shader。
-- 音效：WebAudio 即時合成（旋翼、海浪），未使用任何音檔。
+- 音效：除下方「槍聲錄音」外，皆以 WebAudio 即時合成（旋翼、海浪、腳步、環境等）。
 - 頂樓加蓋參考（僅參考外觀，未使用影像）：PIXTA 132391252、自由時報 playing.ltn.com.tw/article/12528、東森新聞 488006（萬華西園路頂加）。
 
 ## 解放軍制式輕兵器（v10 敵兵掉落）參考來源
@@ -57,3 +57,23 @@ Weights marked 約值 in-game (T93, T75 pistol) are approximations. Vehicle and 
 - Google Earth view of Taipei 鐵皮屋/頂加 (巴哈姆特) — https://home.gamer.com.tw/artwork.php?sn=2897677
 - Taipei City Construction Management Office on illegal rooftop construction — https://english.cmo.gov.taipei/News_Content.aspx?n=861D2DD384505EB9&s=E57FD5AACB11B25B&sms=EFA85B94A44F5A29
 - 應用高解像力遙測影像於台北市建物屋頂加蓋物之監測 (Airiti) — https://www.airitilibrary.com/Article/Detail/18145388-200510-x-3-15-26-a
+
+## 槍聲錄音（v22.8）`public/sfx/gun/`
+來源：**The Free Firearm Sound Library**（Ben Jaszczak、Brian Nelson、Kevin Heras、Matthew Nanney 錄製），OpenGameArt「Prepared SFX Library.7z」— https://opengameart.org/content/the-free-firearm-sound-library
+授權：**CC0 1.0**（公眾領域，可商用、不需署名；仍在此致謝）。處理：每檔剪出單發、混成單聲道、尾段淡出、響度正規化（-12 LUFS／-1 dBTP），輸出 MP3 80 kbps 44.1 kHz。室內殘響／街道回音為遊戲內以合成脈衝響應的 ConvolverNode 產生，非錄音。反裝甲武器仍為程序合成。
+
+| 檔案 | 內容 | 原始檔（Prepared SFX Library/） | 大小 | 授權 |
+|---|---|---|---|---|
+| `pistol1.mp3` | Walther PPQ 9mm 手槍，近距離 | Walther PPQ/X_39P.wav（第 1 發） | 8.7 KB | CC0 1.0 — https://opengameart.org/content/the-free-firearm-sound-library |
+| `pistol2.mp3` | Walther PPQ 9mm 手槍，近距離 | Walther PPQ/X_39P.wav（第 2 發） | 8.7 KB | CC0 1.0 — https://opengameart.org/content/the-free-firearm-sound-library |
+| `rifle1.mp3` | AR-15 5.56mm 步槍，近距離 | AR-15/D_32P.wav（第 1 發） | 9.7 KB | CC0 1.0 — https://opengameart.org/content/the-free-firearm-sound-library |
+| `rifle2.mp3` | AR-15 5.56mm 步槍，近距離 | AR-15/D_32P.wav（第 2 發） | 9.7 KB | CC0 1.0 — https://opengameart.org/content/the-free-firearm-sound-library |
+| `rifle3.mp3` | AK-47 7.62×39mm 步槍，近距離 | AK-47/C_28P.wav（第 1 發） | 9.7 KB | CC0 1.0 — https://opengameart.org/content/the-free-firearm-sound-library |
+| `sniper1.mp3` | Tikka T3 .30-06 栓式步槍，近距離 | Tikka/W_29P.wav（第 1 發） | 16.5 KB | CC0 1.0 — https://opengameart.org/content/the-free-firearm-sound-library |
+| `sniper2.mp3` | Tikka T3 .30-06 栓式步槍，近距離 | Tikka/W_29P.wav（第 2 發） | 16.5 KB | CC0 1.0 — https://opengameart.org/content/the-free-firearm-sound-library |
+| `mg1.mp3` | Mosin Nagant 7.62×54mmR（機槍用同口徑），近距離 | Mosin Nagant/M_21P.wav（第 1 發） | 8.1 KB | CC0 1.0 — https://opengameart.org/content/the-free-firearm-sound-library |
+| `mg2.mp3` | Mosin Nagant 7.62×54mmR，近距離 | Mosin Nagant/M_21P.wav（第 2 發） | 8.1 KB | CC0 1.0 — https://opengameart.org/content/the-free-firearm-sound-library |
+| `shotgun1.mp3` | Benelli Nova 12 號霰彈槍，近距離 | Nova/O_21P.wav（第 1 發） | 11.7 KB | CC0 1.0 — https://opengameart.org/content/the-free-firearm-sound-library |
+| `shotgun2.mp3` | Benelli Nova 12 號霰彈槍，近距離 | Nova/O_21P.wav（第 2 發） | 11.7 KB | CC0 1.0 — https://opengameart.org/content/the-free-firearm-sound-library |
+| `far1.mp3` | AR-15，中距離（遠處槍聲） | AR-15/D_24P.wav（第 1 發） | 14.5 KB | CC0 1.0 — https://opengameart.org/content/the-free-firearm-sound-library |
+| 合計 | 12 檔 | | 133.7 KB | |

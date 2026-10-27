@@ -1,4 +1,4 @@
-// v22.6 procedural audio: every sound is synthesised with WebAudio (no samples). Two shared contexts:
+// v22.6 procedural audio + v22.8 recorded CC0 gunshots (public/sfx/gun, see CREDITS.md). Two shared contexts:
 // SFX (settings → 音效) and AMB (ambience / rain / shelter life, tagged with markMusic → 音樂／環境).
 import { markMusic } from './settings';
 
@@ -20,6 +20,7 @@ function ctx(amb = false): AudioContext | null {
 export function unlockAudio() {
   const go = () => {
     ctx()?.resume();
+    loadGunSamples();
     ctx(true)?.resume();
   };
   for (const ev of ['pointerdown', 'touchstart', 'keydown']) addEventListener(ev, go, { passive: true });
@@ -111,11 +112,116 @@ export function gunKind(id: string, d: any): GunKind {
   if (/12/.test(d.cal || '') || /shot/.test(id)) return 'shotgun';
   return 'rifle';
 }
+// ---- v22.8 recorded gunshots (CC0, The Free Firearm Sound Library — see CREDITS.md), decoded once on the SFX
+// context; the procedural shot above stays as the fallback (and for anti-armour) until / unless they load
+const GUN_FILES: Record<string, string[]> = {
+  pistol: ['pistol1', 'pistol2'],
+  rifle: ['rifle1', 'rifle2', 'rifle3'],
+  sniper: ['sniper1', 'sniper2'],
+  mg: ['mg1', 'mg2'],
+  shotgun: ['shotgun1', 'shotgun2'],
+  far: ['far1'],
+};
+const gunBuf: Record<string, AudioBuffer[]> = {};
+let gunLoad: 'idle' | 'loading' | 'ok' | 'fail' = 'idle';
+export const gunSamples = () => ({ state: gunLoad, n: Object.values(gunBuf).reduce((a, b) => a + b.length, 0) });
+export function loadGunSamples() {
+  const c = ctx();
+  if (!c || gunLoad !== 'idle') return;
+  gunLoad = 'loading';
+  const base = (import.meta as any).env?.BASE_URL ?? '/';
+  const jobs: Promise<void>[] = [];
+  for (const [k, fs] of Object.entries(GUN_FILES))
+    for (const f of fs)
+      jobs.push(
+        fetch(`${base}sfx/gun/${f}.mp3`)
+          .then(r => (r.ok ? r.arrayBuffer() : Promise.reject(r.status)))
+          .then(ab => new Promise<AudioBuffer>((ok, no) => c.decodeAudioData(ab, ok, no)))
+          .then(bf => void (gunBuf[k] ||= []).push(bf))
+          .catch(() => {}),
+      );
+  Promise.all(jobs).then(() => (gunLoad = Object.keys(gunBuf).length ? 'ok' : 'fail'));
+}
+/** gun master: compressor + limiter so the shots can be loud without clipping (still under the 音效 volume) */
+let gunOut: AudioNode | null = null;
+let roomIR: AudioBuffer | null = null,
+  streetIR: AudioBuffer | null = null;
+function gunMaster(c: AudioContext) {
+  if (gunOut && gunOut.context === c) return gunOut;
+  const comp = c.createDynamicsCompressor();
+  comp.threshold.value = -14;
+  comp.knee.value = 6;
+  comp.ratio.value = 5;
+  comp.attack.value = 0.002;
+  comp.release.value = 0.18;
+  const lim = c.createDynamicsCompressor();
+  lim.threshold.value = -2;
+  lim.knee.value = 0;
+  lim.ratio.value = 20;
+  lim.attack.value = 0.001;
+  lim.release.value = 0.08;
+  const mk = c.createGain();
+  mk.gain.value = 1.6; // make-up gain: punchier than footsteps / doors
+  comp.connect(mk).connect(lim).connect(c.destination);
+  return (gunOut = comp);
+}
+/** synthetic impulse responses: small room (indoor) and a long sparse street / façade echo (sniper, distant) */
+function ir(c: AudioContext, len: number, decay: number, taps = 0) {
+  const n = Math.floor(c.sampleRate * len),
+    b = c.createBuffer(2, n, c.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = b.getChannelData(ch);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, decay) * (taps ? 0.25 : 1);
+    for (let t = 0; t < taps; t++) {
+      const at = Math.floor(n * (0.12 + 0.7 * Math.random()));
+      for (let j = 0; j < 400 && at + j < n; j++)
+        d[at + j] += (Math.random() * 2 - 1) * 0.6 * Math.pow(1 - at / n, 2) * (1 - j / 400);
+    }
+  }
+  return b;
+}
+function conv(c: AudioContext, street: boolean) {
+  const cv = c.createConvolver();
+  if (street) cv.buffer = streetIR && streetIR.sampleRate === c.sampleRate ? streetIR : (streetIR = ir(c, 2.2, 3, 7));
+  else cv.buffer = roomIR && roomIR.sampleRate === c.sampleRate ? roomIR : (roomIR = ir(c, 0.7, 4));
+  return cv;
+}
+const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 /** one gunshot; dist in m from the listener (the player), indoor = either end under a roof */
 export function gunshot(k: GunKind, dist = 0, indoor = false) {
   const c = ctx();
   if (!c || dist > 260) return;
   cnt('gun_' + k);
+  if (gunLoad === 'idle') loadGunSamples();
+  const far = dist > 70 && k !== 'pistol' && gunBuf.far?.length;
+  const set = far ? gunBuf.far : gunBuf[k];
+  if (k !== 'at' && set?.length) {
+    cnt('gunrec_' + k);
+    const out = gunMaster(c);
+    const src = c.createBufferSource();
+    src.buffer = set[Math.floor(Math.random() * set.length)];
+    src.playbackRate.value = rnd(0.93, 1.06) * (k === 'sniper' ? 0.94 : 1);
+    const loud = { pistol: 1.3, rifle: 1.6, sniper: 2.0, mg: 1.5, shotgun: 1.8, at: 2 }[k];
+    const g = c.createGain();
+    g.gain.value = loud * rnd(0.85, 1) * (1 / (1 + Math.max(0, dist) / (k === 'sniper' ? 22 : 14)));
+    const lp = c.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = Math.max(700, 18000 / (1 + dist / 18));
+    src.connect(lp).connect(g);
+    g.connect(out);
+    // reverb sends: room when indoors; street echo for the sniper crack and distant shots
+    const wet = indoor ? 0.55 : k === 'sniper' ? 0.45 : dist > 25 ? 0.3 : 0.12;
+    if (wet > 0) {
+      const cv = conv(c, !indoor);
+      const wg = c.createGain();
+      wg.gain.value = wet;
+      g.connect(cv).connect(wg).connect(out);
+      setTimeout(() => (cv.disconnect(), wg.disconnect()), 4000);
+    }
+    src.start();
+    src.onended = () => setTimeout(() => (lp.disconnect(), g.disconnect()), 2500);
+    return;
+  }
   const o = bus(c, dist, indoor, k === 'pistol' ? 5 : 9);
   const P = {
     pistol: { crack: 2600, v: 0.55, body: 160, d: 0.12 },
@@ -125,11 +231,14 @@ export function gunshot(k: GunKind, dist = 0, indoor = false) {
     shotgun: { crack: 900, v: 0.9, body: 90, d: 0.3 },
     at: { crack: 500, v: 1, body: 50, d: 0.9 },
   }[k];
-  burst(c, o, { type: 'bandpass', hz: P.crack, q: 0.6 }, { d: P.d * 0.5, v: P.v });
-  burst(c, o, { type: 'lowpass', hz: 900 }, { d: P.d * 1.6, v: P.v * 0.8 });
-  tone(c, o, 'sine', P.body * 1.8, P.body * 0.5, { d: P.d, v: P.v * 0.9 });
+  const v = P.v * rnd(0.85, 1.15) * 1.5; // v22.8 louder fallback, with a little variation
+  const r = rnd(0.92, 1.08);
+  burst(c, o, { type: 'bandpass', hz: P.crack * r, q: 0.6 }, { d: P.d * 0.5, v });
+  burst(c, o, { type: 'lowpass', hz: 900 * r }, { d: P.d * 1.6, v: v * 0.8 });
+  tone(c, o, 'sine', P.body * 1.8 * r, P.body * 0.5, { d: P.d, v: v * 0.9 });
   if (dist > 40) burst(c, o, { type: 'lowpass', hz: 300 }, { at: 0.08, d: 0.6, v: 0.25 }); // rolling report
 }
+
 export type Surface = 'tile' | 'asphalt' | 'wood' | 'metro';
 export function footstep(sf: Surface, dist = 0, heavy = false, run = false) {
   const c = ctx();
