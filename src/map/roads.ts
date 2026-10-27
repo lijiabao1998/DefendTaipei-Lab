@@ -6,6 +6,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { GLYPHS, GMAT, atlas } from './roadglyphs';
 import { PAVE, worldUV } from './paving';
 import { Forest } from './trees';
+import { clearRoadTiles, readRoadTiles, writeRoadTiles } from '../systems/save';
 type Seg = [number, number, number, number, number, string, number, string, number?, number?];
 type Node = [number, number, number, [number, number, number][], number?];
 type TileData = { tx: number; tz: number; seed: number; segs: Seg[]; nodes: Node[]; clip?: [number, number, number][] };
@@ -127,7 +128,6 @@ const LM = {
   g1: LAMP.g[0].clone(),
 };
 // v19.2 road paint per 道路交通標誌標線號誌設置規則: white / yellow / red, glyph atlas for 標字 and icons (white or yellow variant)
-const SAVE = 'dt-tiles-v1';
 export class RoadTiles {
   size = 200;
   have = new Set<string>();
@@ -139,11 +139,7 @@ export class RoadTiles {
   phase = 0;
   stats = { loads: 0, unloads: 0, built: 0 };
   constructor(public d: RoadDeps) {
-    try {
-      this.state = JSON.parse(localStorage.getItem(SAVE) || '{}');
-    } catch {
-      this.state = {};
-    }
+    this.state = readRoadTiles();
   }
   async init() {
     const ix = await (await fetch(this.d.base + 'data/tiles/index.json')).json();
@@ -152,7 +148,7 @@ export class RoadTiles {
   }
   reset() {
     this.state = {};
-    localStorage.removeItem(SAVE);
+    clearRoadTiles();
     for (const k of [...this.tiles.keys()]) this.unload(k);
     this.cur = '';
   }
@@ -162,7 +158,7 @@ export class RoadTiles {
   }
   mark(key: string, id: string) {
     (this.state[key] ||= []).push(id);
-    localStorage.setItem(SAVE, JSON.stringify(this.state));
+    writeRoadTiles(this.state);
   }
   done(key: string, id: string) {
     return !!this.state[key]?.includes(id);
