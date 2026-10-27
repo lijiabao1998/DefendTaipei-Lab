@@ -2,6 +2,7 @@
 // Off by default (?maptiles=1). Renderer-agnostic: the caller supplies load/unload hooks, so this file
 // imports nothing outside src/map/. Nothing in the game calls it yet, so default behaviour is unchanged.
 import { TILE, keyOf, parseKey, tileDist, tileOf, type TileKey } from './grid';
+import { emit } from '../../core/bus';
 import { LOD_DROP, LOD_HYST, lodFor, type Lod } from './lod';
 
 export const MAP_TILES_ON =
@@ -17,6 +18,8 @@ export interface TileHooks<T> {
   onLoaded?: (tx: number, tz: number, lod: Lod) => void;
   onUnloaded?: (tx: number, tz: number) => void;
 }
+/** bus tileLoaded.lod: 0 near / 1 mid / 2 far */
+export const LOD_NUM: Record<Lod, number> = { near: 0, mid: 1, far: 2 };
 type Entry<T> = { lod: Lod; obj?: T; gen: number };
 
 export class TileManager<T> {
@@ -67,9 +70,14 @@ export class TileManager<T> {
       if (e.obj !== undefined) this.hooks.unload(tx, tz, e.obj);
       e.obj = obj;
       this.hooks.onLoaded?.(tx, tz, lod);
+      emit('tileLoaded', { tx, tz, lod: LOD_NUM[lod] });
     };
     const r = this.hooks.load(tx, tz, lod);
-    if (r instanceof Promise) r.then(done, () => this.tiles.get(k) === e && this.tiles.delete(k));
+    const fail = () => {
+      if (this.tiles.get(k) !== e || e.gen !== gen) return; // superseded; newer entry owns e.obj
+      this.drop(k, tx, tz, e); // unloads the previous LOD object kept in e.obj (no leak)
+    };
+    if (r instanceof Promise) r.then(done, fail);
     else done(r);
   }
 
@@ -77,6 +85,7 @@ export class TileManager<T> {
     this.tiles.delete(k);
     if (e.obj !== undefined) this.hooks.unload(tx, tz, e.obj);
     this.hooks.onUnloaded?.(tx, tz);
+    emit('tileUnloaded', { tx, tz });
   }
 
   clear() {
