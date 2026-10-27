@@ -12,7 +12,8 @@ import * as THREE from 'three';
 import { buildFacade } from './facade';
 import { buildParks } from './park';
 import { ArmorSystem, type ArmorKind } from './armor';
-import { Recon, boom } from './drone';
+import { Recon, boom, setBoomFx } from './drone';
+import { BlastFX } from './blastfx';
 import { SPEC, DriveSystem, type DKind } from './drive';
 import { ROLES, roleById, type Role } from './roles';
 import type { FPV } from './fpv';
@@ -723,7 +724,24 @@ function dropGun(c: Cont, p: THREE.Vector3, it: Record<string, number>) {
 // ---------- FPV kamikaze drones + PLA recon drones ----------
 let fpv: FPV | null = null,
   recon: Recon | null = null;
-const shells: { t: number; p: V2 }[] = [];
+// v22.9 artillery: realistic radii (old: 7 m linear, ±7 m spread, no telegraph, soldiers unhurt)
+const SHELL = { core: 6, wound: 18, spread: 4.5, lead: 6, gap: 1.3, n: 4, coreDmg: 85, woundDmg: 50 };
+const shells: { t: number; p: V2; w?: ReturnType<BlastFX['warn']>; wh?: boolean }[] = [];
+const blastFx = new BlastFX(scene, SET.quality, {
+  wind: () => (raining() ? [2.2, 0.9] : [0.9, 0.35]),
+});
+setBoomFx((p, big) => {
+  const d = Math.hypot(player.pos.x - p.x, player.pos.z - p.z);
+  blastFx.explode(p, big);
+  blastFx.kick(d, big);
+  AU.shellBoom(d, !!bldAt(player.pos.x, player.pos.z), big);
+});
+/** shell damage factor at distance d: full lethal core, then quadratic falloff to the wounding radius */
+function shellDmg(d: number) {
+  if (d < SHELL.core) return SHELL.coreDmg * (1 - 0.4 * (d / SHELL.core));
+  if (d < SHELL.wound) return SHELL.woundDmg * ((SHELL.wound - d) / (SHELL.wound - SHELL.core)) ** 2;
+  return 0;
+}
 let lastBlast: unknown = null;
 function blast(p: THREE.Vector3, fromAbove: boolean) {
   lastBlast = { x: p.x, y: p.y, z: p.z, fromAbove };
@@ -788,8 +806,12 @@ function setupRecon(c: V2) {
       spotted: p => {
         log('⚠ 解放軍偵察無人機發現你！砲擊與巡邏隊正趕來——快躲進騎樓或室內！', '#f66');
         slowDown('被無人機發現');
-        for (let i = 0; i < 4; i++)
-          shells.push({ t: 6 + i * 1.3, p: [p[0] + (Math.random() - 0.5) * 14, p[1] + (Math.random() - 0.5) * 14] });
+        for (let i = 0; i < SHELL.n; i++) {
+          const a = Math.random() * 6.28,
+            r = SHELL.spread * Math.sqrt(Math.random());
+          const q: V2 = [p[0] + Math.cos(a) * r, p[1] + Math.sin(a) * r];
+          shells.push({ t: SHELL.lead + i * SHELL.gap, p: q, w: blastFx.warn(q[0], q[1], SHELL.core, SHELL.wound) });
+        }
         sols
           .filter(s => s.state !== 'dead' && !s.post)
           .sort((a, b) => Math.hypot(a.pos.x - p[0], a.pos.z - p[1]) - Math.hypot(b.pos.x - p[0], b.pos.z - p[1]))
@@ -808,22 +830,37 @@ function updateShells(dt: number) {
   for (let i = shells.length - 1; i >= 0; i--) {
     const s = shells[i];
     s.t -= dt;
+    if (!s.wh && s.t < 1.6) {
+      s.wh = true;
+      AU.whistle(Math.hypot(player.pos.x - s.p[0], player.pos.z - s.p[1]), Math.max(0.3, s.t));
+    }
     if (s.t > 0) continue;
     shells.splice(i, 1);
+    blastFx.unwarn(s.w);
     const p = new THREE.Vector3(s.p[0], 0.5, s.p[1]);
     boom(scene, p, 1.4);
     noise(p.x, p.z, 60);
+    for (const o of sols) {
+      if (o.state === 'dead') continue;
+      const d = Math.hypot(o.pos.x - p.x, o.pos.z - p.z);
+      if (d < SHELL.wound) damageSol(o, d < SHELL.core ? 300 : shellDmg(d) * 1.5, true);
+    }
     const dp = Math.hypot(player.pos.x - p.x, player.pos.z - p.z);
-    if (dp < 7 && !bldAt(player.pos.x, player.pos.z)) {
-      player.hp -= 55 * (1 - dp / 7);
-      player.rig.hurtT = 0.4;
-      if (!player.bleed) {
-        player.bleed = true;
-        log('被砲彈破片擊中，流血了！', '#f66');
-      }
+    let dmg = shellDmg(dp);
+    if (dmg <= 0) continue;
+    // indoors the walls stop almost all fragments; low walls / arcade pillars (cover) halve them
+    if (bldAt(player.pos.x, player.pos.z)) dmg *= 0.15;
+    else if (findCover(player.pos.x, player.pos.z, 1.4)) dmg *= 0.5;
+    lastShellHit = Math.round(dmg);
+    player.hp -= dmg;
+    player.rig.hurtT = 0.4;
+    if (dmg > 15 && !player.bleed) {
+      player.bleed = true;
+      log('被砲彈破片擊中，流血了！', '#f66');
     }
   }
 }
+let lastShellHit = 0;
 // ---------- 國軍 (ROC) support: weapons unlock, radio call-in, final counter-offensive ----------
 const ROC = { unlocked: false, cd: 0, offensive: false, ended: false, n: 0 };
 let roc: RocSystem | null = null;
@@ -5008,6 +5045,9 @@ function update(dt: number) {
   // camera
   camera.position.copy(player.pos).add(CAM_OFF);
   camera.lookAt(player.pos);
+  // v22.9 blast shake: offset only (rig / angle / zoom untouched), re-copied every frame so it never drifts
+  blastFx.update(dt, camera, renderer.domElement.height);
+  camera.position.add(blastFx.shake);
   // HUD
   saveT += dt;
   if (saveT > 20) {
@@ -6223,6 +6263,10 @@ async function boot() {
     },
     lastBlast: () => lastBlast,
     shells,
+    blastFx,
+    SHELL,
+    shellDmg,
+    lastShellHit: () => lastShellHit,
     launchFPV,
     blast,
     sim: (n: number, dt = 0.05) => {

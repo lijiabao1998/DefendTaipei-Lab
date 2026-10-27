@@ -8,7 +8,7 @@
 
 - 航艦（福特級外型參考的通用模型）、直升機、橡皮艇、護衛艦、艦載機、甲板人員、天際線與頂樓加蓋鐵皮屋：全部以程式碼手工建模（three.js），無第三方模型。
 - 海洋（Gerstner）、天空、雲、煙火、浪花、調色、景深、bloom：程式產生 shader。
-- 音效：除下方「槍聲錄音」外，皆以 WebAudio 即時合成（旋翼、海浪、腳步、環境等）。
+- 音效：除下方「槍聲錄音」「砲彈爆炸錄音」外，皆以 WebAudio 即時合成（旋翼、海浪、腳步、環境等）。
 - 頂樓加蓋參考（僅參考外觀，未使用影像）：PIXTA 132391252、自由時報 playing.ltn.com.tw/article/12528、東森新聞 488006（萬華西園路頂加）。
 
 ## 解放軍制式輕兵器（v10 敵兵掉落）參考來源
@@ -77,3 +77,13 @@ Weights marked 約值 in-game (T93, T75 pistol) are approximations. Vehicle and 
 | `shotgun2.mp3` | Benelli Nova 12 號霰彈槍，近距離 | Nova/O_21P.wav（第 2 發） | 11.7 KB | CC0 1.0 — https://opengameart.org/content/the-free-firearm-sound-library |
 | `far1.mp3` | AR-15，中距離（遠處槍聲） | AR-15/D_24P.wav（第 1 發） | 14.5 KB | CC0 1.0 — https://opengameart.org/content/the-free-firearm-sound-library |
 | 合計 | 12 檔 | | 133.7 KB | |
+
+## 砲彈爆炸錄音（v22.9）`public/sfx/boom/`
+來源：**25 CC0 bang / firework SFX**（rubberduck 自錄煙火／禮炮爆炸），OpenGameArt — https://opengameart.org/content/25-cc0-bang-firework-sfx（檔案 25-CC0-bang-sfx.zip）
+授權：**CC0 1.0**。處理：降調至 0.62 倍、低頻增強、單聲道、淡出、響度正規化（-11 LUFS／-1 dBTP），MP3 80 kbps。砲彈呼嘯聲、街道回音與破片落地聲為 WebAudio 即時合成。
+
+| 檔案 | 原始檔 | 大小 | 授權 |
+|---|---|---|---|
+| `boom1.mp3` | cannon_01.ogg | 26.1 KB | CC0 1.0 — https://opengameart.org/content/25-cc0-bang-firework-sfx |
+| `boom2.mp3` | cannon_02.ogg | 26.1 KB | CC0 1.0 — https://opengameart.org/content/25-cc0-bang-firework-sfx |
+| `boom3.mp3` | bang_06.ogg | 26.1 KB | CC0 1.0 — https://opengameart.org/content/25-cc0-bang-firework-sfx |

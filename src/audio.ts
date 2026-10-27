@@ -21,6 +21,7 @@ export function unlockAudio() {
   const go = () => {
     ctx()?.resume();
     loadGunSamples();
+    loadBoomSamples();
     ctx(true)?.resume();
   };
   for (const ev of ['pointerdown', 'touchstart', 'keydown']) addEventListener(ev, go, { passive: true });
@@ -237,6 +238,92 @@ export function gunshot(k: GunKind, dist = 0, indoor = false) {
   burst(c, o, { type: 'lowpass', hz: 900 * r }, { d: P.d * 1.6, v: v * 0.8 });
   tone(c, o, 'sine', P.body * 1.8 * r, P.body * 0.5, { d: P.d, v: v * 0.9 });
   if (dist > 40) burst(c, o, { type: 'lowpass', hz: 300 }, { at: 0.08, d: 0.6, v: 0.25 }); // rolling report
+}
+
+// ---------- v22.9 artillery: incoming whistle + recorded CC0 blast (public/sfx/boom, see CREDITS.md) ----------
+const boomBuf: AudioBuffer[] = [];
+let boomLoad: 'idle' | 'loading' | 'ok' | 'fail' = 'idle';
+export const boomSamples = () => ({ state: boomLoad, n: boomBuf.length });
+export function loadBoomSamples() {
+  const c = ctx();
+  if (!c || boomLoad !== 'idle') return;
+  boomLoad = 'loading';
+  const base = (import.meta as any).env?.BASE_URL ?? '/';
+  Promise.all(
+    ['boom1', 'boom2', 'boom3'].map(f =>
+      fetch(`${base}sfx/boom/${f}.mp3`)
+        .then(r => (r.ok ? r.arrayBuffer() : Promise.reject(r.status)))
+        .then(ab => new Promise<AudioBuffer>((ok, no) => c.decodeAudioData(ab, ok, no)))
+        .then(b => void boomBuf.push(b))
+        .catch(() => {}),
+    ),
+  ).then(() => (boomLoad = boomBuf.length ? 'ok' : 'fail'));
+}
+/** falling-shell whistle: a descending, slightly wavering tone that ends at impact (dur s) */
+export function whistle(dist = 0, dur = 1.6) {
+  const c = ctx();
+  if (!c || dist > 200) return;
+  cnt('shell_whistle');
+  const out = gunMaster(c);
+  const g = c.createGain();
+  const t = c.currentTime,
+    v = 0.22 / (1 + dist / 30);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(v, t + dur * 0.7);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  const o = c.createOscillator();
+  o.type = 'sine';
+  const f0 = rnd(1500, 1800);
+  o.frequency.setValueAtTime(f0, t);
+  o.frequency.exponentialRampToValueAtTime(f0 * 0.42, t + dur);
+  const lfo = c.createOscillator();
+  lfo.frequency.value = 7;
+  const lg = c.createGain();
+  lg.gain.value = 14;
+  lfo.connect(lg).connect(o.frequency);
+  o.connect(g).connect(out);
+  burst(c, g, { type: 'bandpass', hz: 2400, q: 2 }, { a: dur * 0.6, d: dur * 0.4, v: 0.25 });
+  o.start(t);
+  lfo.start(t);
+  o.stop(t + dur);
+  lfo.stop(t + dur);
+  o.onended = () => (g.disconnect(), lg.disconnect());
+}
+/** shell / large blast; dist m from the player; indoor muffles it */
+export function shellBoom(dist = 0, indoor = false, big = 1) {
+  const c = ctx();
+  if (!c || dist > 600) return;
+  cnt('shell_boom');
+  if (boomLoad === 'idle') loadBoomSamples();
+  const out = gunMaster(c);
+  const g = c.createGain();
+  g.gain.value = 2.4 * Math.min(1.3, big) * rnd(0.85, 1) * (1 / (1 + Math.max(0, dist) / 25));
+  const lp = c.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = Math.max(350, (indoor ? 2500 : 14000) / (1 + dist / 30));
+  lp.connect(g);
+  g.connect(out);
+  const cv = conv(c, !indoor);
+  const wg = c.createGain();
+  wg.gain.value = indoor ? 0.6 : 0.5;
+  g.connect(cv).connect(wg).connect(out);
+  // sound travels ~343 m/s: a distant blast arrives late
+  const at = c.currentTime + Math.min(1.2, dist / 343);
+  if (boomBuf.length) {
+    cnt('shell_boomrec');
+    const s = c.createBufferSource();
+    s.buffer = boomBuf[Math.floor(Math.random() * boomBuf.length)];
+    s.playbackRate.value = rnd(0.88, 1.05) / Math.sqrt(Math.max(0.6, big));
+    s.connect(lp);
+    s.start(at);
+  } else {
+    burst(c, lp, { type: 'lowpass', hz: 1400 }, { at: at - c.currentTime, d: 0.5, v: 1 });
+    burst(c, lp, { type: 'lowpass', hz: 220 }, { at: at - c.currentTime, d: 2.2, v: 1 }, 0.6);
+    tone(c, lp, 'sine', 90, 30, { at: at - c.currentTime, d: 1.4, v: 0.9 });
+  }
+  // debris patter after the main blast
+  if (dist < 60) burst(c, lp, { type: 'highpass', hz: 2500 }, { at: at - c.currentTime + 0.5, a: 0.2, d: 1, v: 0.08 });
+  setTimeout(() => (lp.disconnect(), g.disconnect(), cv.disconnect(), wg.disconnect()), 6000);
 }
 
 export type Surface = 'tile' | 'asphalt' | 'wood' | 'metro';

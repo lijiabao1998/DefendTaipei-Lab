@@ -102,7 +102,13 @@ export class Recon {
 }
 
 // ---------- explosion visual ----------
+let fxHook: ((p: THREE.Vector3, big: number) => void) | null = null;
+/** v22.9: route every explosion through the pooled BlastFX (see blastfx.ts) */
+export function setBoomFx(f: (p: THREE.Vector3, big: number) => void) {
+  fxHook = f;
+}
 export function boom(scene: THREE.Scene, p: THREE.Vector3, big = 1) {
+  if (fxHook) return fxHook(p, big);
   const m = new THREE.Mesh(
     new THREE.SphereGeometry(1, 12, 8),
     new THREE.MeshBasicMaterial({ color: 0xffaa33, transparent: true, opacity: 0.9, depthWrite: false }),
