@@ -41,6 +41,8 @@ for (const [name, ctxOpt] of [
     return t && t.classList.contains('on') ? t.textContent : null;
   });
   r.stillTitle = await p.evaluate(() => !document.body.classList.contains('selmode'));
+  // keep the toast up for the screenshot (headless capture can take longer than its 2.2 s life)
+  await p.evaluate(() => clearTimeout(document.getElementById('soontoast')._t));
   await p.screenshot({ path: `${out}/${name}.png` });
   await p.context().close();
   const q = await (await b.newContext(ctxOpt)).newPage();
