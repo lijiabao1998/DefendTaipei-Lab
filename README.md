@@ -451,3 +451,8 @@ node scripts/tiles.mjs           # 重新切 200 m 道路細節圖塊（public/d
 
 - game.lijiabao.uk 改為多遊戲總站（lijiabao1998.github.io 使用者站台，持有 CNAME）；本遊戲移到 https://game.lijiabao.uk/defendtaipei/ 。
 - 專案 repo 改名為 `defendtaipei`，移除本 repo 的自訂網域與 public/CNAME、robots.txt、sitemap.xml（改由總站提供）；Vite `base` 改為 `/defendtaipei/`，canonical／OG 網址與檢查腳本同步更新。
+
+## v23.1.3 — 多人連線（即將開放）
+
+- 伺服器尚未上線：標題選單的「多人連線」改為暗色「多人連線（即將開放）」，點擊只顯示提示「多人連線即將開放，敬請期待」；角色選擇畫面的連線列也隱藏。
+- 測試用：網址加 `?mpdebug=1`（或 `?mp=`／`?room=`）即恢復原本的多人連線流程。

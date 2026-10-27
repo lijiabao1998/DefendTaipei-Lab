@@ -2083,6 +2083,20 @@ const traffic = new Traffic({
 // ---- multiplayer glue (v20, local server only) ----
 let net: import('./net').Net | null = null;
 const MPQ = new URLSearchParams(location.search);
+// v23.1.3: the multiplayer server is not deployed yet, so 多人連線 is shown as 即將開放 unless ?mpdebug=1 (or ?mp=/?room=) is set
+const MP_ON = MPQ.has('mpdebug') || MPQ.has('mp') || MPQ.has('room');
+function soonToast(t: string) {
+  let el = document.getElementById('soontoast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'soontoast';
+    document.body.appendChild(el);
+  }
+  el.textContent = t;
+  el.classList.add('on');
+  clearTimeout((el as any)._t);
+  (el as any)._t = setTimeout(() => el!.classList.remove('on'), 2200);
+}
 let MP: { base: string; code: string } | null = null;
 const remRigs = new Map<string, Rig>(),
   enRigs = new Map<number, Rig>();
@@ -6312,7 +6326,7 @@ async function boot() {
   tm.id = 'tmenu';
   tm.innerHTML =
     (sv ? '<button data-a="cont" class="pri">繼續遊戲</button>' : '') +
-    `<button data-a="new"${sv ? '' : ' class="pri"'}>新遊戲</button><button data-a="mp">多人連線</button><button data-a="set">設定</button><button data-a="help">操作說明</button><button data-a="about">製作名單／關於</button>`;
+    `<button data-a="new"${sv ? '' : ' class="pri"'}>新遊戲</button><button data-a="mp"${MP_ON ? '' : ' class="soon" aria-disabled="true"'}>${MP_ON ? '多人連線' : '多人連線<small>（即將開放）</small>'}</button><button data-a="set">設定</button><button data-a="help">操作說明</button><button data-a="about">製作名單／關於</button>`;
   const showSel = (mp = false) => {
     document.body.classList.add('selmode');
     btns.style.display = '';
@@ -6333,8 +6347,10 @@ async function boot() {
         else if (a === 'new') {
           if (sv && !confirm('開始新遊戲會覆蓋目前的存檔，確定？')) return;
           showSel();
-        } else if (a === 'mp') showSel(true);
-        else if (a === 'set') openSettings();
+        } else if (a === 'mp') {
+          if (MP_ON) showSel(true);
+          else soonToast('多人連線即將開放，敬請期待');
+        } else if (a === 'set') openSettings();
         else if (a === 'help') openHelp();
         else openAbout();
       }),
@@ -6359,6 +6375,7 @@ async function boot() {
   gsw.innerHTML = `<button data-x="m" class="on">男</button><button data-x="f">女</button><label><input type="checkbox" id="skipintro"> 跳過開場</label>`;
   const mpw = document.createElement('div');
   mpw.id = 'mpsel';
+  if (!MP_ON) mpw.style.display = 'none';
   const defB = MPQ.get('mp') || 'http://localhost:8787';
   mpw.innerHTML = `<span>🌐 多人連線（實驗・2–4 人）：</span><input id="mpbase" value="${defB}" size="22"><button id="mpnew">建立房間</button><input id="mpcode" placeholder="房間代碼" maxlength="5" size="6" value="${MPQ.get('room') || ''}"><button id="mpjoin">加入</button><em id="mpmsg"></em>`;
   const mpMsg = (t: string) => {
