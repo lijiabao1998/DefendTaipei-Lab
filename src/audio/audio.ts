@@ -412,6 +412,15 @@ export function death(dist = 0) {
   burst(c, o, { type: 'lowpass', hz: 400 }, { at: 0.22, d: 0.3, v: 0.5 }); // falls
   burst(c, o, { type: 'bandpass', hz: 2500, q: 3 }, { at: 0.3, d: 0.1, v: 0.12 }); // kit clatters
 }
+/** v23.2.1 air-raid *test* (alert kind 'test'): a short, quiet three-note chime, clearly not the 萬安 siren.
+ *  ~1.6 s, synthesized (no assets); muffled indoors. */
+export function alertTest(indoor = false) {
+  const c = ctx();
+  if (!c) return;
+  cnt('alertTest');
+  const o = bus(c, indoor ? 30 : 8, indoor, 6);
+  [880, 660, 880].forEach((hz, i) => tone(c, o, 'sine', hz, hz, { at: i * 0.45, a: 0.02, d: 0.4, v: 0.22 }));
+}
 /** rummaging through a container: a few rustles, knocks and clinks */
 export function rummage() {
   const c = ctx();

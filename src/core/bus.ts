@@ -2,8 +2,9 @@
 // Handlers run immediately, in registration order, inside emit(), so routing a direct call through the bus
 // keeps timing identical.
 export interface GameEvents {
-  /** air-raid sirens (萬安 pattern); payload optional, emit('alert') means kind 'alert', 'clear' is the all-clear */
-  alert: { kind: 'alert' | 'clear' } | undefined;
+  /** air-raid sirens (萬安 pattern); payload optional, emit('alert') means kind 'alert', 'clear' is the all-clear,
+   *  'test' is a short, quieter test chime (not the full siren) */
+  alert: { kind: 'alert' | 'clear' | 'test' } | undefined;
   /** a 北廣 broadcast started */
   broadcast: { id: string; station: string; voice: 'synth'; text: string };
   /** a map tile finished loading at the given level of detail */

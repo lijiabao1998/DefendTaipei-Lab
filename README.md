@@ -463,3 +463,9 @@ node scripts/tiles.mjs           # 重新切 200 m 道路細節圖塊（public/d
 - 新增 `src/core/bus.ts`：簡單的型別化事件匯流排（`emit`／`on`，同步執行）。序章空襲開始時改為發出 `alert` 事件，由警報器監聽後響起，時序與先前完全相同。
 - 序章手機推播資料移到 `src/story/broadcasts/prologue.ts`；網址測試旗標（`?mpdebug=1` 等）移到 `src/debug/flags.ts`。
 - 遊戲行為、畫面與鏡頭皆未改變。
+
+## v23.2.1 — 防空警報測試音
+
+- `alert` 事件新增 `kind: 'test'`：播放短促、較小聲的三音提示（合成音效，不用音檔），不是完整的萬安警報；室內會變悶。
+- `emit('alert')`（不帶參數）仍等於 `'alert'`；`'clear'` 仍是解除警報。
+- 測試：`window.__game.siren('test')`。

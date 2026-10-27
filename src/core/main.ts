@@ -5674,9 +5674,11 @@ const PRO = {
 };
 // v23.2: the prologue's attack emits 'alert' on the event bus; the siren listens (synchronous, same timing as before)
 on('alert', e => siren(true, e?.kind ?? 'alert'));
-function siren(on: boolean, kind: 'alert' | 'clear' = 'alert') {
-  // v23.1 萬安-style street sirens (broadcast.ts); muffled indoors
-  if (on) BC.airRaid(kind, () => !!bldAt(player.pos.x, player.pos.z), AU.sfxCtx());
+function siren(on: boolean, kind: 'alert' | 'clear' | 'test' = 'alert') {
+  // v23.1 萬安-style street sirens (broadcast.ts); muffled indoors. v23.2.1: 'test' is a short quiet chime (audio.ts)
+  if (!on) return;
+  if (kind === 'test') return AU.alertTest(!!bldAt(player.pos.x, player.pos.z));
+  BC.airRaid(kind, () => !!bldAt(player.pos.x, player.pos.z), AU.sfxCtx());
 }
 function scrFlash(col: string, ms = 600) {
   const f = document.createElement('div');
@@ -6475,7 +6477,7 @@ async function boot() {
     phone: (w: string, m: string) => phone(w, m),
     save: () => save(),
     radio: () => ({ log: radioLog, bc: BC.bcStats, siren: BC.sirenOn() }),
-    siren: (k: 'alert' | 'clear') => emit('alert', { kind: k }),
+    siren: (k: 'alert' | 'clear' | 'test') => emit('alert', { kind: k }),
     radioLogHtml: () => radioLogHtml(),
     clutter: () => ({
       stats: CL.clutterStats,
