@@ -1,6 +1,6 @@
 // v17.2 character close-ups: needs `npx vite --port 5199` running (dev server) for the lineup page.
 import { launch } from '../lib.mjs';
-const base = process.argv[2] || 'http://localhost:5199/DefendTaipei-Lab/scripts/checks/lineup/index.html';
+const base = process.argv[2] || 'http://localhost:5199/scripts/checks/lineup/index.html';
 const out = process.argv[3] || '/workspace';
 const b = await launch();
 const p = await b.newPage({ viewport: { width: 1400, height: 820 } });

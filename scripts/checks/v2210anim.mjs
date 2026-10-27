@@ -2,7 +2,7 @@
 // argv: outDir [harnessUrl]
 import { launch } from '../lib.mjs';
 import fs from 'node:fs';
-const [out = 'shots/anim', url = 'http://localhost:5180/DefendTaipei-Lab/scripts/anim/index.html'] =
+const [out = 'shots/anim', url = 'http://localhost:5180/scripts/anim/index.html'] =
   process.argv.slice(2);
 fs.mkdirSync(out, { recursive: true });
 const b = await launch();

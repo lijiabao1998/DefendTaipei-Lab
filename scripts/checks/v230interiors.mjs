@@ -1,7 +1,7 @@
 // v23.0 lived-in interiors: plans for every enterable building, lazy meshes, searchable furniture, screenshots
 import { launch } from '../lib.mjs';
 import fs from 'node:fs';
-const [url = 'http://localhost:4173/DefendTaipei-Lab/', out = 'shots/v230'] = process.argv.slice(2);
+const [url = 'http://localhost:4173/', out = 'shots/v230'] = process.argv.slice(2);
 fs.mkdirSync(out, { recursive: true });
 const b = await launch();
 const ctx = await b.newContext({ viewport: { width: 1280, height: 720 }, serviceWorkers: 'block' });

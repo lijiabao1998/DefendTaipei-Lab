@@ -2,7 +2,7 @@
 
 以真實台北街道為戰場的生存遊戲原型：玩法參考《Project Zomboid》（俯視生存沙盒），但敵人是已經佔領台北的解放軍佔領部隊。你是萬華巷弄裡的倖存者，搜刮物資、避開巡邏、一區一區奪回街區。
 
-**線上遊玩：** https://lijiabao1998.github.io/DefendTaipei-Lab/
+**線上遊玩：** https://game.lijiabao.uk/（舊網址 https://lijiabao1998.github.io/DefendTaipei-Lab/ 會自動轉址）
 
 ## 操作
 | 按鍵 | 功能 |
@@ -292,6 +292,12 @@ node scripts/tiles.mjs           # 重新切 200 m 道路細節圖塊（public/d
 - 停電後全線停駛：列車停在站內，中間那組門卡在打開的位置，看板顯示全線停駛。
 - 隧道口：月台兩端有拱形門楣，上面有橘綠色環帶，配上隧道環肋、號誌燈和暗色的隧道壁，超過 ±52 m 的隧道有頂蓋，可以把行進中的列車藏起來。停電後月台端的維修閘門打開，可以沿著南側軌道走進一小段隧道，盡頭是關上的黃色防水閘門（有警示斑馬紋）。有電時防水閘門降入道床讓列車通過，維修閘門則關閉。所有碰撞牆都有看得見的阻擋物，不再有空氣牆。
 - 檢查腳本：`scripts/checks/v222metro.mjs`。
+
+## v23.1.1 — 自訂網域 game.lijiabao.uk＋SEO
+
+- 遊戲改放在 https://game.lijiabao.uk/（GitHub Pages 自訂網域，強制 HTTPS）；Vite `base` 改為 `/`，舊的 github.io 網址自動轉址。
+- 新增 zh-TW 頁面說明、canonical、Open Graph／Twitter 分享卡（`public/og.jpg` 1200×630）、`robots.txt`、`sitemap.xml`。
+- 檢查腳本預設網址改為 `http://localhost:4173/`；多人伺服器 ALLOWED_ORIGINS 加入新網域（伺服器尚未部署）。
 
 ## v23.1 — 收音機：可點開的廣播卡、收音機紀錄、合成語音、萬安警報
 
