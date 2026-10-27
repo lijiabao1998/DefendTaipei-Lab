@@ -27,6 +27,7 @@ import { GF, FH, ARC, arcadeFits, buildArcade, flushArcades, setArcadeDeps, arca
 import { makeRig, animate, setWeapon, setLodFocus, Rig, AnimState, startMelee, meleeQ, hitStop } from './human';
 import { SwingTrail } from './trail';
 import * as SQ from './squadai';
+import * as CL from './clutter';
 import { Nav, smooth } from './nav';
 import { RoadTiles } from './roads';
 import { Traffic } from './traffic';
@@ -3077,6 +3078,54 @@ function assignSquads(night: boolean) {
       s.sqN = g.length;
     });
 }
+// v23.0 interior dressing: build near the player (≤2 per tick), hide when far, dispose beyond 70 m
+const clutLive = new Set<Bld>();
+const savedF = new Map<string, Record<string, number>>();
+let clutT = 0;
+function clutterTick(dt: number) {
+  clutT -= dt;
+  if (clutT > 0) return;
+  clutT = 0.3;
+  const P = player.pos;
+  let budget = 2;
+  const cand: [Bld, number][] = [];
+  for (const b of blds) {
+    const C = (b as any).clut as CL.Plan | undefined;
+    if (!C) continue;
+    const d = Math.max(b.minx - P.x, P.x - b.maxx, b.minz - P.z, P.z - b.maxz, 0);
+    const g = (b as any).clutG as THREE.Group | undefined;
+    if (g) {
+      g.visible = d < 40;
+      if (d > 70) {
+        CL.dispose(g);
+        (b as any).clutG = undefined;
+        clutLive.delete(b);
+      }
+    } else if (d < 28) cand.push([b, d]);
+  }
+  cand.sort((a, b) => a[1] - b[1]);
+  for (const [b] of cand) {
+    if (budget-- <= 0) break;
+    const C = (b as any).clut as CL.Plan;
+    const g = CL.build(C);
+    scene.add(g);
+    (b as any).clutG = g;
+    clutLive.add(b);
+    if (!(b as any).clutC) {
+      (b as any).clutC = 1;
+      for (const k of C.conts) {
+        if (conts.some(c => c.id === k.id)) continue;
+        let x = k.seed >>> 0;
+        const r = () => (x = (x * 1664525 + 1013904223) >>> 0) / 4294967296;
+        const items = savedF.get(k.id) ?? rollLoot(k.loot, r);
+        const c = makeCont(k.id, k.p, 'crate', b, items);
+        c.label = k.label;
+        c.mesh.visible = false; // the furniture itself is the container
+      }
+    }
+  }
+  CL.clutterStats.live = clutLive.size;
+}
 function noise(x: number, z: number, r: number) {
   if (started && r >= 10) {
     const d = Math.hypot(player.pos.x - x, player.pos.z - z);
@@ -4767,6 +4816,7 @@ function update(dt: number) {
   updateShells(dt);
   player.cd -= dt;
   meleeTick(dt);
+  clutterTick(dt);
   // movement
   if (drive.cur) {
     const f = new THREE.Vector3(-1, 0, -1).normalize(),
@@ -5825,6 +5875,14 @@ async function boot() {
       conts.splice(i, 1);
     }
   }
+  // v23.0 lived-in interiors for every other enterable building (plan + cover now, meshes lazily)
+  for (const b of blds) {
+    if (b.detailed || !b.door) continue;
+    const P = CL.plan(b, { pip, onRoad: (x, z) => roadDist(x, z) < 5 });
+    if (!P) continue;
+    (b as any).clut = P;
+    for (const sg of P.segs) addSeg({ a: sg.a, b: sg.b, h: sg.h } as Seg, sg.h < 1.3);
+  }
   // night market on the nearest named mid-size road
   let bestR: any = null,
     bd = 1e9;
@@ -6144,7 +6202,11 @@ async function boot() {
         map.delete(c.id);
       }
       map.forEach(c =>
-        String(c[0]).startsWith('pb') ? makeBucket(c[0], c[2], c[1]) : makeCont(c[0], c[2], 'crate', undefined, c[1]),
+        /^f\d+_/.test(String(c[0]))
+          ? savedF.set(c[0], c[1])
+          : String(c[0]).startsWith('pb')
+            ? makeBucket(c[0], c[2], c[1])
+            : makeCont(c[0], c[2], 'crate', undefined, c[1]),
       );
       (sv.bar || []).forEach((i: number) => doors[i] && setBarricade(doors[i]));
       checkSectors(true);
@@ -6370,6 +6432,12 @@ async function boot() {
   (window as any).__game = {
     roofStats,
     melee: () => ({ attack: playerAttack, sols, trail: swingTrail, rig: player.rig }),
+    clutter: () => ({
+      stats: CL.clutterStats,
+      live: [...clutLive].map(b => [b.id, (b as any).clut.use]),
+      conts: conts.filter(c => c.id[0] === 'f').map(c => [c.id, c.label, Object.keys(c.items).length, c.mesh.visible]),
+      plans: blds.filter(b => (b as any).clut).map(b => [b.id, (b as any).clut.use, b.c, b.door!.p, b.h]),
+    }),
     ai: () => ({
       radio,
       stats: aiStats,
