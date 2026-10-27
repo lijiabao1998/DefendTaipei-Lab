@@ -1002,45 +1002,110 @@ body.mobile #coverbtn {
   font-size: 22px;
 }
 
-/* v21.5.1 mobile portrait thumb buttons (right side, clear of the joystick on the left) */
-#pbtns {
+/* v22.7 mobile portrait: one big context button + one 蹲 toggle (bottom-right, clear of the centred joystick) */
+#pbtns,
+#pmapbtn {
   display: none;
 }
 body.mobile.portrait #pbtns {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+  display: block;
   position: fixed;
-  z-index: 21;
-  right: calc(14px + env(safe-area-inset-right));
-  bottom: calc(150px + env(safe-area-inset-bottom));
+  z-index: 41; /* above the scope overlay (40) so 射 / ✕ stay usable */
+  right: 0;
+  bottom: 0;
+  width: 0;
+  height: 0;
 }
 .pbtn {
-  width: 72px;
-  height: 72px;
+  position: fixed;
   border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, 0.55);
   background: rgba(20, 26, 32, 0.72);
   color: #fff;
-  font-size: 28px;
   font-weight: 700;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
 }
-.pbtn:nth-child(2) {
-  background: rgba(150, 30, 24, 0.8);
+#pbact {
+  width: 88px;
+  height: 88px;
+  right: calc(16px + env(safe-area-inset-right));
+  bottom: calc(40px + env(safe-area-inset-bottom));
+  font-size: 32px;
+  background: rgba(150, 30, 24, 0.82);
+}
+#pbact.long {
+  font-size: 22px;
+}
+#pbact[data-mode='ctx'] {
+  background: rgba(232, 104, 28, 0.9);
+}
+#pbact[data-mode='scope'] {
+  background: rgba(31, 90, 58, 0.9);
+}
+#pbsec {
+  width: 60px;
+  height: 60px;
+  right: calc(30px + env(safe-area-inset-right));
+  bottom: calc(144px + env(safe-area-inset-bottom));
+  font-size: 22px;
+}
+#pbsec.lit {
+  background: rgba(31, 90, 58, 0.9);
+  border-color: #9fd8b0;
 }
 .pbtn.on {
   transform: scale(0.92);
-  background: rgba(255, 200, 80, 0.85);
+  background: rgba(255, 200, 80, 0.85) !important;
   color: #111;
+}
+#pbhint {
+  position: fixed;
+  right: calc(8px + env(safe-area-inset-right));
+  bottom: calc(250px + env(safe-area-inset-bottom));
+  max-width: 62vw;
+  text-align: right;
+  font-size: 12px;
+  color: #fff;
+  background: rgba(20, 26, 32, 0.72);
+  border-radius: 6px;
+  padding: 3px 7px;
+  pointer-events: none;
+}
+body.mobile.portrait #equip {
+  bottom: calc(214px + env(safe-area-inset-bottom)) !important;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 6px;
+  pointer-events: auto;
+}
+body.mobile.portrait #equip::after {
+  content: ' ⇄';
+  color: #e8681c;
+}
+body.mobile.portrait #coverbtn,
+body.mobile.portrait #mapbtn {
+  display: none !important;
+}
+body.mobile.portrait #pmapbtn {
+  display: block;
+  position: fixed;
+  z-index: 22;
+  left: calc(58px + env(safe-area-inset-left));
+  top: calc(8px + env(safe-area-inset-top));
+  width: 44px;
+  height: 44px;
+  font-size: 20px;
+  border-radius: 8px;
+  border: 1px solid #777;
+  background: rgba(20, 26, 32, 0.75);
 }
 
 /* v21.5.1 nothing in-game shows over the title / role select */
 body:not(.ingame) #coverbtn,
 body:not(.ingame) #mapbtn,
 body:not(.ingame) #pbtns,
+body:not(.ingame) #pmapbtn,
 body:not(.ingame) #menubtn,
 body:not(.ingame) #coverind,
 body:not(.ingame) #joy,
@@ -1186,7 +1251,7 @@ body.portrait:not(.ingame) #startbar {
 }
 
 body.mobile.portrait #coverind {
-  bottom: calc(230px + env(safe-area-inset-bottom)) !important;
+  bottom: calc(290px + env(safe-area-inset-bottom)) !important;
 }
 
 /* v22 survival overlay (shelter / barter / moral choice) */

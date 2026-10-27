@@ -75,6 +75,7 @@ import { SniperSys, findPosts, sniperActive, type Sniper } from './sniper';
 import { Scope, SCOPED, ballistic } from './scope';
 import * as AU from './audio';
 import { SET, QPIX, isKey, K, keyLabel, markMusic, vibrate } from './settings';
+import { ctxLabel, ctxHint } from './touchctl';
 import { openSettings, openHelp, openAbout, modalOpen, closeModal } from './menu';
 
 // ---------- utils ----------
@@ -310,46 +311,151 @@ function nearestFoe(r: number) {
   }
   return best;
 }
-/** v21.5.1 mobile portrait: three big thumb buttons on the right (搜 / 打 / 撤); the joystick stays as it is */
+/** v22.7 mobile portrait: one big context button (打 / 搜 / 開門 / 爬上 / 上車… / 瞄) + one 蹲 toggle (cover ⇄ sneak,
+ * long-press = 撤退); weapon swap by tapping the weapon label; map next to ☰; inventory / shelter / map in ☰ */
+const PB = {
+  act: null as HTMLButtonElement | null,
+  sec: null as HTMLButtonElement | null,
+  hint: null as HTMLElement | null,
+};
+let pbScope: { x: number; y: number } | null = null;
+function cycleWeapon() {
+  const ws = Object.keys(player.inv).filter(k => ITEMS[k] && (ITEMS[k].kind === 'melee' || ITEMS[k].kind === 'gun'));
+  const list = ['', ...ws];
+  const nx = list[(list.indexOf(player.equip || '') + 1) % list.length];
+  if (scope.on) scopeExit();
+  player.equip = nx;
+  log(nx ? `裝備了 ${ITEMS[nx].name}` : '收起武器');
+  vibrate(10);
+}
+function secTap() {
+  if (scope.on) return scopeExit();
+  if (player.cover) return toggleCover();
+  if (findCover(player.pos.x, player.pos.z)) {
+    player.sneak = false;
+    return toggleCover();
+  }
+  player.sneak = !player.sneak;
+  log(player.sneak ? '蹲低潛行' : '起身');
+}
+/** refreshed from drawHud: label + colour of the two buttons */
+function updatePortraitButtons(prompt: string) {
+  if (!PB.act) return;
+  const ctx = ctxLabel(prompt, keyLabel('interact'));
+  const sc = !!player.equip && SCOPED.has(player.equip);
+  const l = scope.on ? '射' : (ctx ?? (sc ? '瞄' : '打'));
+  const mode = scope.on ? 'fire' : ctx ? 'ctx' : sc ? 'scope' : 'fire';
+  if (PB.act.textContent !== l) PB.act.textContent = l;
+  PB.act.dataset.mode = mode;
+  PB.act.classList.toggle('long', l.length > 1);
+  const hint = scope.on
+    ? '拖曳瞄準・放開射擊'
+    : ctx
+      ? ctxHint(prompt, keyLabel('interact')).replace(/[（(].*$/, '') + '・長按＝攻擊'
+      : '';
+  if (PB.hint!.textContent !== hint) PB.hint!.textContent = hint;
+  PB.hint!.style.display = hint ? '' : 'none';
+  const s = scope.on ? '✕' : player.cover ? '起' : player.sneak ? '起' : '蹲';
+  if (PB.sec!.textContent !== s) PB.sec!.textContent = s;
+  PB.sec!.classList.toggle('lit', !!player.cover || player.sneak);
+}
 function initPortraitButtons() {
   const wrap = document.createElement('div');
   wrap.id = 'pbtns';
-  const buzz = () => vibrate(15);
-  const mk = (t: string, title: string, down: () => void, up?: () => void) => {
+  const hint = document.createElement('div');
+  hint.id = 'pbhint';
+  wrap.appendChild(hint);
+  PB.hint = hint;
+  const mk = (id: string, title: string) => {
     const b = document.createElement('button');
-    b.textContent = t;
+    b.id = id;
     b.title = title;
     b.className = 'pbtn';
-    b.addEventListener('pointerdown', e => {
-      e.preventDefault();
-      e.stopPropagation();
-      b.setPointerCapture(e.pointerId);
-      b.classList.add('on');
-      buzz();
-      down();
-    });
-    const end = () => {
-      b.classList.remove('on');
-      up?.();
-    };
-    b.addEventListener('pointerup', end);
-    b.addEventListener('pointercancel', end);
+    b.addEventListener('contextmenu', e => e.preventDefault());
     wrap.appendChild(b);
+    return b;
   };
-  mk('搜', '搜刮／互動', () => interact());
-  mk(
-    '打',
-    '攻擊最近目標（按住連射）',
-    () => (MB.fire = true),
-    () => (MB.fire = false),
-  );
-  mk('撤', '撤退／找掩體', () => {
-    if (!player.cover && findCover(player.pos.x, player.pos.z)) toggleCover();
-    else {
-      if (player.cover) toggleCover();
-      MB.retreat = 1.6;
-    }
+  const sec = mk('pbsec', '蹲下／掩體（長按：撤退）');
+  const act = mk('pbact', '攻擊／互動（依情境）');
+  PB.act = act;
+  PB.sec = sec;
+  // ---- context button
+  let holdT = 0,
+    mode = '',
+    acted = false;
+  act.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    act.setPointerCapture(e.pointerId);
+    act.classList.add('on');
+    vibrate(15);
+    mode = act.dataset.mode || 'fire';
+    acted = false;
+    clearTimeout(holdT);
+    if (mode === 'ctx')
+      holdT = window.setTimeout(() => ((acted = true), (MB.fire = true), vibrate(25)), 380); // long-press = attack anyway
+    else if (mode === 'scope') {
+      scopeEnter();
+      pbScope = { x: e.clientX, y: e.clientY };
+    } else if (scope.on) pbScope = { x: e.clientX, y: e.clientY };
+    else MB.fire = true;
   });
+  act.addEventListener('pointermove', e => {
+    if (!pbScope || !scope.on) return;
+    scope.look((e.clientX - pbScope.x) * 1.6, (e.clientY - pbScope.y) * 1.6, SET.sens);
+    pbScope = { x: e.clientX, y: e.clientY };
+  });
+  const actEnd = (fire: boolean) => {
+    act.classList.remove('on');
+    clearTimeout(holdT);
+    if (mode === 'ctx' && !acted && fire) interact();
+    if (pbScope && scope.on && fire) scopeFire();
+    pbScope = null;
+    MB.fire = false;
+  };
+  act.addEventListener('pointerup', () => actEnd(true));
+  act.addEventListener('pointercancel', () => actEnd(false));
+  // ---- 蹲 / 掩: tap toggles cover (when a wall is near) or sneak; long-press = sprint away (撤)
+  let secT = 0,
+    secLong = false;
+  sec.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    sec.setPointerCapture(e.pointerId);
+    sec.classList.add('on');
+    vibrate(15);
+    secLong = false;
+    secT = window.setTimeout(() => {
+      secLong = true;
+      if (player.cover) toggleCover();
+      player.sneak = false;
+      MB.retreat = 1.6;
+      MB.rn++;
+      log('撤退！', '#fd9');
+      vibrate(30);
+    }, 450);
+  });
+  const secEnd = (ok: boolean) => {
+    sec.classList.remove('on');
+    clearTimeout(secT);
+    if (ok && !secLong) secTap();
+  };
+  sec.addEventListener('pointerup', () => secEnd(true));
+  sec.addEventListener('pointercancel', () => secEnd(false));
+  // ---- weapon label: tap to cycle (portrait only; harmless elsewhere)
+  $('equip').addEventListener('pointerdown', e => {
+    if (!document.body.classList.contains('portrait')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    cycleWeapon();
+  });
+  // small 🗺 next to ☰
+  const mp = document.createElement('button');
+  mp.id = 'pmapbtn';
+  mp.textContent = '🗺';
+  mp.title = '地圖';
+  mp.onclick = () => gmap?.toggle();
+  document.body.appendChild(mp);
   document.body.appendChild(wrap);
   // ☰ menu: pause / map / save, reachable on portrait phones
   const mb = document.createElement('button');
@@ -2804,7 +2910,7 @@ const keys: Record<string, boolean> = {};
 let mouse = new THREE.Vector2();
 let clicking = false;
 // v21.5.1 portrait thumb buttons: 打 held = fire at the nearest target, 撤 = retreat sprint for a moment
-const MB = { fire: false, retreat: 0 };
+const MB = { fire: false, retreat: 0, rn: 0 };
 addEventListener('keydown', e => {
   // v22.4: Esc backs out of whatever is on top (modal → shop/ride → shelter → map → panel), else opens the pause menu
   if (e.code === 'Escape') {
@@ -2878,6 +2984,7 @@ function togglePause(on = !pauseOpen()) {
         ['save', '存檔'],
         ['load', '讀檔'],
         ['map', '地圖'],
+        ['inv', '背包'],
         ['surv', '避難所'],
         ['set', '設定'],
         ['help', '操作說明'],
@@ -2904,6 +3011,9 @@ function togglePause(on = !pauseOpen()) {
           } else if (a === 'map') {
             togglePause(false);
             gmap?.toggle();
+          } else if (a === 'inv') {
+            togglePause(false);
+            toggleInv();
           } else if (a === 'surv') {
             togglePause(false);
             openSurv('home');
@@ -5033,6 +5143,7 @@ function drawHud(inside: Bld | null) {
   const t0 = pr.textContent || '';
   if (t0.startsWith('[E]')) pr.textContent = `[${keyLabel('interact')}]` + t0.slice(3);
   else if (t0.startsWith('[B]')) pr.textContent = `[${keyLabel('barricade')}]` + t0.slice(3);
+  updatePortraitButtons(pr.style.display === 'none' ? '' : pr.textContent || '');
 }
 function die() {
   AU.death(0);
@@ -6041,6 +6152,27 @@ async function boot() {
     coverStats,
     solCover,
     tp: (x: number, z: number) => player.pos.set(x, 0, z),
+    // v22.7 portrait-control test hooks
+    contNear: () => {
+      let b: Cont | null = null,
+        bd = 1e9;
+      for (const c of conts) {
+        const d = Math.hypot(c.p[0] - player.pos.x, c.p[1] - player.pos.z);
+        if (d < bd && !bldAt(c.p[0], c.p[1])) ((b = c), (bd = d));
+      }
+      return b && [b.p[0], b.p[1]];
+    },
+    pst: () => ({
+      eq: player.equip,
+      sneak: player.sneak,
+      cover: !!player.cover,
+      retreat: MB.retreat,
+      rn: MB.rn,
+      ammo: player.inv.a762n || 0,
+      scope: scope.on,
+      fire: MB.fire,
+    }),
+    equipSet: (k: string) => (player.equip = k),
     damageSol,
     toggleInv,
     addItem,
