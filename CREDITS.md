@@ -87,3 +87,10 @@ Weights marked 約值 in-game (T93, T75 pistol) are approximations. Vehicle and 
 | `boom1.mp3` | cannon_01.ogg | 26.1 KB | CC0 1.0 — https://opengameart.org/content/25-cc0-bang-firework-sfx |
 | `boom2.mp3` | cannon_02.ogg | 26.1 KB | CC0 1.0 — https://opengameart.org/content/25-cc0-bang-firework-sfx |
 | `boom3.mp3` | bang_06.ogg | 26.1 KB | CC0 1.0 — https://opengameart.org/content/25-cc0-bang-firework-sfx |
+
+## v23.1 broadcasts and air-raid sirens
+
+- **Broadcast voices**: no recorded or pre-generated speech is shipped. Broadcast text is read at runtime by the player's own browser / OS text-to-speech engine through the standard Web Speech API (`speechSynthesis`, zh-TW voice if installed, else any zh-* voice). The voice belongs to the user's system; nothing is redistributed by this project.
+- **Radio bed** (hiss, crackle, tuning sweeps, dropouts): synthesized in WebAudio from random noise and oscillators (`src/broadcast.ts`). Original, no samples.
+- **Air-raid sirens** (緊急警報 / 解除警報): synthesized in WebAudio (sawtooth rotor pairs, delays, generated reverb impulse). The on/off timing follows the publicly announced civil-defence pattern (one 15 s long tone + two 5 s short tones, 5 s gaps, ×3; all-clear one long tone); no siren recordings are used.
+- Station 「北廣 AM765（北都廣播電台）」 is fictional (it ties in with the fictional 北都地下鐵); no real broadcaster names or logos.

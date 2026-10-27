@@ -28,6 +28,7 @@ import { makeRig, animate, setWeapon, setLodFocus, Rig, AnimState, startMelee, m
 import { SwingTrail } from './trail';
 import * as SQ from './squadai';
 import * as CL from './clutter';
+import * as BC from './broadcast';
 import { Nav, smooth } from './nav';
 import { RoadTiles } from './roads';
 import { Traffic } from './traffic';
@@ -80,7 +81,17 @@ import { Scope, SCOPED, ballistic } from './scope';
 import * as AU from './audio';
 import { SET, QPIX, isKey, K, keyLabel, markMusic, vibrate, applyBtnSize } from './settings';
 import { ctxLabel, ctxHint } from './touchctl';
-import { openSettings, openHelp, openAbout, modalOpen, closeModal, histPush, histPop, setBackHandler } from './menu';
+import {
+  openPanel,
+  openSettings,
+  openHelp,
+  openAbout,
+  modalOpen,
+  closeModal,
+  histPush,
+  histPop,
+  setBackHandler,
+} from './menu';
 import { VERSION } from './version';
 
 // ---------- utils ----------
@@ -3250,6 +3261,7 @@ function togglePause(on = !pauseOpen(), fromBack = false) {
         ['map', '地圖'],
         ['inv', '背包'],
         ['surv', '避難所'],
+        ['rlog', '收音機紀錄'],
         ['set', '設定'],
         ['help', '操作說明'],
         ['quit', '返回主選單'],
@@ -3281,7 +3293,8 @@ function togglePause(on = !pauseOpen(), fromBack = false) {
           } else if (a === 'surv') {
             togglePause(false);
             openSurv('home');
-          } else if (a === 'set') openSettings();
+          } else if (a === 'rlog') openPanel('📻 收音機紀錄', radioLogHtml());
+          else if (a === 'set') openSettings();
           else if (a === 'help') openHelp();
           else if (a === 'quit') {
             if (!confirm('返回主選單？進度會自動存檔。')) return;
@@ -3328,6 +3341,7 @@ const aimPt = new THREE.Vector3();
 
 // ---------- v22.6 audio glue ----------
 AU.unlockAudio();
+BC.unlockBroadcast();
 const pDist = (x: number, z: number) => Math.hypot(player.pos.x - x, player.pos.z - z);
 function surfaceAt(x: number, z: number): AU.Surface {
   if (z < -6000) return 'metro';
@@ -4583,17 +4597,22 @@ const STORY: { t: number; id: string; who: string; msg: string; fx?: () => void 
     who: '📱 國家級警報',
     msg: '萬華、中正一帶實施戒嚴，民眾非必要請勿外出。夜間 20:00 後宵禁。',
   },
-  { t: 12 * 60, id: 'b', who: '📻 中廣（收音機）', msg: '…佔領當局宣稱「水電維持正常供應」，但多處變電所已遭接管…' },
+  {
+    t: 12 * 60,
+    id: 'b',
+    who: '📻 北廣 AM765（北都廣播電台）',
+    msg: '…佔領當局宣稱「水電維持正常供應」，但多處變電所已遭接管…',
+  },
   {
     t: 1440 + 9 * 60,
     id: 'c',
-    who: '💬 里長 LINE 群組',
-    msg: '各位鄰居：聽說台電員工被帶走了，大家趕快把水桶裝滿、手機充飽電！',
+    who: '💬 里長通訊群組',
+    msg: '各位鄰居：聽說電力公司員工被帶走了，大家趕快把水桶裝滿、手機充飽電！',
   },
   {
     t: 2 * 1440 + 14 * 60,
     id: 'd',
-    who: '📱 台電簡訊',
+    who: '📱 電力公司簡訊',
     msg: '【停電通知】因「軍事管制」，萬華區即日起停止供電，復電時間未定。',
   },
   {
@@ -4672,8 +4691,41 @@ const STORY: { t: number; id: string; who: string; msg: string; fx?: () => void 
     },
   },
 ];
+// v23.1 radio log (saved) — every 📻 broadcast with its in-game time
+let radioLog: [m: number, who: string, msg: string][] = [];
+function radioLogHtml() {
+  if (!radioLog.length) return '<p class="mnote">還沒有收到任何廣播。</p>';
+  const t = (m: number) =>
+    `第 ${Math.floor(m / 1440) + 1} 天 ${String(Math.floor((m % 1440) / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  const esc = (x: string) => x.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!);
+  return `<div class="rlog">${radioLog
+    .slice()
+    .reverse()
+    .map(([m, w, x]) => `<div class="rl"><i>${t(m)}</i><b>${esc(w)}</b><p>${esc(x)}</p></div>`)
+    .join('')}</div>`;
+}
+function phoneTimer(el: HTMLElement, ms: number) {
+  clearTimeout((phone as any).t);
+  (phone as any).t = setTimeout(() => el.classList.remove('on', 'exp'), ms);
+}
 function phone(who: string, msg: string) {
   const el = $('phone');
+  if (who.startsWith('📻')) {
+    radioLog.push([Math.floor(gameMin), who, msg]);
+    if (radioLog.length > 200) radioLog.shift();
+    BC.broadcast(who, msg);
+  }
+  el.classList.remove('exp');
+  if (!(el as any).tap) {
+    (el as any).tap = 1;
+    // tap / click: expand to the full text, again to collapse (never reaches the joystick / fire handlers)
+    for (const ev of ['pointerdown', 'touchstart', 'mousedown']) el.addEventListener(ev, e => e.stopPropagation());
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      const x = el.classList.toggle('exp');
+      phoneTimer(el, x ? 30000 : 4000);
+    });
+  }
   el.innerHTML = `<b>${who}</b><div class="pm">${msg}</div>`;
   if (document.body.classList.contains('portrait')) {
     // v23.0.1: portrait radio card directly under the status panel, same width
@@ -4683,8 +4735,7 @@ function phone(who: string, msg: string) {
     el.style.width = r.width + 'px';
   } else el.style.left = el.style.top = el.style.width = '';
   el.classList.add('on');
-  clearTimeout((phone as any).t);
-  (phone as any).t = setTimeout(() => el.classList.remove('on'), 9000);
+  phoneTimer(el, 9000);
   log(`${who}：${msg}`, '#9fd0ff', 'radio');
 }
 let spoilT = 0;
@@ -4740,6 +4791,7 @@ function save() {
       conts: conts.map(c => [c.id, c.items, c.p]),
       dead: sols.filter(s => s.state === 'dead').map(s => s.id),
       bar: doors.map((d, i) => (d.barricaded ? i : -1)).filter(i => i >= 0),
+      radio: radioLog,
     }),
   );
 }
@@ -5609,33 +5661,9 @@ const PRO = {
   sir: null as any,
   msgs: 0,
 };
-function siren(on: boolean) {
-  try {
-    if (on && !PRO.sir) {
-      const ac = new AudioContext();
-      const o = ac.createOscillator(),
-        g = ac.createGain(),
-        l = ac.createOscillator(),
-        lg = ac.createGain();
-      o.type = 'sawtooth';
-      o.frequency.value = 520;
-      l.frequency.value = 0.12;
-      lg.gain.value = 260;
-      l.connect(lg);
-      lg.connect(o.frequency);
-      g.gain.value = 0.05;
-      o.connect(g);
-      g.connect(ac.destination);
-      o.start();
-      l.start();
-      PRO.sir = ac;
-    } else if (!on && PRO.sir) {
-      PRO.sir.close();
-      PRO.sir = null;
-    }
-  } catch {
-    /* no audio */
-  }
+function siren(on: boolean, kind: 'alert' | 'clear' = 'alert') {
+  // v23.1 萬安-style street sirens (broadcast.ts); muffled indoors
+  if (on) BC.airRaid(kind, () => !!bldAt(player.pos.x, player.pos.z), AU.sfxCtx());
 }
 function scrFlash(col: string, ms = 600) {
   const f = document.createElement('div');
@@ -5689,7 +5717,6 @@ function endPrologue() {
   PRO.on = false;
   PRO.hide = false;
   PRO.stage = 9;
-  siren(false);
   traffic.abandonAll();
   if (PRO.beam) scene.remove(PRO.beam);
   document.getElementById('skipbtn')?.remove();
@@ -5746,7 +5773,7 @@ function updatePrologue(dt: number) {
     }
     if (PRO.t > 5 && PRO.hide) {
       PRO.hide = false;
-      phone('📱 LINE 家族群組', '你在哪？？西園路那邊有軍車開進來了！不要出門！');
+      phone('📱 家族群組', '你在哪？？西園路那邊有軍車開進來了！不要出門！');
       log('街口傳來履帶聲——穿著陌生迷彩的士兵封鎖了路口。', '#ff8a7a');
     }
     if (PRO.t > 16) endPrologue();
@@ -6216,6 +6243,7 @@ async function boot() {
             ? makeBucket(c[0], c[2], c[1])
             : makeCont(c[0], c[2], 'crate', undefined, c[1]),
       );
+      if (Array.isArray(sv.radio)) radioLog = sv.radio.slice(-200);
       (sv.bar || []).forEach((i: number) => doors[i] && setBarricade(doors[i]));
       checkSectors(true);
       conts.forEach(updateVis);
@@ -6441,6 +6469,10 @@ async function boot() {
     roofStats,
     melee: () => ({ attack: playerAttack, sols, trail: swingTrail, rig: player.rig }),
     phone: (w: string, m: string) => phone(w, m),
+    save: () => save(),
+    radio: () => ({ log: radioLog, bc: BC.bcStats, siren: BC.sirenOn() }),
+    siren: (k: 'alert' | 'clear') => siren(true, k),
+    radioLogHtml: () => radioLogHtml(),
     clutter: () => ({
       stats: CL.clutterStats,
       live: [...clutLive].map(b => [b.id, (b as any).clut.use]),

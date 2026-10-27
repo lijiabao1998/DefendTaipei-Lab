@@ -10,6 +10,9 @@ export interface Settings {
   vib: boolean;
   /** v22.7.1 portrait thumb-button size: 0.85 / 1 / 1.1 */
   btn: number;
+  /** v23.1 廣播 volume + 廣播語音 on/off */
+  radio: number;
+  voice: boolean;
 }
 const SKEY = 'dt.settings';
 const KKEY = 'dt.keys';
@@ -23,6 +26,8 @@ const DEF: Settings = {
   sens: 1,
   vib: true,
   btn: 1,
+  radio: 0.8,
+  voice: true,
 };
 function load<T>(k: string, d: T): T {
   try {
@@ -127,11 +132,17 @@ export const vibrate = (ms: number) => SET.vib && navigator.vibrate?.(ms);
 // ---- volume: every AudioContext output goes through a per-context gain (music contexts are tagged) ----
 const music = new WeakSet<BaseAudioContext>();
 const gains = new Map<BaseAudioContext, GainNode>();
+const radioCtx = new Set<BaseAudioContext>();
+/** v23.1 broadcast context: master × 廣播 */
+export const markRadio = (c: BaseAudioContext) => {
+  radioCtx.add(c);
+  applyVolumes();
+};
 export const markMusic = (c: BaseAudioContext) => {
   music.add(c);
   applyVolumes();
 };
-const vol = (c: BaseAudioContext) => SET.master * (music.has(c) ? SET.music : SET.sfx);
+const vol = (c: BaseAudioContext) => SET.master * (radioCtx.has(c) ? SET.radio : music.has(c) ? SET.music : SET.sfx);
 export function applyVolumes() {
   gains.forEach((g, c) => (g.gain.value = vol(c)));
 }

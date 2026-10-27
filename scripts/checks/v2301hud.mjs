@@ -42,7 +42,7 @@ for (const [w, h] of [
   await p.evaluate(() => window.__game.endPrologue());
   await p.waitForTimeout(1500);
   await p.evaluate(() => {
-    window.__game.phone('📻 中廣（收音機）', '…佔領當局宣稱「水電維持正常供應」，但多處變電所已遭接管…');
+    window.__game.phone('📻 北都廣播（收音機）', '…佔領當局宣稱「水電維持正常供應」，但多處變電所已遭接管…');
   });
   await p.waitForTimeout(1200);
   const rects = await p.evaluate(() => {

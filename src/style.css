@@ -1840,3 +1840,66 @@ body.mobile.portrait #skipbtn {
   font-size: 12px;
   padding: 5px 10px;
 }
+/* v23.1 radio card: tap / click to expand the full text; 收音機紀錄 panel */
+#phone.on {
+  pointer-events: auto;
+  cursor: pointer;
+}
+#phone.on::after {
+  content: '▾ 點一下看全文';
+  display: block;
+  font-size: 9px;
+  color: #8fa4c4;
+  margin-top: 2px;
+}
+#phone.exp::after {
+  content: '▴ 收起';
+}
+body.mobile.portrait #phone.on {
+  pointer-events: auto;
+}
+body.mobile.portrait #phone.exp .pm {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
+body.mobile.portrait #phone.exp {
+  width: min(78vw, 300px) !important;
+  z-index: 30;
+}
+.rlog {
+  max-height: 60vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+.rl {
+  border-bottom: 1px solid #333;
+  padding: 6px 2px;
+}
+.rl i {
+  color: #8fa4c4;
+  font-size: 11px;
+  font-style: normal;
+  margin-right: 8px;
+}
+.rl b {
+  color: #ffd76a;
+  font-size: 12px;
+}
+.rl p {
+  margin: 3px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+#phone .pm {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+#phone.exp .pm {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}

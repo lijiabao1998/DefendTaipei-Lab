@@ -61,14 +61,17 @@ function open(title: string, html: string) {
   if (!had) histPush();
   return modal;
 }
+/** v23.1 generic read-only panel (收音機紀錄) */
+export const openPanel = (title: string, html: string) => open(title, html);
 const pct = (v: number) => Math.round(v * 100);
 
 export function openSettings() {
-  const sl = (k: 'master' | 'sfx' | 'music', t: string) =>
+  const sl = (k: 'master' | 'sfx' | 'music' | 'radio', t: string) =>
     `<label class="srow"><span>${t}</span><input type="range" min="0" max="100" data-k="${k}" value="${pct(SET[k])}"><i>${pct(SET[k])}</i></label>`;
   const m = open(
     '⚙ 設定',
-    `<h4>音量</h4>${sl('master', '主音量')}${sl('sfx', '音效')}${sl('music', '環境音／音樂')}
+    `<h4>音量</h4>${sl('master', '主音量')}${sl('sfx', '音效')}${sl('music', '環境音／音樂')}${sl('radio', '廣播')}
+    <label class="srow"><span>廣播語音</span><input type="checkbox" id="svoice"${SET.voice ? ' checked' : ''}><i>收音機廣播以合成語音朗讀</i></label>
     <h4>畫面</h4><label class="srow"><span>畫質</span><select id="squal">${(['low', 'med', 'high'] as Quality[])
       .map(
         q =>
@@ -111,6 +114,11 @@ export function openSettings() {
     SET.sens = +sens.value / 100;
     (sens.nextElementSibling as HTMLElement).textContent = sens.value + '%';
     saveSettings();
+  };
+  (m.querySelector('#svoice') as HTMLInputElement).onchange = e => {
+    SET.voice = (e.target as HTMLInputElement).checked;
+    saveSettings();
+    if (!SET.voice) speechSynthesis?.cancel();
   };
   (m.querySelector('#svib') as HTMLInputElement).onchange = e => {
     SET.vib = (e.target as HTMLInputElement).checked;
