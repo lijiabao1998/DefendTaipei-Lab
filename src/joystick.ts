@@ -1,5 +1,7 @@
 // On-screen analog joystick (#joy / #joyk) for touch play. joy.x / joy.y are in [-1, 1]; pushing it all
 // the way makes the player run. On touch devices page scrolling, zooming and long-press menus are blocked.
+/** v22.7.1 overlays where touch scrolling / slider dragging is allowed (everything else stays locked for the joystick) */
+export const SCROLL_OK = '#modal, #pmenu, #title, #panel, #surv, #shop, #ride, input, select, textarea';
 export const joy = { x: 0, y: 0, id: -1 };
 export function initJoystick(mobile: boolean) {
   const J = document.getElementById('joy')!,
@@ -41,6 +43,15 @@ export function initJoystick(mobile: boolean) {
   J.addEventListener('pointercancel', end);
   if (mobile) {
     for (const ev of ['touchmove', 'gesturestart', 'contextmenu', 'selectstart'])
-      document.addEventListener(ev, e => e.preventDefault(), { passive: false });
+      document.addEventListener(
+        ev,
+        e => {
+          // v22.7.1 menus, panels and sliders must still scroll / drag on phones
+          const t = e.target as Element | null;
+          if (ev !== 'contextmenu' && t?.closest?.(SCROLL_OK)) return;
+          e.preventDefault();
+        },
+        { passive: false },
+      );
   }
 }

@@ -74,9 +74,10 @@ import { buildDoorDeco, DoorView, doorSound, isHomeDoor, type LiveDoor } from '.
 import { SniperSys, findPosts, sniperActive, type Sniper } from './sniper';
 import { Scope, SCOPED, ballistic } from './scope';
 import * as AU from './audio';
-import { SET, QPIX, isKey, K, keyLabel, markMusic, vibrate } from './settings';
+import { SET, QPIX, isKey, K, keyLabel, markMusic, vibrate, applyBtnSize } from './settings';
 import { ctxLabel, ctxHint } from './touchctl';
-import { openSettings, openHelp, openAbout, modalOpen, closeModal } from './menu';
+import { openSettings, openHelp, openAbout, modalOpen, closeModal, histPush, histPop, setBackHandler } from './menu';
+import { VERSION } from './version';
 
 // ---------- utils ----------
 let seed = 20261024;
@@ -2969,16 +2970,23 @@ function escBack() {
   if (started && !dead) togglePause();
   else if (!started) (window as any).__titleBack?.();
 }
+// v22.7.1 Android Back: close the settings / help modal first, then the pause menu, then other overlays
+setBackHandler(() => {
+  if (modalOpen()) closeModal(true);
+  else if (pauseOpen()) togglePause(false, true);
+  else closeTop();
+});
 // ---- v22.4 pause menu (Esc / ☰). In multiplayer only the menu is local: the shared world keeps running ----
 let pauseEl: HTMLElement | null = null;
 const pauseOpen = () => !!pauseEl && !pauseEl.classList.contains('hidden');
-function togglePause(on = !pauseOpen()) {
+function togglePause(on = !pauseOpen(), fromBack = false) {
+  const was = pauseOpen();
   if (!pauseEl) {
     pauseEl = document.createElement('div');
     pauseEl.id = 'pmenu';
     pauseEl.className = 'hidden';
     pauseEl.innerHTML =
-      '<b>⏸ 已暫停</b><em id="pmp"></em>' +
+      '<div class="phead"><b>⏸ 已暫停</b><button class="px" aria-label="繼續">✕</button></div><em id="pmp"></em>' +
       [
         ['go', '繼續'],
         ['save', '存檔'],
@@ -3027,9 +3035,14 @@ function togglePause(on = !pauseOpen()) {
           }
         }),
     );
+    (pauseEl.querySelector('.px') as HTMLElement).onclick = () => togglePause(false);
+    // v22.7.1 tap outside the menu (on the dimmed backdrop) resumes
+    pauseEl.addEventListener('click', e => e.target === pauseEl && togglePause(false));
     document.body.appendChild(pauseEl);
   }
   pauseEl.classList.toggle('hidden', !on);
+  if (on && !was) histPush();
+  else if (!on && was && !fromBack) histPop();
   ($('pmp') as HTMLElement).textContent = on && MP ? '多人連線中：只有你的畫面暫停，世界仍在進行' : '';
   paused = on && !MP;
   if (on) for (const k in keys) keys[k] = false;
@@ -5654,6 +5667,11 @@ async function boot() {
     (window as any).__game && ((window as any).__game.map = gmap);
   });
   await prog(1, '完成');
+  // v22.7.1 watchdog: if the title menu has not appeared shortly after loading, offer a clean reload
+  setTimeout(() => {
+    const tm = document.getElementById('tmenu');
+    if (!started && (!tm || !tm.offsetHeight)) bootRescue('選單沒有出現');
+  }, 6000);
   const btns = $('btns');
   $('loadmsg').textContent = `地圖：萬華・西門町（${blds.length} 棟建築，${roads.length} 條街道）`;
   const findBed = (b: Bld): V2 | null => {
@@ -6230,13 +6248,33 @@ async function boot() {
     checkpoints: () => checkpoints,
   };
 }
+/** v22.7.1 show a 「重新載入」 button that drops the service-worker cache (stale assets after a deploy) */
+function bootRescue(why: string) {
+  if (document.getElementById('rescue')) return;
+  const b = document.createElement('button');
+  b.id = 'rescue';
+  b.textContent = `${why}：清除快取並重新載入`;
+  b.onclick = async () => {
+    try {
+      for (const r of (await navigator.serviceWorker?.getRegistrations?.()) || []) await r.unregister();
+      for (const k of (await caches?.keys?.()) || []) if (k.startsWith('dt-')) await caches.delete(k);
+    } catch {}
+    location.reload();
+  };
+  $('title').appendChild(b);
+}
+$('title').querySelector('h2')!.textContent = `萬華淪陷區 · 生存原型 ${VERSION}`;
+applyBtnSize();
 boot().catch(e => {
   console.error(e);
   $('loadmsg').textContent = '載入失敗：' + e;
+  bootRescue('載入失敗');
 });
 loop();
 // PWA: offline play after the first load (cache is versioned per deploy in sw.js)
 if ('serviceWorker' in navigator && import.meta.env.PROD)
   addEventListener('load', () =>
-    navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js').catch(e => console.warn('sw', e)),
+    navigator.serviceWorker
+      .register(import.meta.env.BASE_URL + 'sw.js', { updateViaCache: 'none' })
+      .catch(e => console.warn('sw', e)),
   );

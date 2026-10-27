@@ -1028,11 +1028,11 @@ body.mobile.portrait #pbtns {
   -webkit-user-select: none;
 }
 #pbact {
-  width: 88px;
-  height: 88px;
+  width: calc(88px * var(--pbs, 1));
+  height: calc(88px * var(--pbs, 1));
   right: calc(16px + env(safe-area-inset-right));
   bottom: calc(40px + env(safe-area-inset-bottom));
-  font-size: 32px;
+  font-size: calc(32px * var(--pbs, 1));
   background: rgba(150, 30, 24, 0.82);
 }
 #pbact.long {
@@ -1045,11 +1045,11 @@ body.mobile.portrait #pbtns {
   background: rgba(31, 90, 58, 0.9);
 }
 #pbsec {
-  width: 60px;
-  height: 60px;
+  width: calc(60px * var(--pbs, 1));
+  height: calc(60px * var(--pbs, 1));
   right: calc(30px + env(safe-area-inset-right));
-  bottom: calc(144px + env(safe-area-inset-bottom));
-  font-size: 22px;
+  bottom: calc(56px + 88px * var(--pbs, 1) + env(safe-area-inset-bottom));
+  font-size: calc(22px * var(--pbs, 1));
 }
 #pbsec.lit {
   background: rgba(31, 90, 58, 0.9);
@@ -1063,7 +1063,7 @@ body.mobile.portrait #pbtns {
 #pbhint {
   position: fixed;
   right: calc(8px + env(safe-area-inset-right));
-  bottom: calc(250px + env(safe-area-inset-bottom));
+  bottom: calc(106px + 148px * var(--pbs, 1) + env(safe-area-inset-bottom));
   max-width: 62vw;
   text-align: right;
   font-size: 12px;
@@ -1074,7 +1074,7 @@ body.mobile.portrait #pbtns {
   pointer-events: none;
 }
 body.mobile.portrait #equip {
-  bottom: calc(214px + env(safe-area-inset-bottom)) !important;
+  bottom: calc(70px + 148px * var(--pbs, 1) + env(safe-area-inset-bottom)) !important;
   border: 1px solid rgba(255, 255, 255, 0.45);
   border-radius: 6px;
   pointer-events: auto;
@@ -1120,23 +1120,26 @@ body:not(.ingame) #speed {
   display: none;
 }
 #pmenu {
+  /* v22.7.1 full-screen opaque backdrop (tap outside the buttons = resume), scrolls on short screens */
   position: fixed;
-  z-index: 40;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  background: rgba(15, 18, 22, 0.94);
-  border: 1px solid #555;
-  border-radius: 10px;
-  padding: 16px 20px;
+  z-index: 42;
+  inset: 0;
+  background: rgba(8, 10, 12, 0.9);
+  padding: calc(16px + env(safe-area-inset-top)) 20px calc(16px + env(safe-area-inset-bottom));
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  justify-content: safe center;
+  align-items: center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   gap: 10px;
-  min-width: 180px;
   text-align: center;
   color: #fff;
 }
 #pmenu button {
+  width: min(280px, 80vw);
   font-size: 18px;
   padding: 10px;
   border-radius: 6px;
@@ -1705,4 +1708,95 @@ body.portrait #charsel {
   to {
     opacity: 0.55;
   }
+}
+
+/* v22.7.1 pause header with ✕ */
+#pmenu .phead {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: min(280px, 80vw);
+  font-size: 18px;
+}
+#pmenu .phead .px {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  font-size: 20px;
+  background: #333;
+}
+/* v22.7.1 settings / help modal: opaque backdrop, sticky header with ✕ 返回, body scrolls inside the viewport */
+#modal {
+  background: #060709;
+  padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  box-sizing: border-box;
+}
+#modal .mbox {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow: hidden;
+  padding: 0;
+  box-sizing: border-box;
+}
+#modal .mhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px 8px 18px;
+  border-bottom: 1px solid #333;
+  background: rgba(15, 18, 22, 1);
+  flex: none;
+}
+#modal .mhead h3 {
+  margin: 0;
+}
+#modal .mhead .mx {
+  min-width: 44px;
+  min-height: 40px;
+  font-size: 15px;
+  background: #8a2a20;
+  border: 0;
+}
+#modal .mbody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  padding: 4px 18px 8px;
+}
+#modal .mclose {
+  flex: none;
+  margin: 0;
+  border-radius: 0 0 10px 10px;
+}
+#modal .kdet summary {
+  margin: 10px 0 4px;
+  color: #9cf;
+}
+#modal input[type='range'] {
+  touch-action: none;
+}
+#title {
+  overflow-y: auto;
+  touch-action: pan-y;
+}
+#rescue {
+  margin-top: 14px;
+  padding: 10px 16px;
+  font-size: 15px;
+  border-radius: 6px;
+  border: 0;
+  background: #e8681c;
+  color: #fff;
+}
+/* v22.7.1 in-game HUD never shows over the title / loading screen */
+body:not(.ingame) #equip,
+body:not(.ingame) #pbhint {
+  display: none !important;
 }

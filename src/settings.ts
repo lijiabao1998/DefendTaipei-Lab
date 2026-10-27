@@ -8,6 +8,8 @@ export interface Settings {
   lang: string;
   sens: number;
   vib: boolean;
+  /** v22.7.1 portrait thumb-button size: 0.85 / 1 / 1.1 */
+  btn: number;
 }
 const SKEY = 'dt.settings';
 const KKEY = 'dt.keys';
@@ -20,6 +22,7 @@ const DEF: Settings = {
   lang: 'zh-TW',
   sens: 1,
   vib: true,
+  btn: 1,
 };
 function load<T>(k: string, d: T): T {
   try {
@@ -116,6 +119,9 @@ export function conflicts() {
   }
   return bad;
 }
+/** v22.7.1 portrait thumb-button size (CSS var --pbs) */
+export const applyBtnSize = () =>
+  typeof document !== 'undefined' && document.documentElement.style.setProperty('--pbs', String(SET.btn || 1));
 export const vibrate = (ms: number) => SET.vib && navigator.vibrate?.(ms);
 
 // ---- volume: every AudioContext output goes through a per-context gain (music contexts are tagged) ----
