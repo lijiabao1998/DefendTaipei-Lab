@@ -5672,9 +5672,8 @@ const PRO = {
   sir: null as any,
   msgs: 0,
 };
-// v23.2: air-raid triggers only emit 'alert' — kind 'alert' to start, kind 'clear' to lift it.
-// siren() is that listener and the only call into the story/audio modules. emit is synchronous.
-on('alert', e => siren(true, e.kind));
+// v23.2: the prologue's attack emits 'alert' on the event bus; the siren listens (synchronous, same timing as before)
+on('alert', e => siren(true, e?.kind ?? 'alert'));
 function siren(on: boolean, kind: 'alert' | 'clear' = 'alert') {
   // v23.1 萬安-style street sirens (broadcast.ts); muffled indoors
   if (on) BC.airRaid(kind, () => !!bldAt(player.pos.x, player.pos.z), AU.sfxCtx());
