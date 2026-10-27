@@ -5672,8 +5672,9 @@ const PRO = {
   sir: null as any,
   msgs: 0,
 };
-// v23.2: air-raid triggers only emit 'alert' ({ kind: 'alert' | 'clear' }). siren() is the listener and the
-// only place that reaches the story/audio modules; emit is synchronous, so timing matches a direct call.
+// v23.2: an air raid emits 'alert' with kind 'alert'. siren() is that listener and the only call into the
+// story/audio modules; emit is synchronous, so timing matches a direct call. All-clear is a separate
+// `alertClear` event, not on the bus yet, so gameplay does not emit it.
 on('alert', e => siren(true, e.kind));
 function siren(on: boolean, kind: 'alert' | 'clear' = 'alert') {
   // v23.1 萬安-style street sirens (broadcast.ts); muffled indoors
@@ -6476,7 +6477,11 @@ async function boot() {
     phone: (w: string, m: string) => phone(w, m),
     save: () => save(),
     radio: () => ({ log: radioLog, bc: BC.bcStats, siren: BC.sirenOn() }),
-    siren: (k: 'alert' | 'clear') => emit('alert', { kind: k }),
+    // 'clear' waits for `alertClear` on the bus. Do not send it as alert kind 'clear'.
+    siren: (k: 'alert' | 'clear') => {
+      if (k !== 'alert') return;
+      emit('alert', { kind: 'alert' });
+    },
     radioLogHtml: () => radioLogHtml(),
     clutter: () => ({
       stats: CL.clutterStats,
