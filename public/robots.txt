@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://game.lijiabao.uk/sitemap.xml

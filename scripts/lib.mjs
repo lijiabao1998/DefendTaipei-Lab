@@ -1,6 +1,6 @@
 // Shared helpers for the Playwright scripts (smoke test and scripts/checks/*).
 // Environment variables:
-//   URL          game URL (default http://localhost:4173/, which is what `npm run preview` serves)
+//   URL          game URL (default http://localhost:4173/defendtaipei/, which is what `npm run preview` serves)
 //   SHOTS_DIR    where screenshots are written (default ./shots, git-ignored)
 //   PW_CHROMIUM  path to a Chromium binary, when Playwright's own browser is not installed
 import { chromium, devices } from 'playwright';
@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export { devices };
-export const DEFAULT_URL = 'http://localhost:4173/';
+export const DEFAULT_URL = 'http://localhost:4173/defendtaipei/';
 export const gameUrl = arg => arg || process.env.URL || DEFAULT_URL;
 
 export function shot(name) {
@@ -28,7 +28,7 @@ export const launch = () =>
 // Serve dist/ with `vite preview` on the given port and wait until it answers. Returns { url, stop }.
 export async function preview(port) {
   const srv = spawn('npx', ['vite', 'preview', '--port', String(port), '--strictPort'], { stdio: 'ignore' });
-  const url = `http://localhost:${port}/`;
+  const url = `http://localhost:${port}/defendtaipei/`;
   for (let i = 0; i < 60; i++) {
     try {
       if ((await fetch(url)).ok) break;

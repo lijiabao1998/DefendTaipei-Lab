@@ -2,7 +2,7 @@
 
 以真實台北街道為戰場的生存遊戲原型：玩法參考《Project Zomboid》（俯視生存沙盒），但敵人是已經佔領台北的解放軍佔領部隊。你是萬華巷弄裡的倖存者，搜刮物資、避開巡邏、一區一區奪回街區。
 
-**線上遊玩：** https://game.lijiabao.uk/（舊網址 https://lijiabao1998.github.io/DefendTaipei-Lab/ 會自動轉址）
+**線上遊玩：** https://game.lijiabao.uk/defendtaipei/（遊戲總站 https://game.lijiabao.uk/ ；舊網址 https://lijiabao1998.github.io/DefendTaipei-Lab/ 會自動轉址）
 
 ## 操作
 | 按鍵 | 功能 |
@@ -446,3 +446,8 @@ node scripts/tiles.mjs           # 重新切 200 m 道路細節圖塊（public/d
   - 撬到的東西照每台機器的 id 固定產生，多人模式下大家一樣。新物品（折疊傘、口罩、行動電源、菠蘿麵包）可以拿來以物易物。
 - 地下不再有陽光：有電時只有站內照明，停電後幾乎全黑，只剩閃爍的緊急照明。
 - 檢查腳本：`scripts/checks/v223retail.mjs`。
+
+## v23.1.2 — 遊戲總站路徑 /defendtaipei/
+
+- game.lijiabao.uk 改為多遊戲總站（lijiabao1998.github.io 使用者站台，持有 CNAME）；本遊戲移到 https://game.lijiabao.uk/defendtaipei/ 。
+- 專案 repo 改名為 `defendtaipei`，移除本 repo 的自訂網域與 public/CNAME、robots.txt、sitemap.xml（改由總站提供）；Vite `base` 改為 `/defendtaipei/`，canonical／OG 網址與檢查腳本同步更新。

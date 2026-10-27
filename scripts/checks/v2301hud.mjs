@@ -2,7 +2,7 @@
 // the joystick / 蹲 / 打 / weapon label, 跳過開場 clear of 打. argv: url outDir
 import { launch } from '../lib.mjs';
 import fs from 'node:fs';
-const [url = 'http://localhost:4173/', out = 'shots/v2301'] = process.argv.slice(2);
+const [url = 'http://localhost:4173/defendtaipei/', out = 'shots/v2301'] = process.argv.slice(2);
 fs.mkdirSync(out, { recursive: true });
 const b = await launch();
 const R = {};

@@ -6,7 +6,12 @@ const [url] = process.argv.slice(2);
 const b = await launch();
 const res = {};
 for (const block of [false, true]) {
-  const ctx = await b.newContext({ viewport: { width: 412, height: 915 }, hasTouch: true, isMobile: true, serviceWorkers: 'block' });
+  const ctx = await b.newContext({
+    viewport: { width: 412, height: 915 },
+    hasTouch: true,
+    isMobile: true,
+    serviceWorkers: 'block',
+  });
   const p = await ctx.newPage();
   const errs = [];
   p.on('pageerror', e => errs.push(String(e)));

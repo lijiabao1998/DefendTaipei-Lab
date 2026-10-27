@@ -30,7 +30,7 @@ self.addEventListener('fetch',e=>{const r=e.request;if(r.method!=='GET'||new URL
   },
 });
 export default defineConfig({
-  base: '/',
+  base: '/defendtaipei/',
   plugins: [sw()],
   build: {
     chunkSizeWarningLimit: 1500,

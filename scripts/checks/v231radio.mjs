@@ -2,7 +2,7 @@
 // broadcast voice pipeline + radio bed, 萬安 siren pattern. argv: url outDir
 import { launch } from '../lib.mjs';
 import fs from 'node:fs';
-const [url = 'http://localhost:4173/', out = 'shots/v231'] = process.argv.slice(2);
+const [url = 'http://localhost:4173/defendtaipei/', out = 'shots/v231'] = process.argv.slice(2);
 fs.mkdirSync(out, { recursive: true });
 const b = await launch();
 const R = {};
