@@ -31,6 +31,19 @@ ok(
   ev.some(s => s.startsWith('U')),
   'tileUnloaded emitted',
 );
+// a tile whose first load fails, or that is dropped before its first load finishes, must not emit tileUnloaded
+const m2 = new TileManager<string>({
+  load: (x, z) => (x === 0 && z === 0 ? Promise.reject(new Error('fail')) : new Promise<string>(() => {})),
+  unload: () => {},
+});
+m2.budget = 1e9;
+ev.length = 0;
+m2.update(0, 0);
+await new Promise(r => setTimeout(r, 0));
+m2.update(100000, 0); // drop all still-pending tiles
+await new Promise(r => setTimeout(r, 0));
+ok(ev.filter(s => s.startsWith('U')).length === 0, `no tileUnloaded for never-loaded tiles (${ev.length})`);
+m2.clear();
 m.clear();
 ok(live.size === 0, `clear leaves ${live.size}`);
 if (fails) throw new Error(`${fails} check(s) failed`);

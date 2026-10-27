@@ -1,6 +1,6 @@
 // Tile manager: keeps tiles around the player loaded at the right LOD, unloads the rest.
-// Off by default (?maptiles=1). Renderer-agnostic: the caller supplies load/unload hooks, so this file
-// imports nothing outside src/map/. Nothing in the game calls it yet, so default behaviour is unchanged.
+// Off by default (?maptiles=1). Renderer-agnostic: the caller supplies load/unload hooks. The only import outside
+// src/map/ is core/bus.ts (emit tileLoaded/tileUnloaded). Nothing in the game calls it yet, so default behaviour is unchanged.
 import { TILE, keyOf, parseKey, tileDist, tileOf, type TileKey } from './grid';
 import { emit } from '../../core/bus';
 import { LOD_DROP, LOD_HYST, lodFor, type Lod } from './lod';
@@ -20,7 +20,8 @@ export interface TileHooks<T> {
 }
 /** bus tileLoaded.lod: 0 near / 1 mid / 2 far */
 export const LOD_NUM: Record<Lod, number> = { near: 0, mid: 1, far: 2 };
-type Entry<T> = { lod: Lod; obj?: T; gen: number };
+/** shown: tileLoaded has been emitted for this tile (so tileUnloaded may be) */
+type Entry<T> = { lod: Lod; obj?: T; gen: number; shown?: boolean };
 
 export class TileManager<T> {
   tiles = new Map<TileKey, Entry<T>>();
@@ -63,12 +64,13 @@ export class TileManager<T> {
 
   private start(k: TileKey, tx: number, tz: number, lod: Lod, old?: Entry<T>) {
     const gen = ++this.gen;
-    const e: Entry<T> = { lod, gen, obj: old?.obj }; // keep old LOD visible until the new one is ready
+    const e: Entry<T> = { lod, gen, obj: old?.obj, shown: old?.shown }; // keep old LOD visible until the new one is ready
     this.tiles.set(k, e);
     const done = (obj: T) => {
       if (this.tiles.get(k) !== e || e.gen !== gen) return this.hooks.unload(tx, tz, obj); // stale
       if (e.obj !== undefined) this.hooks.unload(tx, tz, e.obj);
       e.obj = obj;
+      e.shown = true;
       this.hooks.onLoaded?.(tx, tz, lod);
       emit('tileLoaded', { tx, tz, lod: LOD_NUM[lod] });
     };
@@ -84,6 +86,7 @@ export class TileManager<T> {
   private drop(k: TileKey, tx: number, tz: number, e: Entry<T>) {
     this.tiles.delete(k);
     if (e.obj !== undefined) this.hooks.unload(tx, tz, e.obj);
+    if (!e.shown) return; // never reported loaded → no tileUnloaded
     this.hooks.onUnloaded?.(tx, tz);
     emit('tileUnloaded', { tx, tz });
   }
