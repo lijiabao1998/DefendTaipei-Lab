@@ -43,6 +43,13 @@ export type Rig = {
   weapon: THREE.Group;
   phase: number;
   meleeT: number;
+  /** v22.10 swing length, variant (0 forehand, 1 backhand, 2 overhead, 3 rifle-butt), hit-stop timer, swing counter */
+  meleeDur: number;
+  meleeVar: number;
+  hitStop: number;
+  swings: number;
+  /** weapon base pitch (muzzle rise is added on top) */
+  wRx0: number;
   shootT: number;
   hurtT: number;
   deadT: number;
@@ -588,6 +595,11 @@ export function makeRig(o: RigOpts): Rig {
     weapon,
     phase: Math.random() * 6,
     meleeT: 0,
+    meleeDur: 0.45,
+    meleeVar: 0,
+    hitStop: 0,
+    swings: 0,
+    wRx0: Math.PI / 2,
     shootT: 0,
     hurtT: 0,
     deadT: 0,
@@ -633,20 +645,25 @@ export function setWeapon(r: Rig, kind: string) {
     add(box(0.05, 0.09, 0.2), 0x3d4329, 0, -0.04, -0.24);
     add(box(0.03, 0.04, 0.12), 0x111111, 0, 0.03, 0.12);
     r.weapon.rotation.set(Math.PI / 2, 0, 0);
+    r.wRx0 = Math.PI / 2;
   } else if (kind === 'pistol') {
     add(box(0.032, 0.045, 0.19), 0x222222, 0, 0, 0.06);
     add(box(0.03, 0.1, 0.04), 0x333333, 0, -0.055, 0);
     r.weapon.rotation.set(Math.PI / 2, 0, 0);
+    r.wRx0 = Math.PI / 2;
   } else if (kind === 'bat') {
     add(new THREE.CylinderGeometry(0.035, 0.016, 0.85, 8), 0xc08a4a, 0, 0, 0.36).rotation.x = Math.PI / 2;
     r.weapon.rotation.set(Math.PI / 2 - 0.3, 0, 0);
+    r.wRx0 = Math.PI / 2 - 0.3;
   } else if (kind === 'pipe') {
     add(new THREE.CylinderGeometry(0.022, 0.022, 0.9, 8), 0x7a6a5a, 0, 0, 0.38).rotation.x = Math.PI / 2;
     r.weapon.rotation.set(Math.PI / 2 - 0.3, 0, 0);
+    r.wRx0 = Math.PI / 2 - 0.3;
   } else if (kind === 'knife') {
     add(box(0.015, 0.05, 0.2), 0xd0d6da, 0, 0.0, 0.15);
     add(box(0.025, 0.035, 0.1), 0x5a3a1a, 0, 0, 0.02);
     r.weapon.rotation.set(Math.PI / 2, 0, 0);
+    r.wRx0 = Math.PI / 2;
   }
 }
 const cl01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
@@ -704,12 +721,110 @@ function updateLod(r: Rig) {
   r.lod = want;
   for (const m of r.det) m.visible = !far;
 }
+const eo = (x: number) => {
+  const t = Math.max(0, Math.min(1, x));
+  return 1 - (1 - t) ** 3;
+};
+const ei = (x: number) => {
+  const t = Math.max(0, Math.min(1, x));
+  return t * t * t;
+};
+const ARM = new Set(['uaR', 'laR', 'uaRz', 'uaRy', 'laRy', 'uaL', 'laL', 'uaLz']);
+/** v22.10 swing keyframes: [wind-up, contact, follow-through] per pose key */
+const MELEE: Record<string, [number, number, number]>[] = [
+  // 0 forehand diagonal (high right → low left)
+  {
+    uaR: [-2.6, -1.1, -0.4],
+    laR: [-1.3, -0.15, -0.4],
+    uaRz: [-0.9, 0.35, 0.7],
+    uaRy: [0.3, -0.2, -0.3],
+    uaL: [-0.4, -0.9, -0.8],
+    laL: [-1.0, -1.1, -1.0],
+    uaLz: [0.25, 0.1, 0.1],
+    hipYaw: [0.28, -0.25, -0.32],
+    spY: [0.55, -0.55, -0.75],
+    chY: [0.25, -0.3, -0.35],
+    spX: [-0.08, 0.2, 0.28],
+    thL: [0.1, -0.35, -0.4],
+    shL: [0.1, 0.3, 0.3],
+    thR: [-0.05, 0.2, 0.25],
+    stepZ: [-0.05, 0.14, 0.18],
+  },
+  // 1 backhand horizontal (left → right)
+  {
+    uaR: [-1.3, -1.5, -1.2],
+    laR: [-1.6, -0.1, -0.3],
+    uaRz: [0.9, -0.4, -1.0],
+    uaRy: [0.6, -0.2, -0.3],
+    uaL: [-0.2, -0.6, -0.7],
+    laL: [-1.1, -1.0, -1.0],
+    uaLz: [0.1, 0.35, 0.4],
+    hipYaw: [-0.25, 0.2, 0.28],
+    spY: [-0.6, 0.45, 0.65],
+    chY: [-0.3, 0.25, 0.3],
+    spX: [0, 0.1, 0.15],
+    thR: [0.1, -0.3, -0.35],
+    shR: [0.1, 0.28, 0.3],
+    thL: [-0.05, 0.15, 0.2],
+    stepZ: [-0.04, 0.12, 0.15],
+  },
+  // 2 overhead chop
+  {
+    uaR: [-2.9, -0.9, -0.35],
+    laR: [-1.5, -0.1, -0.3],
+    uaRz: [-0.2, 0.1, 0.2],
+    uaL: [-0.9, -0.5, -0.4],
+    laL: [-0.9, -0.8, -0.9],
+    uaLz: [0.2, 0.15, 0.1],
+    spX: [-0.18, 0.35, 0.45],
+    chX: [-0.15, 0.1, 0.15],
+    spY: [0.2, -0.15, -0.1],
+    hipYaw: [0.1, -0.05, 0],
+    thL: [0.05, -0.4, -0.45],
+    shL: [0.15, 0.4, 0.45],
+    thR: [0, 0.25, 0.3],
+    shR: [0.1, 0.25, 0.3],
+    stepZ: [-0.06, 0.16, 0.2],
+  },
+  // 3 rifle-butt jab (enemy melee): both hands drive the stock forward
+  {
+    uaR: [-0.5, -1.6, -1.5],
+    laR: [-1.4, -0.2, -0.3],
+    uaL: [-0.9, -1.25, -1.2],
+    laL: [-1.2, -0.5, -0.6],
+    uaLz: [-0.3, -0.4, -0.4],
+    spY: [0.5, -0.4, -0.45],
+    hipYaw: [0.22, -0.2, -0.22],
+    spX: [-0.05, 0.25, 0.3],
+    thL: [0.1, -0.4, -0.4],
+    shL: [0.1, 0.3, 0.3],
+    thR: [0, 0.2, 0.22],
+    stepZ: [-0.06, 0.18, 0.2],
+  },
+];
+/** v22.10 start a swing; variants alternate per rig unless forced */
+export function startMelee(r: Rig, dur = 0.45, variant?: number) {
+  r.meleeVar = variant ?? r.swings++ % 3;
+  r.meleeDur = dur;
+  r.meleeT = dur;
+  r.hitStop = 0;
+}
+/** progress 0..1 of the current swing (-1 when idle) */
+export function meleeQ(r: Rig) {
+  return r.meleeT > 0 ? 1 - r.meleeT / r.meleeDur : -1;
+}
+export function hitStop(r: Rig, t = 0.07) {
+  r.hitStop = t;
+}
 export function animate(r: Rig, state: AnimState, speed: number, dt: number) {
   if (dt <= 0) return;
   updateLod(r);
   r.t += dt;
   r.state = state;
-  r.meleeT = Math.max(0, r.meleeT - dt);
+  if (r.hitStop > 0) {
+    r.hitStop -= dt;
+    r.meleeT = Math.max(0, r.meleeT - dt * 0.08); // hit-stop: freeze the swing for a beat on contact
+  } else r.meleeT = Math.max(0, r.meleeT - dt);
   r.shootT = Math.max(0, r.shootT - dt);
   r.hurtT = Math.max(0, r.hurtT - dt);
   r.vaultT = Math.max(0, r.vaultT - dt);
@@ -742,7 +857,9 @@ export function animate(r: Rig, state: AnimState, speed: number, dt: number) {
     walkW = sm(s / 1.2),
     sn = W.sneak;
   const stride = (0.95 + 0.42 * s) * (1 - 0.35 * sn);
-  let amp = walkW * (0.42 + 0.42 * runW) * (1 - 0.35 * sn);
+  // v22.10 amplitude from stride: the stance foot sweeps stride*duty per contact, so feet don't skate
+  const duty = 0.55 - 0.2 * runW;
+  let amp = walkW * Math.asin(Math.min(0.78, Math.max(0.2, (stride * duty) / (2 * (LT + LS))))) * (1 - 0.35 * sn);
   const turnStep = s < 0.4 && Math.abs(r.yawRate) > 1.2 ? Math.min(1, (Math.abs(r.yawRate) - 1.2) / 3) : 0; // turn in place: small shuffling steps
   r.phase += ((2 * Math.PI * s) / stride) * dt + turnStep * dt * 9;
   if (turnStep > 0) amp = Math.max(amp, 0.16 * turnStep);
@@ -768,8 +885,8 @@ export function animate(r: Rig, state: AnimState, speed: number, dt: number) {
   T.spY = sL * amp * 0.32;
   T.chY = -sL * amp * 0.1;
   T.bodyZoff = idleW * Math.sin(r.t * 0.37) * 0.02;
-  T.thLz = idleW * 0.05;
-  T.thRz = -idleW * 0.03;
+  T.thLz = idleW * 0.05 + 0.05 * walkW + 0.04 * runW; // slight abduction so knees/feet never cross
+  T.thRz = -idleW * 0.03 - 0.05 * walkW - 0.04 * runW;
   T.chX = breath * 0.018 * idleW - runW * 0.05;
   T.hdX = -breath * 0.012;
   T.hdY = idleW * Math.sin(r.t * 0.29) * 0.35 * (1 - W.aim);
@@ -848,21 +965,30 @@ export function animate(r: Rig, state: AnimState, speed: number, dt: number) {
     L('uaLz', 0.15);
     L('uaRz', -0.15);
   }
+  let stepZ = 0;
   if (r.meleeT > 0) {
-    const q = 1 - r.meleeT / 0.45;
-    const wind = sm(q / 0.3),
-      strike = sm((q - 0.3) / 0.25),
-      rec = sm((q - 0.6) / 0.4);
-    T.uaR = -0.3 - 2.4 * wind + 2.6 * strike - 0.4 * rec * 0;
-    T.laR = -1.2 * wind + 0.9 * strike;
-    T.uaRz = -0.5 * wind + 0.3 * strike;
-    T.spY = 0.5 * wind - 0.9 * strike + 0.4 * rec;
-    T.chY = 0.2 * wind - 0.3 * strike;
-    T.spX += 0.15 * strike;
-    T.uaL = -0.5;
-    T.laL = -1.0;
-    T.thL += -0.25 * strike;
-    T.shL += 0.2 * strike;
+    // v22.10 swing: wind-up (ease-out) → fast strike → follow-through overshoot → eased recovery,
+    // driven from the hips up (hip yaw → spine → chest → arm) with a step-in and weight shift.
+    const q = 1 - r.meleeT / r.meleeDur;
+    const key = (w: number, c: number, f: number) =>
+      q < 0.34
+        ? w * eo(q / 0.34)
+        : q < 0.5
+          ? w + (c - w) * ei((q - 0.34) / 0.16)
+          : q < 0.66
+            ? c + (f - c) * eo((q - 0.5) / 0.16)
+            : f * (1 - sm((q - 0.66) / 0.34));
+    const V = MELEE[r.meleeVar] || MELEE[0];
+    const legK = 1 - runW * 0.7; // upper-body layer while running: legs keep the gait
+    for (const k in V) {
+      const [w, c, f] = V[k];
+      const v = key(w, c, f);
+      if (k === 'stepZ') stepZ = v * legK;
+      else if (k.startsWith('th') || k.startsWith('sh')) T[k as keyof Pose] += v * legK;
+      else if (ARM.has(k))
+        T[k as keyof Pose] = T[k as keyof Pose] * (1 - sm(q / 0.12) * (1 - sm((q - 0.85) / 0.15))) + v;
+      else T[k as keyof Pose] += v;
+    }
   }
   if (r.shoveT > 0) {
     const q = 1 - r.shoveT / 0.35;
@@ -919,12 +1045,34 @@ export function animate(r: Rig, state: AnimState, speed: number, dt: number) {
   T.tail = 0.25 + s * 0.08 - r.accel * 0.05 + Math.sin(p * 2) * amp * 0.25;
   // ---- hip IK: lower pelvis so the stance foot stays planted ----
   const eff = (th: number, sh: number) => LT * Math.cos(th) + LS * Math.cos(th + sh);
-  const hipTarget = Math.min(eff(T.thL, T.shL), eff(T.thR, T.shR)) + 0.075 + breath * 0.003;
+  const hipTarget = Math.max(eff(T.thL, T.shL), eff(T.thR, T.shR)) + 0.105 + breath * 0.003;
   T.hipY = (1 - W.sleep) * hipTarget + W.sleep * 0.25;
-  applySprings(r, T, dt, 16);
+  applySprings(r, T, dt, r.meleeT > 0 ? 30 : 16);
+  // v22.10 foot plant from the *rendered* (post-spring) leg: the lower foot's sole sits on the ground.
+  // (was min() over target angles → pelvis followed the bent swing leg and the stance foot sank ~0.6 m in a sprint)
+  if (W.sleep < 0.01 && r.vaultT <= 0) {
+    const g = (k: string) => r.sp[k][0];
+    const reach = Math.max(
+      eff(g('thL'), g('shL')) * Math.cos(g('thLz')),
+      eff(g('thR'), g('shR')) * Math.cos(g('thRz')),
+    );
+    r.hips.position.y = reach + 0.105 + 0.03 * walkW + breath * 0.003; // + heel/toe corner of the pitched shoe
+  }
+  // gun recoil: fast kick, slower settle; muzzle rises on the weapon
+  if (r.shootT > 0 && r.weapon) {
+    const t0 = 1 - r.shootT / 0.14,
+      c = t0 < 0.18 ? t0 / 0.18 : (1 - (t0 - 0.18) / 0.82) ** 2;
+    const m = r.weaponKind === 'pistol' ? 1.4 : 1;
+    r.weapon.rotation.x = r.wRx0 - c * 0.28 * m;
+    r.uaR.rotation.x -= c * 0.14 * m;
+    r.laR.rotation.x -= c * 0.1 * m;
+    r.uaL.rotation.x -= c * 0.08;
+    r.chest.rotation.x -= c * 0.05 * m;
+    r.head.rotation.x -= c * 0.04;
+  } else if (r.weapon) r.weapon.rotation.x = r.wRx0;
   r.body.position.y = lift + (W.sleep > 0.01 ? 0.25 * W.sleep : 0);
   r.body.position.x = r.sp.bodyZoff?.[0] ?? 0;
-  r.body.position.z = -(r.hurtT > 0 ? 0.12 * sm(r.hurtT / 0.35) : 0);
+  r.body.position.z = -(r.hurtT > 0 ? 0.12 * sm(r.hurtT / 0.35) : 0) + stepZ;
 }
 function applySprings(r: Rig, T: Pose, dt: number, om: number) {
   const n = Math.max(1, Math.ceil(dt / 0.012)),

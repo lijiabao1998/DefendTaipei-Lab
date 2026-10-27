@@ -345,6 +345,36 @@ export function footstep(sf: Surface, dist = 0, heavy = false, run = false) {
   if (heavy) tone(c, o, 'sine', 90, 60, { d: 0.06, v: v * 0.6 }); // boots + kit
 }
 /** non-voice: a body thud with a sharp exhale of air */
+/** v22.10 procedural melee swish (band-passed noise sweep) and a dull impact (synthesised, no samples) */
+export function swish(dist = 0, heavy = false) {
+  const c = ctx();
+  if (!c) return;
+  cnt('swish');
+  const o = bus(c, dist, false, 4);
+  const sr = c.createBufferSource();
+  sr.buffer = noise(c);
+  const bq = c.createBiquadFilter();
+  bq.type = 'bandpass';
+  bq.Q.value = 2.2;
+  const t = c.currentTime;
+  bq.frequency.setValueAtTime(heavy ? 500 : 900, t);
+  bq.frequency.exponentialRampToValueAtTime(heavy ? 1500 : 3200, t + 0.12);
+  const g = c.createGain();
+  sr.connect(bq).connect(g).connect(o);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(heavy ? 0.4 : 0.3, t + 0.07);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+  sr.start(t, Math.random());
+  sr.stop(t + 0.25);
+}
+export function meleeHit(dist = 0, blunt = false) {
+  const c = ctx();
+  if (!c) return;
+  cnt('meleeHit');
+  const o = bus(c, dist, false, 4);
+  tone(c, o, 'sine', blunt ? 140 : 210, 60, { d: 0.12, v: 0.7 });
+  burst(c, o, { type: 'lowpass', hz: blunt ? 900 : 2200 }, { d: 0.09, v: 0.45 });
+}
 export function hurt(dist = 0) {
   const c = ctx();
   if (!c) return;

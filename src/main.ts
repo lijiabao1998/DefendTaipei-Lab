@@ -24,7 +24,8 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { ITEMS, LOOT } from './items';
 import { iconURL, iconMat } from './icons';
 import { GF, FH, ARC, arcadeFits, buildArcade, flushArcades, setArcadeDeps, arcadeAudit } from './arcade';
-import { makeRig, animate, setWeapon, setLodFocus, Rig, AnimState } from './human';
+import { makeRig, animate, setWeapon, setLodFocus, Rig, AnimState, startMelee, meleeQ, hitStop } from './human';
+import { SwingTrail } from './trail';
 import { Nav, smooth } from './nav';
 import { RoadTiles } from './roads';
 import { Traffic } from './traffic';
@@ -1703,6 +1704,9 @@ type Sol = {
   covT?: number;
   crouch?: boolean;
   peekT?: number;
+  /** v22.10 rifle-butt melee: cooldown and time until the blow lands */
+  mCd?: number;
+  mHit?: number;
   id: number;
   mesh: THREE.Group;
   pos: THREE.Vector3;
@@ -4158,7 +4162,7 @@ function playerAttack() {
   netAttack();
   player.cd = d.cd;
   if (d.kind === 'gun') player.rig.shootT = 0.14;
-  else player.rig.meleeT = 0.45;
+  else startMelee(player.rig, Math.max(0.42, (d.cd || 0.5) * 0.85));
   const dir = new THREE.Vector3(aimPt.x - player.pos.x, 0, aimPt.z - player.pos.z).normalize();
   if (d.kind === 'gun') {
     if (!player.inv[d.ammo]) {
@@ -4204,27 +4208,73 @@ function playerAttack() {
     }
   } else {
     noise(player.pos.x, player.pos.z, d.noise);
-    if (roofB && snp) {
-      const s = snp.list.find(
-        q => !q.dead && q.b === roofB && Math.hypot(q.p[0] - player.pos.x, q.p[1] - player.pos.z) < d.range + 0.6,
-      );
-      if (s) {
-        snp.hit(s, d.dmg * 4, s.st !== 'aim');
-        log(s.dead ? '你從背後制伏了狙擊手。' : '狙擊手掙扎反抗！', '#ff9');
-        return;
+    // v22.10 the hit lands at the contact frame of the swing, not on the click
+    pendMelee = { d, dir, swished: false };
+  }
+}
+let pendMelee: { d: any; dir: THREE.Vector3; swished: boolean } | null = null;
+const swingTrail = new SwingTrail(scene);
+const _tb = new THREE.Vector3(),
+  _tt = new THREE.Vector3();
+const TIP: Record<string, number> = { knife: 0.27, bat: 0.8, pipe: 0.84 };
+function meleeTick(dt: number) {
+  const r = player.rig;
+  if (!r) return;
+  const q = meleeQ(r);
+  if (pendMelee) {
+    if (!pendMelee.swished && q >= 0.32) {
+      pendMelee.swished = true;
+      AU.swish(0, r.weaponKind === 'bat' || r.weaponKind === 'pipe');
+    }
+    if (q < 0 || q >= 0.44) {
+      const hit = meleeResolve(pendMelee.d, pendMelee.dir);
+      pendMelee = null;
+      if (hit) {
+        hitStop(r, 0.07);
+        AU.meleeHit(0, r.weaponKind !== 'knife');
+        blastFx.kick(0.6, 0.03); // tiny impact jolt (shake offset only, camera unchanged)
       }
     }
-    for (const s of sols) {
-      if (s.state === 'dead') continue;
-      const to = s.pos.clone().sub(player.pos);
-      const dist = to.length();
-      if (dist > d.range + 0.3) continue;
-      if (to.normalize().dot(dir) < 0.5) continue;
-      const stealth = s.state !== 'combat' && s.alert < 0.5;
-      damageSol(s, d.dmg * (stealth ? 3.2 : 1), stealth);
-      break;
+  }
+  // blade trail through the fast arc
+  const tip = TIP[r.weaponKind];
+  if (tip && q >= 0.3 && q <= 0.62 && r.weapon.visible !== false) {
+    r.weapon.updateWorldMatrix(true, false);
+    _tb.set(0, 0, tip * 0.35).applyMatrix4(r.weapon.matrixWorld);
+    _tt.set(0, 0, tip).applyMatrix4(r.weapon.matrixWorld);
+    swingTrail.add(_tb, _tt);
+  }
+  swingTrail.update(dt);
+}
+function meleeResolve(d: any, dir: THREE.Vector3): Sol | null {
+  if (roofB && snp) {
+    const s = snp.list.find(
+      q => !q.dead && q.b === roofB && Math.hypot(q.p[0] - player.pos.x, q.p[1] - player.pos.z) < d.range + 0.6,
+    );
+    if (s) {
+      snp.hit(s, d.dmg * 4, s.st !== 'aim');
+      log(s.dead ? '你從背後制伏了狙擊手。' : '狙擊手掙扎反抗！', '#ff9');
+      return null;
     }
   }
+  for (const s of sols) {
+    if (s.state === 'dead') continue;
+    const to = s.pos.clone().sub(player.pos);
+    const dist = to.length();
+    if (dist > d.range + 0.3) continue;
+    if (to.normalize().dot(dir) < 0.5) continue;
+    const stealth = s.state !== 'combat' && s.alert < 0.5;
+    damageSol(s, d.dmg * (stealth ? 3.2 : 1), stealth);
+    // flinch + knockback away from the blow, paused for the same hit-stop beat
+    hitStop(s.rig, 0.07);
+    const kb = s.pos.clone().addScaledVector(dir, s.hp > 0 ? 0.45 : 0.25);
+    if (!bldAt(kb.x, kb.z) || bldAt(kb.x, kb.z) === bldAt(s.pos.x, s.pos.z)) {
+      s.pos.copy(kb);
+      collide(s.pos, 0.35);
+    }
+    return s;
+  }
+  return null;
 }
 function damageSol(s: Sol, dmg: number, stealth: boolean) {
   s.hp -= dmg;
@@ -4244,6 +4294,7 @@ function damageSol(s: Sol, dmg: number, stealth: boolean) {
   } else {
     s.rig.hurtT = 0.35;
     s.rig.hurtSide = rnd() < 0.5 ? -1 : 1;
+    s.mHit = undefined; // a hit interrupts a rifle-butt wind-up
     s.stun = Math.max(s.stun || 0, 0.4);
     s.state = 'combat';
     s.alert = 1;
@@ -4550,6 +4601,7 @@ function update(dt: number) {
   ROC.cd = Math.max(0, ROC.cd - dt);
   updateShells(dt);
   player.cd -= dt;
+  meleeTick(dt);
   // movement
   if (drive.cur) {
     const f = new THREE.Vector3(-1, 0, -1).normalize(),
@@ -4851,7 +4903,40 @@ function update(dt: number) {
         }
         s.peekT = (s.peekT || 0) + dt;
         s.crouch = atCov && s.peekT % 3 < 1.5;
-        if (s.cd <= 0 && !(s.stun! > 0) && !s.crouch && (!s.cov || atCov || dist < 8)) {
+        // v22.10 point-blank: rifle-butt strike with a readable wind-up instead of firing
+        s.mCd = (s.mCd || 0) - dt;
+        if (s.mHit !== undefined) {
+          s.mHit -= dt;
+          if (s.mHit <= 0) {
+            s.mHit = undefined;
+            const f = Math.cos(s.dir) * (player.pos.x - s.pos.x) + Math.sin(s.dir) * (player.pos.z - s.pos.z);
+            if (dist < 1.9 && f > 0.2 && !dead && !player.sleeping) {
+              hitStop(s.rig, 0.06);
+              AU.meleeHit(0, true);
+              player.rig.hurtT = 0.35;
+              player.rig.hurtSide = rnd() < 0.5 ? -1 : 1;
+              player.stun = 0.45;
+              player.hp -= 12 + rnd() * 6;
+              const kb = player.pos.clone();
+              kb.x += ((player.pos.x - s.pos.x) / Math.max(0.3, dist)) * 0.6;
+              kb.z += ((player.pos.z - s.pos.z) / Math.max(0.3, dist)) * 0.6;
+              if (bldAt(kb.x, kb.z) === bldAt(player.pos.x, player.pos.z)) {
+                collide(kb, 0.35);
+                player.pos.copy(kb);
+              }
+              blastFx.kick(0.6, 0.05);
+              log('你被槍托擊中！', '#f66');
+              flashRed();
+            } else AU.swish(dist, true);
+          }
+        } else if (dist < 1.6 && sees && s.mCd <= 0 && !(s.stun! > 0)) {
+          startMelee(s.rig, 0.62, 3);
+          s.mHit = 0.62 * 0.44;
+          s.mCd = 1.5 + rnd() * 0.4;
+          s.cd = Math.max(s.cd, 0.8);
+          s.crouch = false;
+        }
+        if (s.mHit === undefined && s.cd <= 0 && !(s.stun! > 0) && !s.crouch && (!s.cov || atCov || dist < 8)) {
           s.rig.shootT = 0.14;
           s.cd = 1.1 + rnd() * 0.6;
           AU.gunshot('rifle', dist, !!bldAt(s.pos.x, s.pos.z) || !!bldAt(player.pos.x, player.pos.z));
@@ -6065,6 +6150,7 @@ async function boot() {
   }
   (window as any).__game = {
     roofStats,
+    melee: () => ({ attack: playerAttack, sols, trail: swingTrail, rig: player.rig }),
     OCC,
     escapeCheck,
     unstuck,
