@@ -1,6 +1,16 @@
 // One Durable Object per room: authoritative 20 Hz simulation (shared core), per-client delta streams,
 // reconnect window, D1 autosave and R2 archive on close.
-import { newState, addPlayer, applyCmd, step, diff, clone, TICK_HZ, type State, type Cmd } from '../../src/core/sim/core';
+import {
+  newState,
+  addPlayer,
+  applyCmd,
+  step,
+  diff,
+  clone,
+  TICK_HZ,
+  type State,
+  type Cmd,
+} from '../../src/core/sim/core';
 import type { Env } from './index';
 type Conn = { ws: WebSocket; uid: string; ack: number; rate: number; rateT: number };
 const HIST = 80,

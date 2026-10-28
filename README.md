@@ -43,6 +43,7 @@ npm run fetch-osm                # 重新從 Overpass API 抓取地圖
 node scripts/tiles.mjs           # 重新切 200 m 道路細節圖塊（public/data/tiles/）
 ```
 - 推到 `main` 會由 GitHub Actions 建置並部署到 GitHub Pages。
+- 每個 PR 會自動跑 CI（`.github/workflows/ci.yml`）：型別檢查、排版檢查、不需瀏覽器的檢查（`node scripts/checks/modules.mjs`）、建置，接著平行跑三個瀏覽器測試：冒煙測試、劇情存檔流程、警報測試音。CI 用軟體算圖，全部跑完約 15 分鐘。合併前請等 CI 全綠。
 - `scripts/checks/` 是各版本的功能截圖腳本（例如 `node scripts/checks/v18veh.mjs`），需要先 `npm run preview`；截圖存到 `shots/`。共用設定見 `scripts/lib.mjs`：`URL`（遊戲網址）、`SHOTS_DIR`（截圖資料夾）、`PW_CHROMIUM`（沒有安裝 Playwright 瀏覽器時指定 Chromium 路徑）。
 - 多人連線伺服器在 `server/`，說明見 `server/README.md`。
 
