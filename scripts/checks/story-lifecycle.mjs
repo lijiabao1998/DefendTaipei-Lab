@@ -38,8 +38,24 @@ try {
   await page.goto(base + '?storydebug=1', { waitUntil: 'commit' });
   await ready();
   await page.waitForFunction(() => window.__game.started());
-  // Use existing game new-session entry, not a synthetic storage replacement.
-  await page.evaluate(() => window.__game.go(false, 'f', 'nurse', true));
+  // Exercise the real pause-menu return/reload and title-menu new-game route.
+  // Calling __game.go twice in one document is not the supported restart lifecycle.
+  assert.equal(await page.locator('#speed').count(), 1);
+  page.on('dialog', dialog => dialog.accept());
+  await page.keyboard.press('Escape');
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: 'commit', timeout: 600000 }),
+    page.locator('#pmenu [data-a="quit"]').click(),
+  ]);
+  await ready();
+  assert.equal(await page.evaluate(() => window.__game.started()), false);
+  assert.equal(await page.locator('#speed').count(), 0);
+  await page.locator('#tmenu [data-a="new"]').click();
+  await page.locator('#skipintro').check();
+  await page.locator('#gsel [data-x="f"]').click();
+  await page.locator('.ch[data-r="nurse"]').click();
+  await page.waitForFunction(() => window.__game.started());
+  assert.equal(await page.locator('#speed').count(), 1);
   assert.deepEqual(await page.evaluate(() => window.__game.storyEvent('act1_siren_test')), {
     fired: true,
     saved: true,
@@ -63,7 +79,7 @@ try {
         'manual event save',
         'reload no replay',
         'flag-off preservation',
-        'new-game reset',
+        'real pause/title new-game reset with one speed control',
         'death save removal',
       ],
       errors,
