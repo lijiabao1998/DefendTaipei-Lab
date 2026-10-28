@@ -1,0 +1,66 @@
+name: CI
+# Checks every pull request before it reaches main (pushes to main are built and deployed by pages.yml).
+# The browser checks use software WebGL on the runner, so they are slow (the story check takes ~11 min).
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    name: Types, format, unit checks, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx prettier --check .
+      - name: Unit checks (bus, save, map tiles, story)
+        run: node scripts/checks/modules.mjs
+      - run: npm run build
+
+  browser:
+    name: Browser – ${{ matrix.name }}
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: smoke
+            script: scripts/smoke.mjs
+          - name: story save lifecycle
+            script: scripts/checks/story-lifecycle.mjs
+          - name: alert test tone
+            script: scripts/checks/v2321testtone.mjs
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: node ${{ matrix.script }}
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shots-${{ strategy.job-index }}
+          path: shots/
+          if-no-files-found: ignore
+          retention-days: 7
