@@ -12,7 +12,6 @@ export { ALL_CLEAR_ID } from './events/act4';
 export { STORY_ACTS };
 
 const scripts = new Map<string, RadioScript>(AM765.map(s => [s.id, s]));
-const fired = new Set<string>();
 
 function assertCatalog() {
   const ids = new Set<string>();
@@ -64,20 +63,32 @@ function dispatch(step: StoryEmit) {
   emit('broadcast', { id: script.id, station: AM765_STATION, voice: script.voice, text: script.text });
 }
 
-/** Fire one event's bus actions. A second call with the same id does nothing. */
-export function runStoryEvent(id: string): StoryEvent | undefined {
+/** Independent progress for one game. Restore only recognized IDs; never emit while restoring. */
+export function createStoryRunner(saved?: unknown) {
   checkOnce();
-  if (fired.has(id)) return undefined;
-  const ev = STORY_EVENTS.find(e => e.id === id);
-  if (!ev) return undefined;
-  fired.add(id);
-  for (const step of ev.emits) dispatch(step);
-  return ev;
+  const known = new Set(STORY_EVENTS.map(e => e.id));
+  const fired = new Set<string>(
+    Array.isArray(saved) ? saved.filter((id): id is string => typeof id === 'string' && known.has(id)) : [],
+  );
+  function runStoryEvent(id: string): StoryEvent | undefined {
+    if (fired.has(id)) return undefined;
+    const ev = STORY_EVENTS.find(e => e.id === id);
+    if (!ev) return undefined;
+    fired.add(id);
+    for (const step of ev.emits) dispatch(step);
+    return ev;
+  }
+  return {
+    runStoryEvent,
+    runNext: () => {
+      const ev = STORY_EVENTS.find(e => !fired.has(e.id));
+      return ev ? runStoryEvent(ev.id) : undefined;
+    },
+    snapshot: () => [...fired],
+  };
 }
 
-/** Fire the next unfired event in catalog order. */
-export function runNext(): StoryEvent | undefined {
-  checkOnce();
-  const ev = STORY_EVENTS.find(e => !fired.has(e.id));
-  return ev ? runStoryEvent(ev.id) : undefined;
-}
+// Preserve the original module API for existing callers. New games should use their own runner.
+const defaultRunner = createStoryRunner();
+export const runStoryEvent = defaultRunner.runStoryEvent;
+export const runNext = defaultRunner.runNext;

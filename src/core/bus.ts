@@ -16,9 +16,11 @@ type Handler<K extends keyof GameEvents> = (e: GameEvents[K]) => void;
 const handlers: { [K in keyof GameEvents]?: Handler<K>[] } = {};
 export function on<K extends keyof GameEvents>(type: K, fn: Handler<K>): () => void {
   const list = (handlers[type] ||= []) as Handler<K>[];
-  list.push(fn);
+  // Give every subscription its own identity, even when the same callback is registered twice.
+  const listener: Handler<K> = e => fn(e);
+  list.push(listener);
   return () => {
-    const i = list.indexOf(fn);
+    const i = list.indexOf(listener);
     if (i >= 0) list.splice(i, 1);
   };
 }
@@ -28,5 +30,7 @@ export function emit<K extends keyof GameEvents>(
   ...args: undefined extends GameEvents[K] ? [GameEvents[K]?] : [GameEvents[K]]
 ) {
   const e = args[0] as GameEvents[K];
-  for (const fn of (handlers[type] || []) as Handler<K>[]) fn(e);
+  // Dispatch the listeners present at the start. Changes during a dispatch affect subsequent emits,
+  // including nested emits, but do not skip or add listeners to the current dispatch.
+  for (const fn of ((handlers[type] || []) as Handler<K>[]).slice()) fn(e);
 }

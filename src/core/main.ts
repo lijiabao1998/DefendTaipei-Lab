@@ -95,6 +95,7 @@ import {
 } from '../ui/menu';
 import { VERSION } from './version';
 import { emit, on } from './bus';
+import { createStoryRunner } from '../story';
 import { MPQ, MP_ON } from '../debug/flags';
 import { PRO_NEWS } from '../story/broadcasts/prologue';
 
@@ -4752,6 +4753,14 @@ function phone(who: string, msg: string) {
   phoneTimer(el, 9000);
   log(`${who}：${msg}`, '#9fd0ff', 'radio');
 }
+// Explicit developer-only event trigger; no story events are scheduled automatically.
+const STORY_DEBUG = new URLSearchParams(location.search).get('storydebug') === '1';
+let storySaved: unknown;
+let storyRunner = createStoryRunner();
+if (STORY_DEBUG)
+  on('broadcast', e => {
+    if (started && !dead) phone(e.station, e.text);
+  });
 let spoilT = 0;
 const PERISH = ['bento', 'rice', 'oden', 'soymilk', 'milktea', 'danbing', 'chicken', 'sausage', 'egg'];
 function updateStory(gm: number) {
@@ -4804,6 +4813,7 @@ function save() {
     dead: sols.filter(s => s.state === 'dead').map(s => s.id),
     bar: doors.map((d, i) => (d.barricaded ? i : -1)).filter(i => i >= 0),
     radio: radioLog,
+    story: STORY_DEBUG ? storyRunner.snapshot() : storySaved,
   });
 }
 
@@ -6201,6 +6211,8 @@ async function boot() {
     if (!skip && dest) startPrologue(from, dest.door!.p as V2, r.destLabel);
   };
   const go = (load: boolean, gender = 'm', roleId = 'courier', skipIntro = false) => {
+    storySaved = load && sv ? sv.story : undefined;
+    storyRunner = createStoryRunner(storySaved);
     if (!doorView) {
       buildDoorDeco(scene, doors);
       for (const d of doors as LiveDoor[]) d.open = !isHomeDoor(d);
@@ -6472,6 +6484,23 @@ async function boot() {
     setTimeout(() => go(true), 0);
   }
   (window as any).__game = {
+    ...(STORY_DEBUG
+      ? {
+          storyEvent: (id: string) => {
+            if (!started || dead) return { fired: false, saved: false, reason: 'game not active' };
+            const event = storyRunner.runStoryEvent(id);
+            if (!event) return { fired: false, saved: false, reason: 'unknown or already fired' };
+            log(event.text, '#9fd0ff', 'radio');
+            if (NOSAVE) return { fired: true, saved: false, reason: 'saving disabled' };
+            try {
+              save();
+              return { fired: true, saved: true };
+            } catch {
+              return { fired: true, saved: false, reason: 'save failed' };
+            }
+          },
+        }
+      : {}),
     roofStats,
     melee: () => ({ attack: playerAttack, sols, trail: swingTrail, rig: player.rig }),
     phone: (w: string, m: string) => phone(w, m),

@@ -74,11 +74,17 @@ export class TileManager<T> {
       this.hooks.onLoaded?.(tx, tz, lod);
       emit('tileLoaded', { tx, tz, lod: LOD_NUM[lod] });
     };
-    const r = this.hooks.load(tx, tz, lod);
     const fail = () => {
       if (this.tiles.get(k) !== e || e.gen !== gen) return; // superseded; newer entry owns e.obj
       this.drop(k, tx, tz, e); // unloads the previous LOD object kept in e.obj (no leak)
     };
+    let r: T | Promise<T>;
+    try {
+      r = this.hooks.load(tx, tz, lod);
+    } catch {
+      fail();
+      return;
+    }
     if (r instanceof Promise) r.then(done, fail);
     else done(r);
   }
