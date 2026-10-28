@@ -46,7 +46,9 @@ try {
   });
   await page.screenshot({ path: shot('story-new-game-independent-progress.png') });
   await page.evaluate(() => {
-    window.__game.player.hp = 0;
+    // update applies passive regeneration before its death check; use a genuine lethal state.
+    window.__game.player.hp = -1;
+    window.__game.player.bleed = true;
   });
   await page.waitForFunction(() => document.getElementById('title')?.textContent?.includes('你陣亡了'), null, {
     timeout: 30000,
