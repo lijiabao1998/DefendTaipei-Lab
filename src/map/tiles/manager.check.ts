@@ -46,5 +46,32 @@ ok(ev.filter(s => s.startsWith('U')).length === 0, `no tileUnloaded for never-lo
 m2.clear();
 m.clear();
 ok(live.size === 0, `clear leaves ${live.size}`);
+
+// A synchronous failure during a LOD transition must clean up the old tile and allow retry.
+let throwSync = false;
+const syncLive = new Set<string>();
+const syncEvents: string[] = [];
+const stopLoaded = on('tileLoaded', e => syncEvents.push(`L${e.tx},${e.tz},${e.lod}`));
+const stopUnloaded = on('tileUnloaded', e => syncEvents.push(`U${e.tx},${e.tz}`));
+const m3 = new TileManager<string>({
+  has: (x, z) => x === 0 && z === 0,
+  load: (_x, _z, lod) => {
+    if (throwSync) throw new Error('synchronous load failure');
+    syncLive.add(lod);
+    return lod;
+  },
+  unload: (_x, _z, obj) => void syncLive.delete(obj),
+});
+m3.update(0, 0);
+throwSync = true;
+m3.update(1000, 0);
+ok(m3.tiles.size === 0 && syncLive.size === 0, 'synchronous LOD failure releases previous tile');
+ok(syncEvents.join('|') === 'L0,0,0|U0,0', 'synchronous failure reports unload only for the loaded tile');
+throwSync = false;
+m3.update(1000, 0);
+ok(syncLive.has('mid') && syncEvents[syncEvents.length - 1] === 'L0,0,1', 'tile can retry after synchronous failure');
+m3.clear();
+stopLoaded();
+stopUnloaded();
 if (fails) throw new Error(`${fails} check(s) failed`);
 export {};

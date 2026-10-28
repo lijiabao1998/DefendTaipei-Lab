@@ -44,6 +44,8 @@ export interface GameSave {
   dead: number[];
   bar: number[];
   radio: any[];
+  /** Optional experimental story progress, retained even when its debug flag is disabled. */
+  story?: unknown;
 }
 
 export function readSave(): GameSave | null {
