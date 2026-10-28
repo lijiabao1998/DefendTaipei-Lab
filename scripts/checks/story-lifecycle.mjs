@@ -11,6 +11,10 @@ try {
   const errors = [];
   page.on('pageerror', e => errors.push(String(e)));
   const ready = () => page.waitForFunction(() => window.__game?.save, null, { timeout: 600000 });
+  // With software WebGL (CI runners, headless) the 3D scene behind the menus renders at about 1 fps, and a real
+  // click waits for several frames before and after it is dispatched (about 30 s for 新遊戲 incl. its confirm
+  // dialog). Real UI clicks therefore get a generous timeout instead of Playwright's default 30 s.
+  const UI = { timeout: 300000 };
   await page.goto(base + '?storydebug=1', { waitUntil: 'commit' });
   await ready();
   await pickRole(page, { g: 'f' });
@@ -45,15 +49,16 @@ try {
   await page.keyboard.press('Escape');
   await Promise.all([
     page.waitForNavigation({ waitUntil: 'commit', timeout: 600000 }),
-    page.locator('#pmenu [data-a="quit"]').click(),
+    page.locator('#pmenu [data-a="quit"]').click(UI),
   ]);
   await ready();
   assert.equal(await page.evaluate(() => window.__game.started()), false);
   assert.equal(await page.locator('#speed').count(), 0);
-  await page.locator('#tmenu [data-a="new"]').click();
-  await page.locator('#skipintro').check();
-  await page.locator('#gsel [data-x="f"]').click();
-  await page.locator('.ch[data-r="nurse"]').click();
+  // a save exists now, so 新遊戲 asks to overwrite it; the dialog handler above accepts
+  await page.locator('#tmenu [data-a="new"]').click(UI);
+  await page.locator('#skipintro').check(UI);
+  await page.locator('#gsel [data-x="f"]').click(UI);
+  await page.locator('.ch[data-r="nurse"]').click(UI);
   await page.waitForFunction(() => window.__game.started());
   assert.equal(await page.locator('#speed').count(), 1);
   assert.deepEqual(await page.evaluate(() => window.__game.storyEvent('act1_siren_test')), {
