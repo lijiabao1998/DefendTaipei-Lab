@@ -76,9 +76,13 @@ async function exercise(options, name) {
     await page.locator('#modal').waitFor({ state: 'visible' });
     assert.match(await page.locator('#modal h3').innerText(), /Settings/);
     assert.equal(await page.locator('#slang').inputValue(), 'en');
+    record.screenshots.push(await capture(page, `${name}-settings`));
+    // Touch UI intentionally collapses external keyboard bindings. Exercise its
+    // visible disclosure before asserting text inside it.
+    if (options.hasTouch) await page.locator('#modal .kdet > summary').click();
     assert.match(await page.locator('#kmsg').innerText(), /Click a binding/);
     assert.match(await page.locator('#klist').innerText(), /Move forward/);
-    record.screenshots.push(await capture(page, `${name}-settings`));
+    if (options.hasTouch) record.screenshots.push(await capture(page, `${name}-settings-keyboard`));
     await page.locator('#modal .mx').click();
     await page.locator('#modal').waitFor({ state: 'detached' });
 
