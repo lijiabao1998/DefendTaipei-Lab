@@ -1,0 +1,35 @@
+name: ONNA isolated UI 125 audit
+on:
+  push:
+    branches: [onna/ui-125-20261029]
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [desktop, mobile]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck && npm run build
+      - run: npx playwright install --with-deps chromium
+      - name: UI 125 visual checks
+        run: node scripts/ui-125-audit.mjs
+        env:
+          MODE: ${{ matrix.mode }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-125-${{ matrix.mode }}
+          path: shots/
+          retention-days: 7
