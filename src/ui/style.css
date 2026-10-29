@@ -1976,3 +1976,78 @@ html[lang='en'] #stats .t span:first-child {
 html[lang='en'] #title p {
   max-width: 760px;
 }
+
+/* UI candidate: keep the entire selection reachable, including small laptops. */
+body.selmode #title {
+  justify-content: flex-start;
+  padding: max(12px, env(safe-area-inset-top)) 12px 24px;
+  scroll-padding: 12px;
+}
+body.selmode #title > * {
+  flex-shrink: 0;
+}
+body.selmode #title h1 {
+  font-size: clamp(30px, 5vw, 48px);
+}
+body.selmode #title p {
+  display: none;
+}
+body.selmode #charsel {
+  max-width: 100%;
+  grid-template-columns: repeat(5, minmax(0, 146px));
+}
+body.selmode.portrait #title {
+  padding-bottom: calc(110px + env(safe-area-inset-bottom));
+  scroll-padding-bottom: calc(110px + env(safe-area-inset-bottom));
+}
+body.selmode.portrait #charsel {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+body.portrait #charsel .ch small.bl,
+body.portrait #charsel .ch small.pk {
+  display: block;
+  height: auto;
+  overflow: visible;
+}
+/* Inventory owns the touch surface; combat controls must not compete with it. */
+body.mobile.inventory-open #joy,
+body.mobile.inventory-open #pbtns,
+body.mobile.inventory-open .mkeys,
+body.mobile.inventory-open #equip,
+body.mobile.inventory-open #coverbtn,
+body.mobile.inventory-open #pmapbtn {
+  display: none !important;
+}
+body.mobile.inventory-open #panel {
+  max-height: calc(100dvh - 180px);
+  overflow-y: auto;
+  touch-action: pan-y;
+}
+body.mobile #panel button {
+  min-height: 44px;
+  min-width: 44px;
+}
+#pbact::after {
+  content: '';
+  position: absolute;
+  left: 16%;
+  bottom: 10px;
+  width: 68%;
+  height: 4px;
+  border-radius: 3px;
+  background: #fff2b0;
+  transform: scaleX(0);
+  transform-origin: left;
+  pointer-events: none;
+}
+#pbact.holding::after {
+  animation: attack-hold 380ms linear forwards;
+}
+#pbact.hold-ready::after {
+  transform: scaleX(1);
+}
+@keyframes attack-hold {
+  to {
+    transform: scaleX(1);
+  }
+}
