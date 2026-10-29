@@ -1,0 +1,79 @@
+name: ONNA isolated gameplay audit
+on:
+  push:
+    branches: [onna/qa-gameplay-20261029]
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [audit, smoke]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck && npm run build
+      - run: npx playwright install --with-deps chromium
+      - name: Run isolated QA
+        env:
+          MODE: ${{ matrix.mode }}
+        run: |
+          if [ "$MODE" = smoke ]; then
+            node scripts/smoke.mjs
+          else
+            cat > audit-temp.mjs <<'AUDIT'
+            import fs from 'node:fs';
+            import { launch, shot, preview } from './scripts/lib.mjs';
+            const server=await preview(4191), browser=await launch(), report={cases:[],errors:[]};
+            try {
+            for(const mobile of [false,true]){
+             const name=mobile?'mobile':'desktop';
+             const context=await browser.newContext({viewport:mobile?{width:390,height:844}:{width:1280,height:800},hasTouch:mobile,isMobile:mobile});
+             await context.addInitScript(()=>localStorage.setItem('dt.settings',JSON.stringify({quality:'low'})));
+             const p=await context.newPage();p.setDefaultTimeout(120000);
+             p.on('pageerror',e=>report.errors.push(name+':'+e));
+             const r={name,actions:[],shots:[]};report.cases.push(r);
+             const snap=async label=>{const file=shot(name+'-'+label+'.png');await p.screenshot({path:file,timeout:120000});r.shots.push(file);};
+             try{
+             await p.goto(server.url);await p.waitForFunction(()=>window.__newGame,null,{timeout:600000,polling:500});
+             await snap('title');
+             await p.locator('#tmenu [data-a="new"]').click();await snap('roles');
+             r.roleRects=await p.locator('.ch').evaluateAll(es=>es.map(e=>({text:e.innerText,rect:e.getBoundingClientRect().toJSON()})));
+             await p.locator('#skipintro').check();
+             await p.locator('.ch[data-r="nurse"]').click();
+             if(mobile)await p.locator('#startgo').click();
+             await p.waitForFunction(()=>window.__game.started(),null,{timeout:600000});
+             await p.waitForTimeout(2500);await snap('play');
+             r.hud=await p.locator('body').innerText();
+             r.pos0=await p.evaluate(()=>[window.__game.player.pos.x,window.__game.player.pos.z]);
+             if(!mobile){await p.keyboard.down('KeyW');await p.waitForTimeout(1800);await p.keyboard.up('KeyW');r.actions.push('W movement');}
+             r.pos1=await p.evaluate(()=>[window.__game.player.pos.x,window.__game.player.pos.z]);
+             await snap('walk');
+             if(mobile)await p.locator('#menubtn').tap();else await p.keyboard.press('Escape');
+             await snap('pause');r.pauseText=await p.locator('body').innerText();
+             await p.locator('#pmenu [data-a="inv"]').click();await snap('inventory');
+             r.inventoryText=await p.locator('body').innerText();
+             r.status='passed';
+             }catch(e){r.status='failed';r.error=String(e);await snap('failure').catch(()=>{});}
+             await context.close();
+            }
+            }finally{await browser.close();server.stop();fs.writeFileSync(shot('audit-report.json'),JSON.stringify(report,null,2));}
+            
+          AUDIT
+            node audit-temp.mjs
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gameplay-${{ matrix.mode }}
+          path: shots/
+          retention-days: 7
