@@ -21,9 +21,14 @@ async function capture(page, name) {
 }
 async function exercise(options, name) {
   const context = await browser.newContext(options);
+  // Software WebGL is very slow on CI. Low graphics keeps this language/layout
+  // check responsive without bypassing the real controls or locale defaults.
+  await context.addInitScript(() => {
+    if (!localStorage.getItem('dt.settings')) localStorage.setItem('dt.settings', JSON.stringify({ quality: 'low' }));
+  });
   const page = await context.newPage();
-  page.setDefaultTimeout(30000);
-  const record = { name, viewport: options.viewport, screenshots: [], status: 'running' };
+  page.setDefaultTimeout(120000);
+  const record = { name, graphicsQuality: 'low', viewport: options.viewport, screenshots: [], status: 'running' };
   results.cases.push(record);
   page.on('pageerror', error => errors.push(`${name}: ${error}`));
   page.on('console', message => {
