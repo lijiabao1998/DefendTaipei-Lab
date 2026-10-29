@@ -153,6 +153,10 @@ resize();
 const CAM_OFF = new THREE.Vector3(40, 56, 40);
 const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x4a4030, 0.9);
 scene.add(hemi);
+// Short-range visual adaptation, not a gameplay flashlight: nearby geometry remains
+// readable at night without revealing distant streets or changing enemy detection.
+const nightAdapt = new THREE.PointLight(0xb8c8df, 0, 6, 2);
+scene.add(nightAdapt);
 const sun = new THREE.DirectionalLight(0xffe8c0, 2.2);
 sun.castShadow = true;
 sun.shadow.mapSize.set(MOBILE ? 1024 : 2048, MOBILE ? 1024 : 2048);
@@ -382,7 +386,8 @@ function updatePortraitButtons(prompt: string) {
   const hint = scope.on
     ? tr('拖曳瞄準・放開射擊', 'Drag to aim · Release to fire')
     : ctx
-      ? ctxHint(prompt, keyLabel('interact')).replace(/[（(].*$/, '') + tr('・長按＝攻擊', ' · Hold to attack')
+      ? ctxHint(prompt, keyLabel('interact')).replace(/[（(].*$/, '') +
+        tr('・點按互動／長按 0.38 秒攻擊', ' · Tap to interact / hold 0.38s to attack')
       : '';
   if (PB.hint!.textContent !== hint) PB.hint!.textContent = hint;
   PB.hint!.style.display = hint ? '' : 'none';
@@ -423,9 +428,17 @@ function initPortraitButtons() {
     mode = act.dataset.mode || 'fire';
     acted = false;
     clearTimeout(holdT);
-    if (mode === 'ctx')
-      holdT = window.setTimeout(() => ((acted = true), (MB.fire = true), vibrate(25)), 380); // long-press = attack anyway
-    else if (mode === 'scope') {
+    if (mode === 'ctx') {
+      act.classList.add('holding');
+      holdT = window.setTimeout(() => {
+        act.classList.remove('holding');
+        if (panelOpen) return;
+        acted = true;
+        act.classList.add('hold-ready');
+        MB.fire = true;
+        vibrate(25);
+      }, 380);
+    } else if (mode === 'scope') {
       scopeEnter();
       pbScope = { x: e.clientX, y: e.clientY };
     } else if (scope.on) pbScope = { x: e.clientX, y: e.clientY };
@@ -437,9 +450,9 @@ function initPortraitButtons() {
     pbScope = { x: e.clientX, y: e.clientY };
   });
   const actEnd = (fire: boolean) => {
-    act.classList.remove('on');
+    act.classList.remove('on', 'holding', 'hold-ready');
     clearTimeout(holdT);
-    if (mode === 'ctx' && !acted && fire) interact();
+    if (mode === 'ctx' && !acted && fire && !panelOpen) interact();
     if (pbScope && scope.on && fire) scopeFire();
     pbScope = null;
     MB.fire = false;
@@ -4039,7 +4052,7 @@ function renderPanel() {
     c.appendChild(b);
   }
   const close = document.createElement('button');
-  close.textContent = tr('關閉 (Esc)', 'Close (Esc)');
+  close.textContent = MOBILE ? tr('關閉背包', 'Close inventory') : tr('關閉 (Esc)', 'Close (Esc)');
   close.onclick = closePanel;
   p.lastElementChild!.appendChild(close);
 }
@@ -4067,12 +4080,18 @@ function toggleInv() {
   else {
     curCont = null;
     panelOpen = true;
+    document.body.classList.add('inventory-open');
+    joy.x = joy.y = 0;
+    joy.id = -1;
+    $('joyk').style.transform = '';
+    MB.fire = false;
     $('panel').classList.remove('hidden');
     renderPanel();
   }
 }
 function closePanel() {
   panelOpen = false;
+  document.body.classList.remove('inventory-open');
   curCont = null;
   $('panel').classList.add('hidden');
 }
@@ -4661,6 +4680,11 @@ function interact() {
     curCont = c;
     AU.rummage();
     panelOpen = true;
+    document.body.classList.add('inventory-open');
+    joy.x = joy.y = 0;
+    joy.id = -1;
+    $('joyk').style.transform = '';
+    MB.fire = false;
     $('panel').classList.remove('hidden');
     renderPanel();
   }
@@ -5900,6 +5924,8 @@ function update(dt: number) {
   const dayF = clamp(Math.sin(((hr - 6) / 13) * Math.PI), 0, 1);
   sun.intensity = 0.15 + dayF * 2.2;
   hemi.intensity = 0.25 + dayF * 0.75;
+  nightAdapt.intensity = (1 - dayF) * 5;
+  nightAdapt.position.set(player.pos.x, player.pos.y + 2.6, player.pos.z);
   sun.color.setHSL(0.09, 0.6, 0.55 + dayF * 0.3);
   const ang = ((hr - 6) / 13) * Math.PI;
   sun.position.set(player.pos.x + Math.cos(ang) * 60, 20 + Math.sin(Math.max(ang, 0.3)) * 60, player.pos.z + 30);
