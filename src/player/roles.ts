@@ -6,6 +6,8 @@ export type Skills = {
   ride?: number;
   streets?: boolean;
   carry?: number;
+  /** sleep recovery multiplier: fatigue (the 精神 bar) recovers this many times faster while sleeping */
+  rest?: number;
 };
 export type Role = {
   id: string;
@@ -49,7 +51,7 @@ export const ROLES: Role[] = [
     spawn: 'home',
     dest: 'school',
     destLabel: '學校',
-    skills: { carry: 1.1 },
+    skills: { carry: 1.1, rest: 1.5 },
     inv: { snack: 2, sport: 1, water: 1 },
     perks: ['體力恢復快', '背包稍大（書包）'],
     look: { m: L(0xf6f6f6, 0x1e2a50, { shoes: 0x222222 }), f: L(0xf6f6f6, 0x1e2a50, { shoes: 0x222222 }) },
