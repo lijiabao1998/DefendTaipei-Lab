@@ -1,3 +1,4 @@
+import { tr, getLanguage, requestLanguageChange } from '../i18n';
 // v22.4 shared modal screens: 設定 (volume / 畫質 / language / sensitivity / vibration / key rebinding),
 // 操作說明 and 製作名單. Used from the title menu and the in-game pause menu.
 import { SET, saveSettings, ACTIONS, BIND, keyName, rebind, resetKeys, applyBtnSize, type Quality } from './settings';
@@ -51,8 +52,8 @@ function open(title: string, html: string) {
   modal = document.createElement('div');
   modal.id = 'modal';
   modal.innerHTML =
-    `<div class="mbox"><div class="mhead"><h3>${title}</h3><button class="mx" aria-label="返回">✕ 返回</button></div>` +
-    `<div class="mbody">${html}</div><button class="mclose">返回${TOUCH ? '' : '（Esc）'}</button></div>`;
+    `<div class="mbox"><div class="mhead"><h3>${title}</h3><button class="mx" aria-label="${tr('返回', 'Back')}">✕ ${tr('返回', 'Back')}</button></div>` +
+    `<div class="mbody">${html}</div><button class="mclose">${tr('返回', 'Back')}${TOUCH ? '' : tr('（Esc）', ' (Esc)')}</button></div>`;
   (modal.querySelector('.mclose') as HTMLElement).onclick = () => closeModal();
   (modal.querySelector('.mx') as HTMLElement).onclick = () => closeModal();
   // tap on the backdrop (outside the box) closes
@@ -69,31 +70,35 @@ export function openSettings() {
   const sl = (k: 'master' | 'sfx' | 'music' | 'radio', t: string) =>
     `<label class="srow"><span>${t}</span><input type="range" min="0" max="100" data-k="${k}" value="${pct(SET[k])}"><i>${pct(SET[k])}</i></label>`;
   const m = open(
-    '⚙ 設定',
-    `<h4>音量</h4>${sl('master', '主音量')}${sl('sfx', '音效')}${sl('music', '環境音／音樂')}${sl('radio', '廣播')}
-    <label class="srow"><span>廣播語音</span><input type="checkbox" id="svoice"${SET.voice ? ' checked' : ''}><i>收音機廣播以合成語音朗讀</i></label>
-    <h4>畫面</h4><label class="srow"><span>畫質</span><select id="squal">${(['low', 'med', 'high'] as Quality[])
+    tr('⚙ 設定', '⚙ Settings'),
+    `<h4>${tr('音量', 'Volume')}</h4>${sl('master', tr('主音量', 'Master volume'))}${sl('sfx', tr('音效', 'Sound effects'))}${sl('music', tr('環境音／音樂', 'Ambience / music'))}${sl('radio', tr('廣播', 'Radio'))}
+    <label class="srow"><span>${tr('廣播語音', 'Spoken radio')}</span><input type="checkbox" id="svoice"${SET.voice ? ' checked' : ''}><i>${tr('收音機廣播以合成語音朗讀', 'Read radio broadcasts aloud using text-to-speech')}</i></label>
+    <h4>${tr('畫面', 'Display')}</h4><label class="srow"><span>${tr('畫質', 'Graphics quality')}</span><select id="squal">${(
+      ['low', 'med', 'high'] as Quality[]
+    )
       .map(
         q =>
-          `<option value="${q}"${SET.quality === q ? ' selected' : ''}>${{ low: '低', med: '中', high: '高' }[q]}</option>`,
+          `<option value="${q}"${SET.quality === q ? ' selected' : ''}>${{ low: tr('低', 'Low'), med: tr('中', 'Medium'), high: tr('高', 'High') }[q]}</option>`,
       )
-      .join('')}</select><i>材質解析度於重新載入後生效</i></label>
-    <label class="srow"><span>語言</span><select id="slang"><option value="zh-TW" selected>繁體中文</option><option disabled>English（即將推出）</option></select></label>
-    <h4>操作</h4>${
+      .join(
+        '',
+      )}</select><i>${tr('材質解析度於重新載入後生效', 'Texture resolution changes take effect after reloading')}</i></label>
+    <label class="srow"><span>${tr('語言', 'Language')}</span><select id="slang"><option value="zh-TW"${SET.lang === 'zh-TW' ? ' selected' : ''}>繁體中文</option><option value="en"${SET.lang === 'en' ? ' selected' : ''}>English</option></select></label>
+    <h4>${tr('操作', 'Controls')}</h4>${
       TOUCH
-        ? `<label class="srow"><span>震動回饋</span><input type="checkbox" id="svib"${SET.vib ? ' checked' : ''}></label>
-    <label class="srow"><span>按鈕大小</span><select id="sbtn">${[
-      [0.85, '小'],
-      [1, '標準'],
-      [1.1, '大'],
+        ? `<label class="srow"><span>${tr('震動回饋', 'Haptic feedback')}</span><input type="checkbox" id="svib"${SET.vib ? ' checked' : ''}></label>
+    <label class="srow"><span>${tr('按鈕大小', 'Button size')}</span><select id="sbtn">${[
+      [0.85, tr('小', 'Small')],
+      [1, tr('標準', 'Standard')],
+      [1.1, tr('大', 'Large')],
     ]
       .map(([v, t]) => `<option value="${v}"${SET.btn === v ? ' selected' : ''}>${t}</option>`)
       .join('')}</select></label>
-    <details class="kdet"><summary>外接鍵盤／滑鼠設定</summary>`
+    <details class="kdet"><summary>${tr('外接鍵盤／滑鼠設定', 'External keyboard / mouse settings')}</summary>`
         : ''
-    }<label class="srow"><span>滑鼠靈敏度</span><input type="range" min="25" max="300" id="ssens" value="${pct(SET.sens)}"><i>${pct(SET.sens)}%</i></label>
-    ${TOUCH ? '' : `<label class="srow"><span>震動（手機）</span><input type="checkbox" id="svib"${SET.vib ? ' checked' : ''}></label>`}
-    <h4>按鍵設定 <button id="kreset">恢復預設</button></h4><em id="kmsg">點按鍵再按下新的鍵；Esc 取消。重複的鍵會自動互換。</em><div id="klist"></div>${
+    }<label class="srow"><span>${tr('滑鼠靈敏度', 'Mouse sensitivity')}</span><input type="range" min="25" max="300" id="ssens" value="${pct(SET.sens)}"><i>${pct(SET.sens)}%</i></label>
+    ${TOUCH ? '' : `<label class="srow"><span>${tr('震動（手機）', 'Vibration (mobile)')}</span><input type="checkbox" id="svib"${SET.vib ? ' checked' : ''}></label>`}
+    <h4>${tr('按鍵設定 ', 'Key bindings ')}<button id="kreset">${tr('恢復預設', 'Reset to defaults')}</button></h4><em id="kmsg">${tr('點按鍵再按下新的鍵；Esc 取消。重複的鍵會自動互換。', 'Click a binding, then press a new key. Esc cancels. Duplicate bindings are swapped automatically.')}</em><div id="klist"></div>${
       TOUCH ? '</details>' : ''
     }`,
   );
@@ -108,6 +113,10 @@ export function openSettings() {
   (m.querySelector('#squal') as HTMLSelectElement).onchange = e => {
     SET.quality = (e.target as HTMLSelectElement).value as Quality;
     saveSettings();
+  };
+  const language = m.querySelector('#slang') as HTMLSelectElement;
+  language.onchange = () => {
+    if (!requestLanguageChange(language.value)) language.value = getLanguage();
   };
   const sens = m.querySelector('#ssens') as HTMLInputElement;
   sens.oninput = () => {
@@ -141,7 +150,7 @@ export function openSettings() {
       b =>
         ((b as HTMLElement).onclick = () => {
           if (capture) return;
-          b.textContent = '按下新按鍵…';
+          b.textContent = tr('按下新按鍵…', 'Press a new key…');
           b.classList.add('wait');
           capture = (e: KeyboardEvent) => {
             e.preventDefault();
@@ -153,8 +162,11 @@ export function openSettings() {
               const sw = rebind(a, e.code);
               const lab = (x: string) => ACTIONS.find(q => q[0] === x)![1];
               msg.textContent = sw
-                ? `${keyName(e.code)} 原本是「${lab(sw)}」，已與「${lab(a)}」互換。`
-                : `「${lab(a)}」= ${keyName(e.code)}`;
+                ? tr(
+                    `${keyName(e.code)} 原本是「${lab(sw)}」，已與「${lab(a)}」互換。`,
+                    `${keyName(e.code)} was assigned to “${lab(sw)}”; swapped with “${lab(a)}”.`,
+                  )
+                : tr(`「${lab(a)}」= ${keyName(e.code)}`, `“${lab(a)}” = ${keyName(e.code)}`);
             }
             draw();
           };
@@ -164,7 +176,7 @@ export function openSettings() {
   };
   (m.querySelector('#kreset') as HTMLElement).onclick = () => {
     resetKeys();
-    msg.textContent = '已恢復預設按鍵。';
+    msg.textContent = tr('已恢復預設按鍵。', 'Default key bindings restored.');
     draw();
   };
   draw();
@@ -173,20 +185,20 @@ export function openSettings() {
 export function openHelp() {
   const rows = ACTIONS.map(([a, t]) => `<tr><td>${keyName(BIND[a])}</td><td>${t}</td></tr>`).join('');
   open(
-    '🎮 操作說明',
-    `<table class="ktab"><tr><th colspan="2">鍵盤＋滑鼠</th></tr>${rows}
-    <tr><td>滑鼠</td><td>瞄準</td></tr><tr><td>左鍵</td><td>攻擊／射擊</td></tr><tr><td>滾輪</td><td>縮放</td></tr><tr><td>Esc</td><td>關閉視窗／選單（暫停）</td></tr></table>
-    <table class="ktab"><tr><th colspan="2">手機</th></tr><tr><td>下方搖桿</td><td>移動（推到底奔跑）</td></tr><tr><td>大圓鈕</td><td>打（按住連續攻擊）；靠近可互動的東西時變成 搜／開門／爬上／上車…，點一下互動、長按攻擊；狙擊槍時是「瞄」：按住開鏡、拖曳瞄準、放開射擊</td></tr><tr><td>蹲</td><td>貼牆掩體或潛行；再點起身；長按撤退；開鏡時 ✕ 關鏡</td></tr><tr><td>武器欄 ⇄</td><td>切換武器</td></tr><tr><td>☰ ／ 🗺</td><td>選單（暫停、背包、存檔）／地圖</td></tr><tr><td>返回鍵</td><td>關閉視窗／選單</td></tr></table>
-    <p class="mnote">按鍵可在「設定 → 按鍵設定」中更改。</p>`,
+    tr('🎮 操作說明', '🎮 Controls'),
+    `<table class="ktab"><tr><th colspan="2">${tr('鍵盤＋滑鼠', 'Keyboard + mouse')}</th></tr>${rows}
+    <tr><td>${tr('滑鼠', 'Mouse')}</td><td>${tr('瞄準', 'Aim')}</td></tr><tr><td>${tr('左鍵', 'Left click')}</td><td>${tr('攻擊／射擊', 'Attack / fire')}</td></tr><tr><td>${tr('滾輪', 'Mouse wheel')}</td><td>${tr('縮放', 'Zoom')}</td></tr><tr><td>Esc</td><td>${tr('關閉視窗／選單（暫停）', 'Close window / pause menu')}</td></tr></table>
+    <table class="ktab"><tr><th colspan="2">${tr('手機', 'Mobile')}</th></tr><tr><td>${tr('下方搖桿', 'Bottom joystick')}</td><td>${tr('移動（推到底奔跑）', 'Move (push all the way to sprint)')}</td></tr><tr><td>${tr('大圓鈕', 'Large round button')}</td><td>${tr('打（按住連續攻擊）；靠近可互動的東西時變成 搜／開門／爬上／上車…，點一下互動、長按攻擊；狙擊槍時是「瞄」：按住開鏡、拖曳瞄準、放開射擊', 'Attack (hold to attack repeatedly). Near interactable objects, this changes to Search / Open / Climb / Enter… Tap to interact; hold to attack. With a sniper rifle, it becomes Aim: hold to scope in, drag to aim, and release to fire.')}</td></tr><tr><td>${tr('蹲', 'Crouch')}</td><td>${tr('貼牆掩體或潛行；再點起身；長按撤退；開鏡時 ✕ 關鏡', 'Take cover against a wall or sneak. Tap again to stand; hold to retreat. While scoped in, tap ✕ to exit the scope.')}</td></tr><tr><td>${tr('武器欄 ⇄', 'Weapon bar ⇄')}</td><td>${tr('切換武器', 'Switch weapons')}</td></tr><tr><td>☰ ／ 🗺</td><td>${tr('選單（暫停、背包、存檔）／地圖', 'Menu (pause, inventory, save) / map')}</td></tr><tr><td>${tr('返回鍵', 'Back button')}</td><td>${tr('關閉視窗／選單', 'Close window / menu')}</td></tr></table>
+    <p class="mnote">${tr('按鍵可在「設定 → 按鍵設定」中更改。', 'You can change key bindings under Settings → Key bindings.')}</p>`,
   );
 }
 
 export function openAbout() {
   open(
-    '📜 製作名單／關於',
-    `<p><b>保衛台北 Defend Taipei — 萬華淪陷區</b>　${VERSION}</p>
-    <p>虛構的諷刺生存遊戲。人物、部隊番號、商店與品牌皆為虛構，如有雷同純屬巧合。</p>
-    <p>地圖資料 © OpenStreetMap contributors（ODbL）<br>引擎：three.js・TypeScript・Vite<br>所有材質與音效皆為程式即時生成。</p>
-    <p>設計與開發：DefendTaipei-Lab</p>`,
+    tr('📜 製作名單／關於', '📜 Credits / About'),
+    `<p><b>${tr('保衛台北 Defend Taipei — 萬華淪陷區', 'Defend Taipei — Fallen Wanhua')}</b>　${VERSION}</p>
+    <p>${tr('虛構的諷刺生存遊戲。人物、部隊番號、商店與品牌皆為虛構，如有雷同純屬巧合。', 'A fictional satirical survival game. All characters, military units, shops, and brands are fictional. Any resemblance is purely coincidental.')}</p>
+    <p>${tr('地圖資料 © OpenStreetMap contributors（ODbL）', 'Map data © OpenStreetMap contributors (ODbL)')}<br>${tr('引擎：three.js・TypeScript・Vite', 'Engine: three.js · TypeScript · Vite')}<br>${tr('所有材質與音效皆為程式即時生成。', 'All textures and sound effects are generated procedurally in real time.')}</p>
+    <p>${tr('設計與開發：DefendTaipei-Lab', 'Design and development: DefendTaipei-Lab')}</p>`,
   );
 }

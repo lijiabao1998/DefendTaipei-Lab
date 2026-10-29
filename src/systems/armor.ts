@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 // PLA armour on main roads (generic low-poly, no real insignia): ZBD-05 / ZTD-05 amphibious tracked, ZBL-08 8x8, Dongfeng Mengshi 4x4.
 // Small arms cannot hurt them; hit(x,z,dmg,antiArmor) is the hook for FPV drones / AT weapons.
 import * as THREE from 'three';
@@ -6,10 +7,10 @@ type V2 = [number, number];
 type G = THREE.BufferGeometry;
 export type ArmorKind = 'zbd05' | 'ztd05' | 'zbl08' | 'mengshi';
 export const ARMOR_NAME: Record<ArmorKind, string> = {
-  zbd05: 'ZBD-05 兩棲步兵戰車',
-  ztd05: 'ZTD-05 兩棲突擊車',
-  zbl08: 'ZBL-08 輪式步兵戰車',
-  mengshi: '東風猛士 輕型車',
+  zbd05: tr('ZBD-05 兩棲步兵戰車', 'ZBD-05 amphibious IFV'),
+  ztd05: tr('ZTD-05 兩棲突擊車', 'ZTD-05 amphibious assault vehicle'),
+  zbl08: tr('ZBL-08 輪式步兵戰車', 'ZBL-08 wheeled IFV'),
+  mengshi: tr('東風猛士 輕型車', 'Dongfeng Mengshi light vehicle'),
 };
 const col = (g: G, c: number) => {
   const n = g.getAttribute('position').count,
@@ -304,7 +305,13 @@ export class ArmorSystem {
       if (a.dead) continue;
       if (Math.hypot(a.g.position.x - x, a.g.position.z - z) > 4) continue;
       if (!antiArmor) {
-        this.deps.log('子彈打在裝甲上彈開了——輕兵器無效，快躲進騎樓或巷子！', '#f99');
+        this.deps.log(
+          tr(
+            '子彈打在裝甲上彈開了——輕兵器無效，快躲進騎樓或巷子！',
+            'Your rounds bounced off the armor. Small arms are ineffective. Get under an arcade or into an alley!',
+          ),
+          '#f99',
+        );
         return false;
       }
       a.hp -= dmg;
@@ -319,7 +326,7 @@ export class ArmorSystem {
     a.tur.rotation.z = 0.25;
     this.addSmoke(a.g.position.x, a.g.position.z, true);
     this.wrecks.push(a.g);
-    this.deps.log(`${ARMOR_NAME[a.kind]} 被擊毀！`, '#ffd76a');
+    this.deps.log(tr(`${ARMOR_NAME[a.kind]} 被擊毀！`, `${ARMOR_NAME[a.kind]} destroyed!`), '#ffd76a');
   }
   engine(vol: number) {
     try {
@@ -398,7 +405,13 @@ export class ArmorSystem {
           a.alerted = true;
           a.stop = 6;
           this.deps.alert(pos.x, pos.z);
-          this.deps.log(`⚠ ${ARMOR_NAME[a.kind]} 發現你！步兵下車搜索——快躲進騎樓或巷子`, '#f66');
+          this.deps.log(
+            tr(
+              `⚠ ${ARMOR_NAME[a.kind]} 發現你！步兵下車搜索——快躲進騎樓或巷子`,
+              `⚠ ${ARMOR_NAME[a.kind]} spotted you! Infantry are dismounting to search. Hide under an arcade or in an alley.`,
+            ),
+            '#f66',
+          );
         }
         a.fireCd -= dt;
         if (a.alerted && a.fireCd <= 0) {
@@ -441,7 +454,13 @@ export class ArmorSystem {
     else if (this.audio) this.engine(0);
     if (near < 60 && !this.heard) {
       this.heard = true;
-      this.deps.log('聽見履帶與柴油引擎聲……裝甲車在附近大馬路上', '#fc9');
+      this.deps.log(
+        tr(
+          '聽見履帶與柴油引擎聲……裝甲車在附近大馬路上',
+          'Tracks and a diesel engine... An armored vehicle is on a nearby main road.',
+        ),
+        '#fc9',
+      );
     }
     if (near > 100) this.heard = false;
   }

@@ -1936,3 +1936,43 @@ body.mobile.portrait #phone.exp {
 #soontoast.on {
   opacity: 1;
 }
+
+/* English labels need more room, especially on portrait phones. */
+#title-language {
+  align-self: flex-end;
+  padding: 7px 12px;
+  border: 1px solid #c9a35a;
+  border-radius: 6px;
+  background: #201b16;
+  color: #f3dfb3;
+  font: inherit;
+  max-width: 100%;
+}
+html[lang='en'] .srow {
+  flex-wrap: wrap;
+}
+html[lang='en'] .srow > span {
+  min-width: 130px;
+}
+html[lang='en'] .mhead h3 {
+  overflow-wrap: anywhere;
+}
+html[lang='en'] #pbact,
+html[lang='en'] #pbsec {
+  padding: 0;
+  white-space: nowrap;
+  line-height: 1.1;
+}
+html[lang='en'] #pbact,
+html[lang='en'] #pbact.long {
+  font-size: calc(15px * var(--pbs, 1));
+}
+html[lang='en'] #pbsec {
+  font-size: calc(11px * var(--pbs, 1));
+}
+html[lang='en'] #stats .t span:first-child {
+  white-space: normal;
+}
+html[lang='en'] #title p {
+  max-width: 760px;
+}

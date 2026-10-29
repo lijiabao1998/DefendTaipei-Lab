@@ -4,6 +4,10 @@
 
 **線上遊玩：** https://game.lijiabao.uk/defendtaipei/（遊戲總站 https://game.lijiabao.uk/ ；舊網址 https://lijiabao1998.github.io/DefendTaipei-Lab/ 會自動轉址）
 
+## 語言 / Language
+
+可在標題畫面或「設定」選擇 **English／繁體中文**，切換會重新載入；一般單人遊戲會先存檔並續玩。預設維持繁體中文，既有存檔 ID 不變。原場景招牌與歷史紀錄保留原文。驗證界線見 [English localization notes](docs/ENGLISH-LOCALIZATION.md)。
+
 ## 操作
 | 按鍵 | 功能 |
 |---|---|

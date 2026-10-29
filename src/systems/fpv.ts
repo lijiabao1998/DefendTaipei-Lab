@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 import { SET } from '../ui/settings';
 // FPV kamikaze drone (pilot view w/ analog video look + OSD) and PLA recon drones.
 import * as THREE from 'three';
@@ -204,7 +205,7 @@ export class FPV {
     addEventListener('keydown', e => {
       if (!this.active) return;
       this.keys[e.code] = true;
-      if (e.code === 'Escape') this.end('你放棄了操控，無人機墜毀');
+      if (e.code === 'Escape') this.end(tr('你放棄了操控，無人機墜毀', 'You abandoned control. The drone crashed.'));
     });
     addEventListener('keyup', e => {
       this.keys[e.code] = false;
@@ -259,8 +260,14 @@ export class FPV {
     }
     this.d.log(
       this.d.mobile
-        ? 'FPV 起飛！左搖桿油門／偏航、右搖桿俯仰／滾轉（ACRO 模式，不會自動回正）'
-        : 'FPV 起飛！W/S 油門、滑鼠俯仰／滾轉、A/D 偏航（ACRO 模式，不會自動回正）。Esc 放棄',
+        ? tr(
+            'FPV 起飛！左搖桿油門／偏航、右搖桿俯仰／滾轉（ACRO 模式，不會自動回正）',
+            'FPV launched! Left stick: throttle/yaw. Right stick: pitch/roll. ACRO mode does not self-level.',
+          )
+        : tr(
+            'FPV 起飛！W/S 油門、滑鼠俯仰／滾轉、A/D 偏航（ACRO 模式，不會自動回正）。Esc 放棄',
+            'FPV launched! W/S: throttle. Mouse: pitch/roll. A/D: yaw. ACRO mode does not self-level. Esc: abandon.',
+          ),
       '#9cf',
     );
   }
@@ -410,7 +417,7 @@ export class FPV {
     const above = this.vel.y < -3 && -this.vel.y > Math.hypot(this.vel.x, this.vel.z) * 0.6;
     if (sp > 4.5 || this.bumps >= 3) {
       this.d.explode(p.clone(), above);
-      return '撞擊引爆！';
+      return tr('撞擊引爆！', 'Impact detonation!');
     }
     // low-speed bump: reflect along the blocked axis, lose energy, tumble
     this.bumps++;
@@ -429,7 +436,10 @@ export class FPV {
       p.z = prev.z;
     }
     this.w.add(new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(14));
-    this.d.log(`碰撞（${sp.toFixed(1)} m/s）——引信未觸發`, '#ccc');
+    this.d.log(
+      tr(`碰撞（${sp.toFixed(1)} m/s）——引信未觸發`, `Collision (${sp.toFixed(1)} m/s). Fuse did not trigger.`),
+      '#ccc',
+    );
     return null;
   }
   update(dt: number) {
@@ -448,7 +458,7 @@ export class FPV {
     const upY = new THREE.Vector3(0, 1, 0).applyQuaternion(this.q).y;
     if (this.pos.y < 0.4 && upY < 0.2 && this.vel.length() < 1) {
       this.turtleT += dt;
-      if (this.turtleT > 2.5) return this.end('無人機翻覆，無法再起飛');
+      if (this.turtleT > 2.5) return this.end(tr('無人機翻覆，無法再起飛', 'Drone overturned. Unable to take off.'));
     } else this.turtleT = 0;
     // signal: 5.8 GHz free-space path loss + building blockage + jammers + fast fading → RSSI dBm
     const P = this.d.player();
@@ -468,12 +478,14 @@ export class FPV {
       if (this.lostT > 1.2)
         return this.end(
           this.d.jammers().some(j => Math.hypot(this.pos.x - j[0], this.pos.z - j[1]) < 70)
-            ? '訊號被解放軍干擾站壓制——圖傳中斷'
-            : '訊號中斷（距離太遠或被建築遮擋）',
+            ? tr('訊號被解放軍干擾站壓制——圖傳中斷', 'PLA jammer suppressed the signal. Video link lost.')
+            : tr('訊號中斷（距離太遠或被建築遮擋）', 'Signal lost: out of range or blocked by buildings.'),
         );
     } else this.lostT = 0;
     if (this.soc <= 0.03 || 4 * (3.1 + 1.1 * this.soc) < 13.0 || this.volt < 10.2)
-      return this.end('電池耗盡（低電壓斷電），無人機墜落');
+      return this.end(
+        tr('電池耗盡（低電壓斷電），無人機墜落', 'Battery depleted (low-voltage cutoff). The drone is falling.'),
+      );
     // video impairments
     let near = 0;
     for (const [dx, dzz] of [

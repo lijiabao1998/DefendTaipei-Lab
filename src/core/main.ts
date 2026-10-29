@@ -1,3 +1,5 @@
+import { tr, getLanguage, initTitleLanguage } from '../i18n';
+import { translateLabel } from '../labels';
 // Main game module: renderer, world state, the gameplay systems that share it, the main loop and boot.
 // Self-contained pieces live in their own files (textures, geom, world, portrait, pla-loot, joystick) and so do
 // the bigger systems (armor, drive, roads, traffic, roc, fpv, map, interiors, decay, alley, ...).
@@ -98,6 +100,8 @@ import { emit, on } from './bus';
 import { createStoryRunner } from '../story';
 import { MPQ, MP_ON } from '../debug/flags';
 import { PRO_NEWS } from '../story/broadcasts/prologue';
+
+initTitleLanguage();
 
 // ---------- utils ----------
 let seed = 20261024;
@@ -346,7 +350,13 @@ function cycleWeapon() {
   const nx = list[(list.indexOf(player.equip || '') + 1) % list.length];
   if (scope.on) scopeExit();
   player.equip = nx;
-  log(nx ? `裝備了 ${ITEMS[nx].name}` : '收起武器');
+  log(
+    nx
+      ? getLanguage() === 'en'
+        ? `Equipped ${ITEMS[nx].name}`
+        : `裝備了 ${ITEMS[nx].name}`
+      : tr('收起武器', 'Weapon holstered'),
+  );
   vibrate(10);
 }
 function secTap() {
@@ -357,26 +367,26 @@ function secTap() {
     return toggleCover();
   }
   player.sneak = !player.sneak;
-  log(player.sneak ? '蹲低潛行' : '起身');
+  log(player.sneak ? tr('蹲低潛行', 'Crouching and sneaking') : tr('起身', 'Standing up'));
 }
 /** refreshed from drawHud: label + colour of the two buttons */
 function updatePortraitButtons(prompt: string) {
   if (!PB.act) return;
   const ctx = ctxLabel(prompt, keyLabel('interact'));
   const sc = !!player.equip && SCOPED.has(player.equip);
-  const l = scope.on ? '射' : (ctx ?? (sc ? '瞄' : '打'));
+  const l = scope.on ? tr('射', 'Fire') : (ctx ?? (sc ? tr('瞄', 'Aim') : tr('打', 'Hit')));
   const mode = scope.on ? 'fire' : ctx ? 'ctx' : sc ? 'scope' : 'fire';
   if (PB.act.textContent !== l) PB.act.textContent = l;
   PB.act.dataset.mode = mode;
   PB.act.classList.toggle('long', l.length > 1);
   const hint = scope.on
-    ? '拖曳瞄準・放開射擊'
+    ? tr('拖曳瞄準・放開射擊', 'Drag to aim · Release to fire')
     : ctx
-      ? ctxHint(prompt, keyLabel('interact')).replace(/[（(].*$/, '') + '・長按＝攻擊'
+      ? ctxHint(prompt, keyLabel('interact')).replace(/[（(].*$/, '') + tr('・長按＝攻擊', ' · Hold to attack')
       : '';
   if (PB.hint!.textContent !== hint) PB.hint!.textContent = hint;
   PB.hint!.style.display = hint ? '' : 'none';
-  const s = scope.on ? '✕' : player.cover ? '起' : player.sneak ? '起' : '蹲';
+  const s = scope.on ? '✕' : player.cover ? tr('起', 'Up') : player.sneak ? tr('起', 'Up') : tr('蹲', 'Crouch');
   if (PB.sec!.textContent !== s) PB.sec!.textContent = s;
   PB.sec!.classList.toggle('lit', !!player.cover || player.sneak);
 }
@@ -396,8 +406,8 @@ function initPortraitButtons() {
     wrap.appendChild(b);
     return b;
   };
-  const sec = mk('pbsec', '蹲下／掩體（長按：撤退）');
-  const act = mk('pbact', '攻擊／互動（依情境）');
+  const sec = mk('pbsec', tr('蹲下／掩體（長按：撤退）', 'Crouch / Cover (hold: retreat)'));
+  const act = mk('pbact', tr('攻擊／互動（依情境）', 'Attack / Interact (contextual)'));
   PB.act = act;
   PB.sec = sec;
   // ---- context button
@@ -452,7 +462,7 @@ function initPortraitButtons() {
       player.sneak = false;
       MB.retreat = 1.6;
       MB.rn++;
-      log('撤退！', '#fd9');
+      log(tr('撤退！', 'Retreat!'), '#fd9');
       vibrate(30);
     }, 450);
   });
@@ -474,7 +484,7 @@ function initPortraitButtons() {
   const mp = document.createElement('button');
   mp.id = 'pmapbtn';
   mp.textContent = '🗺';
-  mp.title = '地圖';
+  mp.title = tr('地圖', 'Map');
   mp.onclick = () => gmap?.toggle();
   document.body.appendChild(mp);
   document.body.appendChild(wrap);
@@ -482,7 +492,7 @@ function initPortraitButtons() {
   const mb = document.createElement('button');
   mb.id = 'menubtn';
   mb.textContent = '☰';
-  mb.title = '選單';
+  mb.title = tr('選單', 'Menu');
   mb.onclick = () => togglePause();
   document.body.appendChild(mb);
   const upd = () => document.body.classList.toggle('portrait', MOBILE && matchMedia('(orientation: portrait)').matches);
@@ -493,12 +503,17 @@ function initPortraitButtons() {
 function toggleCover() {
   if (player.cover) {
     player.cover = null;
-    log('離開掩體');
+    log(tr('離開掩體', 'Left cover'));
   } else {
     const c = findCover(player.pos.x, player.pos.z);
-    if (!c) return log('附近沒有掩體');
+    if (!c) return log(tr('附近沒有掩體', 'No cover nearby'));
     player.cover = c;
-    log(c.low ? '進入掩體：蹲低（開火時探身）' : '進入掩體：貼牆側身射擊', '#9cf');
+    log(
+      c.low
+        ? tr('進入掩體：蹲低（開火時探身）', 'In cover: crouched (peek out to fire)')
+        : tr('進入掩體：貼牆側身射擊', 'In cover: lean out from the wall to fire'),
+      '#9cf',
+    );
   }
   updateCoverUI();
 }
@@ -509,7 +524,11 @@ function updateCoverUI() {
     el.id = 'coverind';
     document.body.appendChild(el);
   }
-  el.textContent = player.cover ? (player.cover.low ? '🛡 掩體・蹲低' : '🛡 掩體・側身') : '';
+  el.textContent = player.cover
+    ? player.cover.low
+      ? tr('🛡 掩體・蹲低', '🛡 Cover · Crouched')
+      : tr('🛡 掩體・側身', '🛡 Cover · Leaning')
+    : '';
   el.style.display = player.cover ? 'block' : 'none';
 }
 function collide(pos: THREE.Vector3, r: number) {
@@ -649,21 +668,21 @@ function bldAt(x: number, z: number) {
 // v21: named 萬華 areas (nearest anchor). Core areas are liberated by clearing their soldiers; outer areas by
 // wiping the garrison at their outpost tile (streamed, saved per tile).
 const SECTORS: { n: string; x: number; z: number }[] = [
-  { n: '西門町', x: 330, z: -230 },
-  { n: '中華路', x: 420, z: 260 },
-  { n: '康定路', x: -40, z: 60 },
-  { n: '龍山寺', x: -260, z: 360 },
-  { n: '貴陽街', x: -430, z: -220 },
-  { n: '華西街', x: -480, z: 330 },
-  { n: '西園路', x: -600, z: 1100 },
-  { n: '華江', x: -1300, z: 820 },
-  { n: '東園', x: -1000, z: 1550 },
-  { n: '萬大路', x: -200, z: 1430 },
-  { n: '南機場', x: 150, z: 1320 },
-  { n: '青年公園', x: 300, z: 1990 },
-  { n: '加蚋仔', x: -1000, z: 2120 },
-  { n: '馬場町', x: 420, z: 2350 },
-  { n: '雙園', x: -1300, z: 2560 },
+  { n: tr('西門町', 'Ximending'), x: 330, z: -230 },
+  { n: tr('中華路', 'Zhonghua Road'), x: 420, z: 260 },
+  { n: tr('康定路', 'Kangding Road'), x: -40, z: 60 },
+  { n: tr('龍山寺', 'Longshan Temple'), x: -260, z: 360 },
+  { n: tr('貴陽街', 'Guiyang Street'), x: -430, z: -220 },
+  { n: tr('華西街', 'Huaxi Street'), x: -480, z: 330 },
+  { n: tr('西園路', 'Xiyuan Road'), x: -600, z: 1100 },
+  { n: tr('華江', 'Huajiang'), x: -1300, z: 820 },
+  { n: tr('東園', 'Dongyuan'), x: -1000, z: 1550 },
+  { n: tr('萬大路', 'Wanda Road'), x: -200, z: 1430 },
+  { n: tr('南機場', 'Nanjichang'), x: 150, z: 1320 },
+  { n: tr('青年公園', 'Youth Park'), x: 300, z: 1990 },
+  { n: tr('加蚋仔', 'Kalah'), x: -1000, z: 2120 },
+  { n: tr('馬場町', 'Machangding'), x: 420, z: 2350 },
+  { n: tr('雙園', 'Shuangyuan'), x: -1300, z: 2560 },
 ];
 const NSEC = SECTORS.length;
 const sectorNames = SECTORS.map(s => s.n);
@@ -676,7 +695,7 @@ const sectorOf = (x: number, z: number) => {
   });
   return bi;
 };
-const SECTOR_LABEL = (i: number) => sectorNames[i] ?? '第' + (i + 1) + '區';
+const SECTOR_LABEL = (i: number) => sectorNames[i] ?? tr('第', 'Sector ') + (i + 1) + tr('區', '');
 const outerSector = (i: number) => !inCore(SECTORS[i].x, SECTORS[i].z);
 
 // ---------- build map ----------
@@ -825,9 +844,15 @@ function setupRecon(c: V2) {
       spotTime: () => (isNight() ? 1.5 : 2.5),
       spotCd: () => (isNight() ? 40 : 70),
       spotted: p => {
-        radio(p, null, '無人機回報目標位置');
-        log('⚠ 解放軍偵察無人機發現你！砲擊與巡邏隊正趕來——快躲進騎樓或室內！', '#f66');
-        slowDown('被無人機發現');
+        radio(p, null, tr('無人機回報目標位置', 'Drone reporting target position'));
+        log(
+          tr(
+            '⚠ 解放軍偵察無人機發現你！砲擊與巡邏隊正趕來——快躲進騎樓或室內！',
+            '⚠ A PLA recon drone spotted you! Artillery and patrols are on their way—get under an arcade or indoors!',
+          ),
+          '#f66',
+        );
+        slowDown(tr('被無人機發現', 'Spotted by a drone'));
         for (let i = 0; i < SHELL.n; i++) {
           const a = Math.random() * 6.28,
             r = SHELL.spread * Math.sqrt(Math.random());
@@ -878,7 +903,7 @@ function updateShells(dt: number) {
     player.rig.hurtT = 0.4;
     if (dmg > 15 && !player.bleed) {
       player.bleed = true;
-      log('被砲彈破片擊中，流血了！', '#f66');
+      log(tr('被砲彈破片擊中，流血了！', 'Shell fragments hit you. You are bleeding!'), '#f66');
     }
   }
 }
@@ -933,8 +958,8 @@ function fireAT(k: string, d: (typeof ITEMS)[string], dir: THREE.Vector3) {
   if (k === 'at4') {
     delete player.inv.at4;
     player.equip = '';
-    log('AT4 已射出——空筒拋棄', '#ccc');
-  } else if (k === 'jav') log('標槍飛彈頂部攻擊！', '#ffd76a');
+    log(tr('AT4 已射出——空筒拋棄', 'AT4 fired—empty tube discarded'), '#ccc');
+  } else if (k === 'jav') log(tr('標槍飛彈頂部攻擊！', 'Javelin top attack!'), '#ffd76a');
 }
 function rocTargets() {
   const T: { x: number; z: number; kind: 'armor' | 'sol' | 'post'; ref: unknown }[] = [];
@@ -974,7 +999,7 @@ function setupRoc() {
         for (const s of sols)
           if (s.state !== 'dead' && Math.hypot(s.pos.x - t.x, s.pos.z - t.z) < 15 && Math.random() < 0.6)
             damageSol(s, 300, true);
-        log('國軍砲火摧毀了佔領軍據點！', '#9cf');
+        log(tr('國軍砲火摧毀了佔領軍據點！', 'ROC artillery destroyed an occupation outpost!'), '#9cf');
       } else damageSol(t.ref as Sol, 300, true);
       const dp = Math.hypot(player.pos.x - t.x, player.pos.z - t.z);
       if (dp < 3.5) {
@@ -1008,7 +1033,12 @@ function nearestRoad(x: number, z: number, name?: RegExp) {
 function callSupport() {
   if (!roc) return;
   if (ROC.cd > 0) {
-    log(`📻 「收到，支援單位整補中——${Math.ceil(ROC.cd)} 秒後再呼叫。」`, '#ccc');
+    log(
+      getLanguage() === 'en'
+        ? `📻 “Roger. Support units are resupplying—call again in ${Math.ceil(ROC.cd)} seconds.”`
+        : `📻 「收到，支援單位整補中——${Math.ceil(ROC.cd)} 秒後再呼叫。」`,
+      '#ccc',
+    );
     return;
   }
   ROC.cd = 240;
@@ -1026,9 +1056,19 @@ function callSupport() {
   const kind: RocKind = (['cm32', 'cm11', 'm1a2t'] as RocKind[])[ROC.n++ % 3];
   const r = nearestRoad(P.x, P.z);
   roc.spawn(kind, routeNear(r, P.x, P.z), 150, 8);
-  log(`📻 聯絡官：「${ROC_NAME[kind]} 8 秒後沿 ${r.n || '主要道路'} 推進！」——通話聲引來了巡邏隊`, '#9cf');
-  phone('📻 國軍無線電', `${ROC_NAME[kind]} 正沿 ${r.n || '主要道路'} 推進支援，冷卻 4 分鐘。`);
-  slowDown('呼叫支援');
+  log(
+    getLanguage() === 'en'
+      ? `📻 Liaison: “${ROC_NAME[kind]} will advance along ${r.n || 'the main road'} in 8 seconds!”—The radio call attracted a patrol`
+      : `📻 聯絡官：「${ROC_NAME[kind]} 8 秒後沿 ${r.n || '主要道路'} 推進！」——通話聲引來了巡邏隊`,
+    '#9cf',
+  );
+  phone(
+    tr('📻 國軍無線電', '📻 ROC military radio'),
+    getLanguage() === 'en'
+      ? `${ROC_NAME[kind]} is advancing along ${r.n || 'the main road'} to support you. Cooldown: 4 minutes.`
+      : `${ROC_NAME[kind]} 正沿 ${r.n || '主要道路'} 推進支援，冷卻 4 分鐘。`,
+  );
+  slowDown(tr('呼叫支援', 'Called for support'));
 }
 function rocCheck(silent: boolean) {
   if (!started && !silent) return;
@@ -1036,11 +1076,20 @@ function rocCheck(silent: boolean) {
     ROC.unlocked = true;
     if (!silent) {
       phone(
-        '📻 地下電台「自由之聲」',
-        '國軍特戰部隊已在萬華外圍活動！他們在幾個被奪回的據點留下了補給——留意國軍武器與空投。有人看到一名受傷的聯絡官倒在附近，他身上有無線電。',
+        tr('📻 地下電台「自由之聲」', '📻 Underground radio: Voice of Freedom'),
+        tr(
+          '國軍特戰部隊已在萬華外圍活動！他們在幾個被奪回的據點留下了補給——留意國軍武器與空投。有人看到一名受傷的聯絡官倒在附近，他身上有無線電。',
+          'ROC special forces are operating on the outskirts of Wanhua! They left supplies at several reclaimed outposts—watch for ROC weapons and airdrops. A wounded liaison was seen lying nearby, carrying a radio.',
+        ),
       );
-      log('📻 自由之聲：國軍特戰部隊就在附近！據點與空投開始出現國軍武器', '#9cf');
-      slowDown('國軍消息');
+      log(
+        tr(
+          '📻 自由之聲：國軍特戰部隊就在附近！據點與空投開始出現國軍武器',
+          '📻 Voice of Freedom: ROC special forces are nearby! ROC weapons are now appearing at outposts and in airdrops',
+        ),
+        '#9cf',
+      );
+      slowDown(tr('國軍消息', 'ROC military news'));
     }
     checkpoints.slice(0, 4).forEach((c, i) => {
       const p: V2 = [c[0] + 3, c[1] + 3];
@@ -1061,11 +1110,18 @@ function rocCheck(silent: boolean) {
     (ROC as any).col = route;
     (['m1a2t', 'm1a2t', 'cm11', 'cm32'] as RocKind[]).forEach((kd, i) => roc!.spawn(kd, route, 99999, i * 3.5));
     phone(
-      '📻 國軍無線電',
-      `全面反攻開始！國軍戰車縱隊開進 ${r.n || '西園路'}，目標：最後的佔領軍據點（${rest.map(SECTOR_LABEL).join('、')}）。`,
+      tr('📻 國軍無線電', '📻 ROC military radio'),
+      getLanguage() === 'en'
+        ? `The full counteroffensive has begun! An ROC armored column is entering ${r.n || 'Xiyuan Road'}, heading for the last occupation outposts (${rest.map(SECTOR_LABEL).join(', ')}).`
+        : `全面反攻開始！國軍戰車縱隊開進 ${r.n || '西園路'}，目標：最後的佔領軍據點（${rest.map(SECTOR_LABEL).join('、')}）。`,
     );
-    log(`🎖 國軍反攻！M1A2T、勇虎、雲豹縱隊開進 ${r.n || '西園路'}——奪回最後的據點！`, '#ffd76a');
-    slowDown('國軍反攻');
+    log(
+      getLanguage() === 'en'
+        ? `🎖 ROC counteroffensive! An M1A2T, Brave Tiger, and Clouded Leopard column is entering ${r.n || 'Xiyuan Road'}—reclaim the last outposts!`
+        : `🎖 國軍反攻！M1A2T、勇虎、雲豹縱隊開進 ${r.n || '西園路'}——奪回最後的據點！`,
+      '#ffd76a',
+    );
+    slowDown(tr('國軍反攻', 'ROC counteroffensive'));
   }
   if (ROC.offensive && !ROC.ended && liberated.size >= NSEC && !silent) {
     ROC.ended = true;
@@ -1081,8 +1137,10 @@ function rocEnding() {
   started = false;
   const ov = document.createElement('div');
   ov.id = 'roccine';
-  ov.innerHTML =
-    '<div class="lb t"></div><div class="lb b"></div><div class="ttl">奪回萬華</div><div class="sub">國軍戰車縱隊・西園路</div>';
+  ov.innerHTML = tr(
+    '<div class="lb t"></div><div class="lb b"></div><div class="ttl">奪回萬華</div><div class="sub">國軍戰車縱隊・西園路</div>',
+    '<div class="lb t"></div><div class="lb b"></div><div class="ttl">Reclaim Wanhua</div><div class="sub">ROC armored column · Xiyuan Road</div>',
+  );
   document.body.appendChild(ov);
   rocCine = { t: 0, T: 11 };
 }
@@ -1103,7 +1161,10 @@ function rocCineStep(dt: number) {
     const d = document.createElement('div');
     d.id = 'evacend';
     d.className = 'win';
-    d.innerHTML = `<h1>奪回萬華</h1><h2>結局：國軍與萬華的街坊並肩，把佔領軍趕出了艋舺。</h2><p class="survend">${SV.endingText(surv)}</p><table><tr><td>存活天數</td><td>${day} 天</td></tr><tr><td>奪回街區</td><td>${liberated.size} / ${NSEC}</td></tr><tr><td>擊倒佔領軍</td><td>${player.kills}</td></tr><tr><td>擊毀裝甲</td><td>${armor ? armor.list.filter(a => a.dead).length : 0}</td></tr></table><p>另有兩種結局：搭直升機或小艇撤離至福特號航空母艦。</p><button onclick="location.reload()">再玩一次</button>`;
+    d.innerHTML =
+      getLanguage() === 'en'
+        ? `<h1>Wanhua Reclaimed</h1><h2>Ending: ROC forces and the people of Wanhua stood together and drove the occupation forces out of Monga.</h2><p class="survend">${SV.endingText(surv)}</p><table><tr><td>Days survived</td><td>${day} days</td></tr><tr><td>Neighborhoods reclaimed</td><td>${liberated.size} / ${NSEC}</td></tr><tr><td>Occupation soldiers defeated</td><td>${player.kills}</td></tr><tr><td>Armored vehicles destroyed</td><td>${armor ? armor.list.filter(a => a.dead).length : 0}</td></tr></table><p>Two other endings await: evacuate by helicopter or small boat to the USS Gerald R. Ford.</p><button onclick="location.reload()">Play again</button>`
+        : `<h1>奪回萬華</h1><h2>結局：國軍與萬華的街坊並肩，把佔領軍趕出了艋舺。</h2><p class="survend">${SV.endingText(surv)}</p><table><tr><td>存活天數</td><td>${day} 天</td></tr><tr><td>奪回街區</td><td>${liberated.size} / ${NSEC}</td></tr><tr><td>擊倒佔領軍</td><td>${player.kills}</td></tr><tr><td>擊毀裝甲</td><td>${armor ? armor.list.filter(a => a.dead).length : 0}</td></tr></table><p>另有兩種結局：搭直升機或小艇撤離至福特號航空母艦。</p><button onclick="location.reload()">再玩一次</button>`;
     document.body.appendChild(d);
   }
 }
@@ -1121,7 +1182,7 @@ function setupArmor(c: V2) {
       player.hp -= dmg;
       if (!player.bleed && Math.random() < 0.35) {
         player.bleed = true;
-        log('你被機槍擊中，流血了！', '#f66');
+        log(tr('你被機槍擊中，流血了！', 'Machine-gun fire hit you. You are bleeding!'), '#f66');
       }
     },
     alert: (x, z) => {
@@ -2135,7 +2196,7 @@ async function startNet() {
       z: player.pos.z,
     });
   } catch (e) {
-    hud.textContent = '🌐 連線失敗：' + (e as Error).message;
+    hud.textContent = tr('🌐 連線失敗：', '🌐 Connection failed: ') + (e as Error).message;
   }
 }
 function netFrame(dt: number) {
@@ -2182,8 +2243,11 @@ function netFrame(dt: number) {
     animate(r, e.hp <= 0 ? 'death' : sp > 2 ? 'run' : sp > 0.2 ? 'walk' : 'idle', Math.min(sp, 4), dt);
   }
   const h = document.getElementById('mphud');
-  if (h && net.status.startsWith('房間'))
-    h.textContent = `🌐 ${net.status}｜${Object.values(s.players).filter(p => p.on).length}/4 人｜tick ${s.tick}｜${(net.bytes / 1024).toFixed(0)} kB 收`;
+  if (h && net.status.startsWith(tr('房間', 'Room')))
+    h.textContent =
+      getLanguage() === 'en'
+        ? `🌐 ${net.status} | ${Object.values(s.players).filter(p => p.on).length}/4 players | tick ${s.tick} | ${(net.bytes / 1024).toFixed(0)} kB received`
+        : `🌐 ${net.status}｜${Object.values(s.players).filter(p => p.on).length}/4 人｜tick ${s.tick}｜${(net.bytes / 1024).toFixed(0)} kB 收`;
 }
 function netAttack() {
   if (!net?.s) return;
@@ -2394,7 +2458,10 @@ function updateWeather(dt: number, gm: number) {
   if (gameMin >= WX.rainNext && !raining()) {
     WX.rainUntil = gameMin + 60 * (1.5 + rnd() * 4);
     WX.rainNext = WX.rainUntil + 60 * (8 + rnd() * 28);
-    log('🌧 開始下雨了。外面的水桶會接到雨水。', '#9fd0ff');
+    log(
+      tr('🌧 開始下雨了。外面的水桶會接到雨水。', '🌧 It has started raining. Buckets outside will collect rainwater.'),
+      '#9fd0ff',
+    );
   }
   const r = raining();
   WX.amt += ((r ? 1 : 0) - WX.amt) * Math.min(1, dt * 0.5);
@@ -2486,7 +2553,11 @@ let RV: { p: V2; n: string }[] = [];
 let trapT = 0,
   trapSols: Sol[] = [];
 const infFx: THREE.Object3D[] = [];
-const ANC = ['龍山寺廟口', '柑仔店後巷', '鄰里公園'];
+const ANC = [
+  tr('龍山寺廟口', 'Longshan Temple entrance'),
+  tr('柑仔店後巷', 'Alley behind the corner shop'),
+  tr('鄰里公園', 'Neighborhood park'),
+];
 function freeNear(p: V2, r = 3): V2 {
   for (let k = 0; k < 300; k++) {
     const a = k * 2.4,
@@ -2506,9 +2577,9 @@ function setupInformant(st: V2, first: boolean) {
     };
   const z0 = st[1];
   RV = [
-    ['淡水河岸', -220, -70],
-    ['碼頭（大稻埕式）', -70, 70],
-    ['萬華河堤缺口', 70, 220],
+    [tr('淡水河岸', 'Tamsui River bank'), -220, -70],
+    [tr('碼頭（大稻埕式）', 'Wharf (Dadaocheng style)'), -70, 70],
+    [tr('萬華河堤缺口', 'Gap in the Wanhua levee'), 70, 220],
   ].map(([n, a, b]) => {
     let best: V2 | null = null;
     for (const r of roads)
@@ -2553,7 +2624,9 @@ const hh2i = (n: number) => {
   return x - Math.floor(x);
 };
 const hhmm = (m: number) =>
-  `第 ${Math.floor(m / 1440) + 1} 天 ${String(Math.floor((m % 1440) / 60)).padStart(2, '0')}:00`;
+  getLanguage() === 'en'
+    ? `Day ${Math.floor(m / 1440) + 1} ${String(Math.floor((m % 1440) / 60)).padStart(2, '0')}:00`
+    : `第 ${Math.floor(m / 1440) + 1} 天 ${String(Math.floor((m % 1440) / 60)).padStart(2, '0')}:00`;
 function dlg(title: string, text: string, btns: [string, () => void][]) {
   let d = document.getElementById('dlg');
   if (!d) {
@@ -2563,7 +2636,7 @@ function dlg(title: string, text: string, btns: [string, () => void][]) {
   }
   d.innerHTML = `<b>${title}</b><p>${text}</p><div></div>`;
   const bx = d.lastElementChild!;
-  for (const [l, f] of btns.concat([['離開', () => {}]])) {
+  for (const [l, f] of btns.concat([[tr('離開', 'Leave'), () => {}]])) {
     const b = document.createElement('button');
     b.textContent = l;
     b.onclick = () => {
@@ -2575,10 +2648,14 @@ function dlg(title: string, text: string, btns: [string, () => void][]) {
 }
 function rvLine() {
   const r = RV[INF.spot];
-  const sec = sectorNames[sectorOf(r.p[0], r.p[1])] || '萬華';
+  const sec = sectorNames[sectorOf(r.p[0], r.p[1])] || tr('萬華', 'Wanhua');
   return INF.fake
-    ? `${hhmm(INF.rvT)}，${r.n}。走「萬華中正一路」最快，過了第三個紅綠燈就到。<b>一個人來，武器全部留下</b>，帶槍的船不載。別跟任何人說。`
-    : `${hhmm(INF.rvT)}，${r.n}（${sec}一帶）。從西園路尾走環河南路，過了水門沿堤防往下，鐵板下面就是。船只等十分鐘，水和藥帶在身上，刀也帶著。`;
+    ? getLanguage() === 'en'
+      ? `${hhmm(INF.rvT)}, ${r.n}. Take “Wanhua Zhongzheng 1st Road”—it is fastest. Just past the third traffic light. <b>Come alone and leave all your weapons behind</b>. No guns on the boat. Tell no one.`
+      : `${hhmm(INF.rvT)}，${r.n}。走「萬華中正一路」最快，過了第三個紅綠燈就到。<b>一個人來，武器全部留下</b>，帶槍的船不載。別跟任何人說。`
+    : getLanguage() === 'en'
+      ? `${hhmm(INF.rvT)}, ${r.n} (near ${sec}). From the end of Xiyuan Road, take Huanhe South Road. Pass the floodgate and follow the levee down—it is under the metal sheet. The boat waits only ten minutes. Bring water, medicine, and your knife.`
+      : `${hhmm(INF.rvT)}，${r.n}（${sec}一帶）。從西園路尾走環河南路，過了水門沿堤防往下，鐵板下面就是。船只等十分鐘，水和藥帶在身上，刀也帶著。`;
 }
 function talkInformant() {
   if (INF.hid && !INF.caught) {
@@ -2593,7 +2670,13 @@ function talkInformant() {
       INF.trap = 0;
       INF.esc = 0;
       INF.scouted = 0;
-      dlg('抓到假聯絡人', `他跪地求饒：「我說、我說！真的船在 ${RV[INF.spot].n}，${hhmm(INF.rvT)}！」`, []);
+      dlg(
+        tr('抓到假聯絡人', 'False contact captured'),
+        getLanguage() === 'en'
+          ? `He drops to his knees, begging: “I’ll talk! The real boat is at ${RV[INF.spot].n}, at ${hhmm(INF.rvT)}!”`
+          : `他跪地求饒：「我說、我說！真的船在 ${RV[INF.spot].n}，${hhmm(INF.rvT)}！」`,
+        [],
+      );
     } else {
       const sec = Math.min(NSEC - 1, sectorOf(infPos[0], infPos[1]));
       for (const s of sols)
@@ -2605,8 +2688,10 @@ function talkInformant() {
         }
       liberated.add(sec);
       dlg(
-        '抓到假聯絡人',
-        `他供出了 ${sectorNames[sec]} 的佔領軍前哨位置。地下抵抗網連夜突襲——<b>${sectorNames[sec]} 已奪回！</b>`,
+        tr('抓到假聯絡人', 'False contact captured'),
+        getLanguage() === 'en'
+          ? `He revealed the occupation outpost in ${sectorNames[sec]}. The underground resistance raided it overnight—<b>${sectorNames[sec]} has been reclaimed!</b>`
+          : `他供出了 ${sectorNames[sec]} 的佔領軍前哨位置。地下抵抗網連夜突襲——<b>${sectorNames[sec]} 已奪回！</b>`,
         [],
       );
     }
@@ -2618,10 +2703,14 @@ function talkInformant() {
     INF.rvT = nextNight();
   }
   const opts: [string, () => void][] = [];
-  if (!INF.verified) opts.push(['用收音機向「自由之聲」查證', verifyInf]);
+  if (!INF.verified)
+    opts.push([tr('用收音機向「自由之聲」查證', 'Verify with “Voice of Freedom” by radio'), verifyInf]);
   dlg(
-    '🕶 聯絡人（' + ANC[INF.anc] + '）',
-    '「噓——聽說你想離開台北？有艘橡皮艇今晚走淡水河出海。」<br>' + rvLine(),
+    tr('🕶 聯絡人（', '🕶 Contact（') + ANC[INF.anc] + '）',
+    tr(
+      '「噓——聽說你想離開台北？有艘橡皮艇今晚走淡水河出海。」<br>',
+      '“Shh—heard you want to leave Taipei? An inflatable boat is heading out to sea along the Tamsui River tonight.”<br>',
+    ) + rvLine(),
     opts,
   );
 }
@@ -2636,7 +2725,13 @@ function verifyInf() {
     ? ['radio']
     : ['water', 'can', 'ration', 'noodle', 'cupnoodle', 'rice'].filter(k => player.inv[k]).slice(0, 2);
   if (!player.inv.radio && cost.length < 2) {
-    log('需要收音機，或兩份食物／水交換頻道時段', '#f99');
+    log(
+      tr(
+        '需要收音機，或兩份食物／水交換頻道時段',
+        'You need a radio, or two portions of food / water to trade for the channel and time',
+      ),
+      '#f99',
+    );
     return;
   }
   for (const k of cost) {
@@ -2645,19 +2740,28 @@ function verifyInf() {
   INF.verified = 1;
   if (INF.fake) INF.saw = 1;
   phone(
-    '📻 自由之聲（加密頻道）',
+    tr('📻 自由之聲（加密頻道）', '📻 Voice of Freedom (encrypted channel)'),
     INF.fake
-      ? '我們沒有派人在那裡接應。那個人是佔領軍的假聯絡人——別去，或者……讓他們嚐嚐自己的陷阱。'
-      : '確認：那艘船是我們的人。準時到，祝你平安。',
+      ? tr(
+          '我們沒有派人在那裡接應。那個人是佔領軍的假聯絡人——別去，或者……讓他們嚐嚐自己的陷阱。',
+          'We sent no one to meet you there. That contact is an occupation plant—stay away, or… turn their own trap against them.',
+        )
+      : tr('確認：那艘船是我們的人。準時到，祝你平安。', 'Confirmed: that boat is ours. Be there on time. Stay safe.'),
   );
 }
 function talkElder() {
   INF.elder = 1;
   dlg(
-    '👴 廟口阿伯',
+    tr('👴 廟口阿伯', '👴 Old man at the temple'),
     INF.fake
-      ? '「那個戴鴨舌帽的少年仔？講話不是萬華腔，連華西街在哪都說不清楚，還一直問誰家有槍……你自己卡注意。」'
-      : '「那個人喔，以前在華西街幫人顧攤，嘴巴緊。他講的話可以信。」',
+      ? tr(
+          '「那個戴鴨舌帽的少年仔？講話不是萬華腔，連華西街在哪都說不清楚，還一直問誰家有槍……你自己卡注意。」',
+          '“That young fellow in the cap? He doesn’t sound like he is from Wanhua. Can’t even tell you where Huaxi Street is, and keeps asking who has a gun… Watch yourself.”',
+        )
+      : tr(
+          '「那個人喔，以前在華西街幫人顧攤，嘴巴緊。他講的話可以信。」',
+          '“That man? He used to mind stalls on Huaxi Street. Knows how to keep his mouth shut. You can trust him.”',
+        ),
     [],
   );
 }
@@ -2676,8 +2780,11 @@ function npcInteract() {
 function npcPrompt() {
   const P = player.pos;
   if (infRig?.root.visible && Math.hypot(P.x - infPos[0], P.z - infPos[1]) < 2.4)
-    return INF.hid ? '[E] 抓住假聯絡人' : '[E] 和聯絡人交談';
-  if (elderRig && Math.hypot(P.x - elderPos[0], P.z - elderPos[1]) < 2.4) return '[E] 和廟口阿伯聊天';
+    return INF.hid
+      ? tr('[E] 抓住假聯絡人', '[E] Grab the false contact')
+      : tr('[E] 和聯絡人交談', '[E] Talk to the contact');
+  if (elderRig && Math.hypot(P.x - elderPos[0], P.z - elderPos[1]) < 2.4)
+    return tr('[E] 和廟口阿伯聊天', '[E] Chat with the old man at the temple');
   return '';
 }
 function infMark(p: V2, col: number, txt: string) {
@@ -2731,10 +2838,22 @@ function springTrap(aware: boolean) {
       ration: 2,
     });
     c.label = '伏兵裝備箱';
-    log('你看穿了陷阱：伏兵還沒發現你。反伏擊，拿走他們的裝備！', '#ffd27a');
+    log(
+      tr(
+        '你看穿了陷阱：伏兵還沒發現你。反伏擊，拿走他們的裝備！',
+        'You saw through the trap. The ambushers have not spotted you yet. Turn the ambush on them and take their gear!',
+      ),
+      '#ffd27a',
+    );
   } else {
-    phone('⚠ 陷阱！', '岸邊四周的手電筒同時亮起——沒有船。快跑！鑽進巷子、騎樓，或者跳進河裡！');
-    slowDown('陷阱');
+    phone(
+      tr('⚠ 陷阱！', '⚠ A trap!'),
+      tr(
+        '岸邊四周的手電筒同時亮起——沒有船。快跑！鑽進巷子、騎樓，或者跳進河裡！',
+        'Flashlights flare all around the bank—there is no boat. Run! Duck into an alley or arcade, or jump into the river!',
+      ),
+    );
+    slowDown(tr('陷阱', 'Trap'));
   }
 }
 function updateInformant(dt: number) {
@@ -2758,7 +2877,13 @@ function updateInformant(dt: number) {
       v.position.set(r.p[0] + 7, 1, r.p[1] + 3);
       scene.add(v);
       infFx.push(v);
-      log('偵察：岸邊停著一台沒熄火的廂型車，泥地上沒有任何拖船痕跡……不對勁。', '#ffb0a0');
+      log(
+        tr(
+          '偵察：岸邊停著一台沒熄火的廂型車，泥地上沒有任何拖船痕跡……不對勁。',
+          'Recon: a van sits by the bank with its engine running. No boat-drag marks in the mud… Something is wrong.',
+        ),
+        '#ffb0a0',
+      );
     } else {
       const b = new THREE.Mesh(
         new THREE.CapsuleGeometry(0.6, 2.4, 3, 8),
@@ -2768,7 +2893,13 @@ function updateInformant(dt: number) {
       b.position.set(r.p[0] - 3, 0.4, r.p[1]);
       scene.add(b);
       infFx.push(b);
-      log('偵察：堤防下藏著一艘橡皮艇，泥地有新鮮的拖行痕跡。', '#a0ffb0');
+      log(
+        tr(
+          '偵察：堤防下藏著一艘橡皮艇，泥地有新鮮的拖行痕跡。',
+          'Recon: an inflatable boat is hidden below the levee. Fresh drag marks lead through the mud.',
+        ),
+        '#a0ffb0',
+      );
     }
   }
   const win = gameMin >= INF.rvT && gameMin < INF.rvT + 180;
@@ -2798,8 +2929,14 @@ function updateInformant(dt: number) {
         r.p,
         0xff2020,
         river
-          ? '你跳進冰冷的淡水河，順流漂離伏擊點。此處標記為危險區。'
-          : '你甩掉了追兵。此處標記為危險區——佔領軍掌握了你的行蹤。',
+          ? tr(
+              '你跳進冰冷的淡水河，順流漂離伏擊點。此處標記為危險區。',
+              'You jump into the icy Tamsui River and drift downstream, away from the ambush. This location is marked as dangerous.',
+            )
+          : tr(
+              '你甩掉了追兵。此處標記為危險區——佔領軍掌握了你的行蹤。',
+              'You lost your pursuers. This location is marked as dangerous—the occupation forces know where you have been.',
+            ),
       );
       if (river) P.x = bounds.minx + 6;
       sols
@@ -2814,13 +2951,21 @@ function updateInformant(dt: number) {
       infPos = INF.hid;
       infRig.root.position.set(infPos[0], 0, infPos[1]);
       phone(
-        '📻 自由之聲',
-        `有人看到那個出賣你的聯絡人躲在 ${sectorNames[sectorOf(infPos[0], infPos[1])]} 一帶。抓住他！`,
+        tr('📻 自由之聲', '📻 Voice of Freedom'),
+        getLanguage() === 'en'
+          ? `Someone spotted the contact who betrayed you hiding near ${sectorNames[sectorOf(infPos[0], infPos[1])]}. Catch him!`
+          : `有人看到那個出賣你的聯絡人躲在 ${sectorNames[sectorOf(infPos[0], infPos[1])]} 一帶。抓住他！`,
       );
     }
     if (INF.saw && trapSols.every(s => s.state === 'dead')) {
       INF.esc = 1;
-      log('伏兵全滅。假聯絡人逃回街區躲了起來……', '#ffd27a');
+      log(
+        tr(
+          '伏兵全滅。假聯絡人逃回街區躲了起來……',
+          'All ambushers defeated. The false contact fled back into the neighborhood to hide…',
+        ),
+        '#ffd27a',
+      );
       INF.hid = freeNear([infPos[0] + 30, infPos[1] - 20]);
       infPos = INF.hid;
       infRig.root.position.set(infPos[0], 0, infPos[1]);
@@ -2879,7 +3024,7 @@ function airdrop(at?: V2) {
     s.target = [p![0] + (rnd() - 0.5) * 4, p![1] + (rnd() - 0.5) * 4];
     s.timer = 900;
   });
-  slowDown('空投落地');
+  slowDown(tr('空投落地', 'Airdrop landed'));
 }
 function updateSmoke(dt: number) {
   if (!smoke) return;
@@ -2937,14 +3082,14 @@ function renderSpeed() {
     b.classList.toggle('on', +(b as HTMLElement).dataset.s! === (player.sleeping ? 20 : speed)),
   );
   (el.querySelector('.st') as HTMLElement).textContent = player.sleeping
-    ? '💤 睡眠快轉'
+    ? tr('💤 睡眠快轉', '💤 Sleep fast-forward')
     : speed > 1
       ? `⏩ ×${speed}`
       : '▶ ×1';
 }
 function setSpeed(v: number) {
   if (v > 1 && dangerNear()) {
-    log('附近有敵情，無法快轉', '#f99');
+    log(tr('附近有敵情，無法快轉', 'Enemies nearby—cannot fast-forward'), '#f99');
     v = 1;
   }
   speed = v;
@@ -2953,12 +3098,12 @@ function setSpeed(v: number) {
 function slowDown(why: string) {
   if (speed > 1) {
     speed = 1;
-    log(`⏸ 時間恢復正常：${why}`, '#ffb060');
+    log(getLanguage() === 'en' ? `⏸ Normal speed restored: ${why}` : `⏸ 時間恢復正常：${why}`, '#ffb060');
     renderSpeed();
   }
   if (player.sleeping) {
     player.sleeping = false;
-    log(`你被驚醒了！（${why}）`, '#f66');
+    log(getLanguage() === 'en' ? `You wake with a start! (${why})` : `你被驚醒了！（${why}）`, '#f66');
     renderSpeed();
   }
 }
@@ -2966,7 +3111,7 @@ const solActive = (s: Sol, night: boolean) => (!s.night || night) && (!s.day || 
 // ---------- v22.11 PLA radio net: a contact pulls nearby idle squads; callouts are audible / logged ----------
 let radioCd = 0;
 const aiStats = { radio: 0, flank: 0, retreat: 0, search: 0, grenades: 0, grenHit: 0, campMax: 0 };
-function radio(p: V2, from: Sol | null, what = '發現目標') {
+function radio(p: V2, from: Sol | null, what = tr('發現目標', 'Target spotted')) {
   if (radioCd > 0) return;
   radioCd = SQ.AI.radioCd;
   aiStats.radio++;
@@ -2985,14 +3130,19 @@ function radio(p: V2, from: Sol | null, what = '發現目標') {
   const d = Math.hypot(player.pos.x - ox, player.pos.z - oz);
   if (d < 40) {
     AU.radio(d);
-    log(`（無線電）「${what}，請求支援！」${n ? `——附近 ${n} 名士兵正趕來` : ''}`, '#f9a');
+    log(
+      getLanguage() === 'en'
+        ? `(Radio) “${what}, requesting support!”${n ? `—${n} nearby soldiers are on their way` : ''}`
+        : `（無線電）「${what}，請求支援！」${n ? `——附近 ${n} 名士兵正趕來` : ''}`,
+      '#f9a',
+    );
   }
 }
 function callout(s: Sol, msg: string) {
   const d = s.pos.distanceTo(player.pos);
   if (d > 35) return;
   AU.radio(d);
-  log(`（無線電）「${msg}」`, '#f9a');
+  log(getLanguage() === 'en' ? `(Radio) “${msg}”` : `（無線電）「${msg}」`, '#f9a');
 }
 // ---------- v22.11 grenades: flush a player who camps out of sight ----------
 type Gren = { s: V2; p: V2; t: number; fuse: number; mesh: THREE.Mesh; w?: { g: THREE.Group; on: boolean } };
@@ -3012,8 +3162,8 @@ function throwGrenade(s: Sol) {
   scene.add(mesh);
   grens.push({ s: [s.pos.x, s.pos.z], p, t: 0, fuse: SQ.AI.grenFuse, mesh });
   s.rig.shoveT = 0.35; // overhand throw reads from the shove pose
-  callout(s, '手榴彈！');
-  log('⚠ 手榴彈！快離開紅圈', '#f66');
+  callout(s, tr('手榴彈！', 'Grenade!'));
+  log(tr('⚠ 手榴彈！快離開紅圈', '⚠ Grenade! Get out of the red circle'), '#f66');
 }
 function updateGrenades(dt: number, night: boolean) {
   grenCd -= dt;
@@ -3085,7 +3235,7 @@ function updateGrenades(dt: number, night: boolean) {
     flashRed();
     if (dmg > 15 && !player.bleed) {
       player.bleed = true;
-      log('被手榴彈破片擊中，流血了！', '#f66');
+      log(tr('被手榴彈破片擊中，流血了！', 'Grenade fragments hit you. You are bleeding!'), '#f66');
     }
   }
 }
@@ -3098,7 +3248,7 @@ function assignSquads(night: boolean) {
       if ((role === 'flankL' || role === 'flankR') && s.role !== role && s.flankT === undefined) {
         s.flankT = SQ.AI.flankT;
         aiStats.flank++;
-        callout(s, role === 'flankL' ? '左翼包抄！' : '右翼包抄！');
+        callout(s, role === 'flankL' ? tr('左翼包抄！', 'Flank left!') : tr('右翼包抄！', 'Flank right!'));
       }
       s.role = role;
       s.slot = i;
@@ -3156,7 +3306,7 @@ function clutterTick(dt: number) {
 function noise(x: number, z: number, r: number) {
   if (started && r >= 10) {
     const d = Math.hypot(player.pos.x - x, player.pos.z - z);
-    if (d > 1.5 && d < r + 10) slowDown('附近有聲響');
+    if (d > 1.5 && d < r + 10) slowDown(tr('附近有聲響', 'Noise nearby'));
   }
   for (const s of sols)
     if (s.state !== 'dead' && s.state !== 'combat' && solActive(s, isNight()) && s.mesh.visible) {
@@ -3217,7 +3367,7 @@ addEventListener('keydown', e => {
   if (!started) return;
   if (is('sneak')) {
     player.sneak = !player.sneak;
-    log(player.sneak ? '進入潛行' : '解除潛行');
+    log(player.sneak ? tr('進入潛行', 'Sneaking enabled') : tr('解除潛行', 'Sneaking disabled'));
   }
   if (is('interact')) interact();
   if (is('barricade')) barricade();
@@ -3269,18 +3419,21 @@ function togglePause(on = !pauseOpen(), fromBack = false) {
     pauseEl.id = 'pmenu';
     pauseEl.className = 'hidden';
     pauseEl.innerHTML =
-      '<div class="phead"><b>⏸ 已暫停</b><button class="px" aria-label="繼續">✕</button></div><em id="pmp"></em>' +
+      tr(
+        '<div class="phead"><b>⏸ 已暫停</b><button class="px" aria-label="繼續">✕</button></div><em id="pmp"></em>',
+        '<div class="phead"><b>⏸ Paused</b><button class="px" aria-label="Resume">✕</button></div><em id="pmp"></em>',
+      ) +
       [
-        ['go', '繼續'],
-        ['save', '存檔'],
-        ['load', '讀檔'],
-        ['map', '地圖'],
-        ['inv', '背包'],
-        ['surv', '避難所'],
-        ['rlog', '收音機紀錄'],
-        ['set', '設定'],
-        ['help', '操作說明'],
-        ['quit', '返回主選單'],
+        ['go', tr('繼續', 'Resume')],
+        ['save', tr('存檔', 'Save')],
+        ['load', tr('讀檔', 'Load')],
+        ['map', tr('地圖', 'Map')],
+        ['inv', tr('背包', 'Inventory')],
+        ['surv', tr('避難所', 'Shelter')],
+        ['rlog', tr('收音機紀錄', 'Radio log')],
+        ['set', tr('設定', 'Settings')],
+        ['help', tr('操作說明', 'Controls')],
+        ['quit', tr('返回主選單', 'Return to main menu')],
       ]
         .map(([a, t]) => `<button data-a="${a}">${t}</button>`)
         .join('');
@@ -3291,12 +3444,15 @@ function togglePause(on = !pauseOpen(), fromBack = false) {
           if (a === 'go') togglePause(false);
           else if (a === 'save') {
             save();
-            log('已存檔', '#9f9');
-            b.textContent = '已存檔 ✓';
-            setTimeout(() => (b.textContent = '存檔'), 1200);
+            log(tr('已存檔', 'Saved'), '#9f9');
+            b.textContent = tr('已存檔 ✓', 'Saved ✓');
+            setTimeout(() => (b.textContent = tr('存檔', 'Save')), 1200);
           } else if (a === 'load') {
-            if (!hasSave()) return log('沒有存檔', '#f99');
-            if (!confirm('讀取上次存檔？目前未存的進度會遺失。')) return;
+            if (!hasSave()) return log(tr('沒有存檔', 'No saved game'), '#f99');
+            if (
+              !confirm(tr('讀取上次存檔？目前未存的進度會遺失。', 'Load the last save? Unsaved progress will be lost.'))
+            )
+              return;
             sessionStorage.setItem('dt.autoload', '1');
             NOSAVE = true;
             location.reload();
@@ -3309,11 +3465,16 @@ function togglePause(on = !pauseOpen(), fromBack = false) {
           } else if (a === 'surv') {
             togglePause(false);
             openSurv('home');
-          } else if (a === 'rlog') openPanel('📻 收音機紀錄', radioLogHtml());
+          } else if (a === 'rlog') openPanel(tr('📻 收音機紀錄', '📻 Radio log'), radioLogHtml());
           else if (a === 'set') openSettings();
           else if (a === 'help') openHelp();
           else if (a === 'quit') {
-            if (!confirm('返回主選單？進度會自動存檔。')) return;
+            if (
+              !confirm(
+                tr('返回主選單？進度會自動存檔。', 'Return to the main menu? Progress will be saved automatically.'),
+              )
+            )
+              return;
             save();
             NOSAVE = true;
             location.reload();
@@ -3328,7 +3489,13 @@ function togglePause(on = !pauseOpen(), fromBack = false) {
   pauseEl.classList.toggle('hidden', !on);
   if (on && !was) histPush();
   else if (!on && was && !fromBack) histPop();
-  ($('pmp') as HTMLElement).textContent = on && MP ? '多人連線中：只有你的畫面暫停，世界仍在進行' : '';
+  ($('pmp') as HTMLElement).textContent =
+    on && MP
+      ? tr(
+          '多人連線中：只有你的畫面暫停，世界仍在進行',
+          'Multiplayer: only your screen is paused. The world keeps running.',
+        )
+      : '';
   paused = on && !MP;
   if (on) for (const k in keys) keys[k] = false;
 }
@@ -3459,26 +3626,51 @@ function setupSnipers() {
         player.rig.hurtT = 0.35;
         player.hp -= dmg;
         if (!player.bleed && Math.random() < 0.5) player.bleed = true;
-        log('砰！你被狙擊手擊中！快找掩蔽！', '#f44');
+        log(tr('砰！你被狙擊手擊中！快找掩蔽！', 'Bang! A sniper hit you! Get to cover!'), '#f44');
       },
       warn: on => {
         snpWarn.style.display = on ? 'block' : 'none';
-        snpWarn.textContent = '⚠ 你被狙擊手鎖定！躲進騎樓、車後或巷子';
-        if (on) slowDown('狙擊手鎖定');
+        snpWarn.textContent = tr(
+          '⚠ 你被狙擊手鎖定！躲進騎樓、車後或巷子',
+          '⚠ A sniper has you in their sights! Hide under an arcade, behind a car or in an alley.',
+        );
+        if (on) slowDown(tr('狙擊手鎖定', 'Sniper targeting you'));
       },
       sound: (k, s) => snpSound(k, s),
       cleared: s => {
         surv.snpDead!.includes(s.id) || surv.snpDead!.push(s.id);
         player.kills++;
-        log(`狙擊手已清除：${s.name} 一帶白天安全了。`, '#9f9');
-        gmap?.intel('snpok' + s.id, s.j[0], s.j[1], 'safe', `已清除狙擊點：${s.name}`);
+        log(
+          getLanguage() === 'en'
+            ? `Sniper eliminated: ${translateLabel(s.name)} is now safe during the day.`
+            : `狙擊手已清除：${translateLabel(s.name)} 一帶白天安全了。`,
+          '#9f9',
+        );
+        gmap?.intel(
+          'snpok' + s.id,
+          s.j[0],
+          s.j[1],
+          'safe',
+          getLanguage() === 'en'
+            ? `Sniper position cleared: ${translateLabel(s.name)}`
+            : `已清除狙擊點：${translateLabel(s.name)}`,
+        );
         makeCont('snpbox' + s.id, [s.p[0], s.p[1]], 'crate', undefined, { a762n: 5, bandage: 1 });
       },
     },
     surv.snpDead,
   );
   for (const s of snp.list)
-    if (!s.dead) gmap?.intel('snp' + s.id, s.j[0], s.j[1], 'dng', `狙擊手（白天 06:00–18:30 危險）：${s.name}`);
+    if (!s.dead)
+      gmap?.intel(
+        'snp' + s.id,
+        s.j[0],
+        s.j[1],
+        'dng',
+        getLanguage() === 'en'
+          ? `Sniper (dangerous from 06:00 to 18:30): ${translateLabel(s.name)}`
+          : `狙擊手（白天 06:00–18:30 危險）：${translateLabel(s.name)}`,
+      );
 }
 /** stairwell door of a sniper building near the player */
 function roofDoor() {
@@ -3494,7 +3686,7 @@ function roofToggle() {
     const d = roofB.door!;
     player.pos.set(d.p[0], 0, d.p[1]);
     roofB = null;
-    log('你從樓梯間下到街上。');
+    log(tr('你從樓梯間下到街上。', 'You descend the stairwell to the street.'));
     return true;
   }
   const s = roofDoor();
@@ -3502,7 +3694,15 @@ function roofToggle() {
   roofB = s.b;
   const c = s.b.c;
   player.pos.set(c[0] + (s.p[0] - c[0]) * 0.45, 0, c[1] + (s.p[1] - c[1]) * 0.45);
-  log(s.dead ? '你爬上了頂樓。' : '你悄悄爬上頂樓——狙擊手就在前面。靠近後近戰。', '#fd9');
+  log(
+    s.dead
+      ? tr('你爬上了頂樓。', 'You climb onto the rooftop.')
+      : tr(
+          '你悄悄爬上頂樓——狙擊手就在前面。靠近後近戰。',
+          'You quietly reach the roof. The sniper is just ahead. Get close for a melee attack.',
+        ),
+    '#fd9',
+  );
   return true;
 }
 function scopeAllowed() {
@@ -3524,7 +3724,7 @@ function scopeFire() {
   const k = player.equip;
   const d = ITEMS[k];
   if (!d || player.cd > 0) return;
-  if (!player.inv[d.ammo!]) return log('沒有子彈了', '#f99');
+  if (!player.inv[d.ammo!]) return log(tr('沒有子彈了', 'Out of ammunition'), '#f99');
   if (--player.inv[d.ammo!] <= 0) delete player.inv[d.ammo!];
   player.cd = d.cd;
   player.rig.shootT = 0.14;
@@ -3560,10 +3760,10 @@ function scopeFire() {
   if (moral && moral.t > 0 && Math.hypot(r.p.x - moral.x, r.p.z - moral.z) < 2.5) return moralEnd(true);
   if (H?.s) {
     snp!.hit(H.s, d.dmg, H.head);
-    log(H.head ? '爆頭！' : '命中狙擊手軀幹', '#ff9');
+    log(H.head ? tr('爆頭！', 'Headshot!') : tr('命中狙擊手軀幹', 'Hit the sniper in the torso'), '#ff9');
   } else if (H?.sol) {
     damageSol(H.sol, H.head ? 999 : d.dmg, false);
-    log(H.head ? '爆頭！' : '命中', '#ff9');
+    log(H.head ? tr('爆頭！', 'Headshot!') : tr('命中', 'Hit'), '#ff9');
   }
 }
 /** the moral moment: through the scope, an enemy soldier helping an injured civilian */
@@ -3593,7 +3793,10 @@ function moralStart() {
       soldier.root.rotation.y = civ.root.rotation.y = Math.atan2(-dir.z, dir.x);
       scene.add(soldier.root, civ.root);
       moral = { soldier, civ, x, z, t: 20 };
-      scope.note.textContent = '一名解放軍士兵正扶著受傷的阿嬤走向路邊。　[左鍵] 開槍　／　放開右鍵：放過';
+      scope.note.textContent = tr(
+        '一名解放軍士兵正扶著受傷的阿嬤走向路邊。　[左鍵] 開槍　／　放開右鍵：放過',
+        'A PLA soldier is helping an injured elderly woman to the roadside. [Left click] Shoot / Release right click: spare him',
+      );
       return;
     }
 }
@@ -3604,8 +3807,21 @@ function moralEnd(shot: boolean) {
   if (shot) {
     moral.soldier.root.rotation.x = -Math.PI / 2;
     player.kills++;
-    log('你扣下了扳機。阿嬤跌坐在地上，抬頭看向槍聲的方向。', '#f99');
-  } else log('你放過了他。他把阿嬤扶到騎樓下，轉身離開。', '#9cf');
+    log(
+      tr(
+        '你扣下了扳機。阿嬤跌坐在地上，抬頭看向槍聲的方向。',
+        'You pull the trigger. The elderly woman falls to the ground and looks toward the gunshot.',
+      ),
+      '#f99',
+    );
+  } else
+    log(
+      tr(
+        '你放過了他。他把阿嬤扶到騎樓下，轉身離開。',
+        'You spare him. He helps the elderly woman under the arcade, then walks away.',
+      ),
+      '#9cf',
+    );
   scope.note.textContent = '';
   const m = moral;
   moral.t = 0;
@@ -3647,11 +3863,23 @@ function useItem(k: string) {
   if (!player.inv[k]) return;
   if (d.kind === 'melee' || d.kind === 'gun') {
     player.equip = player.equip === k ? '' : k;
-    log(player.equip ? `裝備了 ${d.name}` : '收起武器');
+    log(
+      player.equip
+        ? getLanguage() === 'en'
+          ? `Equipped ${d.name}`
+          : `裝備了 ${d.name}`
+        : tr('收起武器', 'Weapon holstered'),
+    );
   } else if (k === 'rocradio_b') {
     const ok = player.inv.lipo && (player.inv.vtx || player.inv.lipo >= 2 || ROLE.skills.repair);
     if (!ok) {
-      log('修理需要：鋰電池＋圖傳模組（或 2 顆鋰電池）', '#f99');
+      log(
+        tr(
+          '修理需要：鋰電池＋圖傳模組（或 2 顆鋰電池）',
+          'Repair requires a LiPo battery and video transmitter (or 2 LiPo batteries).',
+        ),
+        '#f99',
+      );
       return;
     }
     const use = ROLE.skills.repair ? ['lipo'] : player.inv.vtx ? ['lipo', 'vtx'] : ['lipo', 'lipo'];
@@ -3660,9 +3888,15 @@ function useItem(k: string) {
     }
     delete player.inv[k];
     addItem('rocradio', 1);
-    mapIntelOutposts('解放軍哨點（國軍情資）');
-    if (evac) gmap?.intel('evac0', evac.pos[0], evac.pos[1], 'evac', '撤離點（國軍）');
-    log('📻 無線電修好了！可以呼叫國軍裝甲支援（通話會引來巡邏）', '#9f9');
+    mapIntelOutposts(tr('解放軍哨點（國軍情資）', 'PLA checkpoint (ROC intelligence)'));
+    if (evac) gmap?.intel('evac0', evac.pos[0], evac.pos[1], 'evac', tr('撤離點（國軍）', 'Extraction point (ROC)'));
+    log(
+      tr(
+        '📻 無線電修好了！可以呼叫國軍裝甲支援（通話會引來巡邏）',
+        '📻 Radio repaired! You can call ROC armored support (radio chatter attracts patrols).',
+      ),
+      '#9f9',
+    );
   } else if (k === 'tmap') {
     if (--player.inv[k] <= 0) delete player.inv[k];
     const si = Math.floor(Math.random() * NSEC);
@@ -3670,19 +3904,24 @@ function useItem(k: string) {
       z0 = SECTORS[si].z - 250;
     gmap?.revealRect(x0, z0, x0 + 500, z0 + 500);
     checkpoints.forEach((c, n) => {
-      if (sectorOf(c[0], c[1]) === si) gmap?.intel('out' + n, c[0], c[1], 'out', '解放軍哨點');
+      if (sectorOf(c[0], c[1]) === si) gmap?.intel('out' + n, c[0], c[1], 'out', tr('解放軍哨點', 'PLA checkpoint'));
     });
     for (const c of conts.filter(c => c.p && sectorOf(c.p[0], c.p[1]) === si).slice(0, 3))
-      gmap?.intel('sup' + c.id, c.p[0], c.p[1], 'sup', '手繪：物資');
+      gmap?.intel('sup' + c.id, c.p[0], c.p[1], 'sup', tr('手繪：物資', 'Hand-drawn: supplies'));
     gmap?.save();
-    log(`📜 攤開手繪地圖：${SECTOR_LABEL(si)} 街區的巷弄與哨點已標上地圖（按 M）`, '#ffd27a');
+    log(
+      getLanguage() === 'en'
+        ? `📜 Unfolded the hand-drawn map: ${SECTOR_LABEL(si)} alleys and checkpoints added to the map (press M).`
+        : `📜 攤開手繪地圖：${SECTOR_LABEL(si)} 街區的巷弄與哨點已標上地圖（按 M）`,
+      '#ffd27a',
+    );
     closePanel();
   } else if (k === 'rocradio') {
     callSupport();
     closePanel();
   } else if (k === 'fpv') {
     if (bldAt(player.pos.x, player.pos.z)) {
-      log('在室內無法起飛，先到戶外', '#f99');
+      log(tr('在室內無法起飛，先到戶外', 'Cannot launch indoors. Go outside first.'), '#f99');
       return;
     }
     if (--player.inv[k] <= 0) delete player.inv[k];
@@ -3694,7 +3933,7 @@ function useItem(k: string) {
       .filter(([q, n]) => (player.inv[q] || 0) < n)
       .map(([q, n]) => `${ITEMS[q].name}×${n - (player.inv[q] || 0)}`);
     if (miss.length) {
-      log('還缺：' + miss.join('、'), '#f99');
+      log(tr('還缺：', 'Still needed: ') + miss.join('、'), '#f99');
       return;
     }
     for (const [q, n] of Object.entries(need)) {
@@ -3702,11 +3941,15 @@ function useItem(k: string) {
       if (player.inv[q] <= 0) delete player.inv[q];
     }
     addItem('fpv', 1);
-    log('組好了一架 FPV 自殺無人機！', '#9f9');
+    log(tr('組好了一架 FPV 自殺無人機！', 'FPV attack drone assembled!'), '#9f9');
   } else if (d.mag && d.ammo) {
     player.inv[d.ammo] = (player.inv[d.ammo] || 0) + d.mag;
     if (--player.inv[k] <= 0) delete player.inv[k];
-    log(`退出 ${d.mag} 發 ${ITEMS[d.ammo].name}`);
+    log(
+      getLanguage() === 'en'
+        ? `Unloaded ${d.mag} rounds of ${ITEMS[d.ammo].name}`
+        : `退出 ${d.mag} 發 ${ITEMS[d.ammo].name}`,
+    );
   } else if (d.kind === 'food' || d.kind === 'drink' || d.kind === 'med') {
     player.hunger = clamp(player.hunger + (d.hunger || 0), 0, 100);
     player.thirst = clamp(player.thirst + (d.thirst || 0), 0, 100);
@@ -3714,19 +3957,33 @@ function useItem(k: string) {
     player.hp = clamp(player.hp + (d.hp || 0) * (d.kind === 'med' ? (ROLE.skills.medic ?? 1) : 1), 0, 100);
     if (d.stopBleed && player.bleed) {
       player.bleed = false;
-      log('止血了', '#9f9');
+      log(tr('止血了', 'Bleeding stopped'), '#9f9');
     }
-    log(`使用了 ${d.name}`);
+    log(getLanguage() === 'en' ? `Used ${d.name}` : `使用了 ${d.name}`);
     if (--player.inv[k] <= 0) delete player.inv[k];
   } else if (k === 'bucket') {
     if (bldAt(player.pos.x, player.pos.z)) {
-      log('水桶要放在戶外（沒有屋頂遮的地方）才接得到雨', '#f99');
+      log(
+        tr(
+          '水桶要放在戶外（沒有屋頂遮的地方）才接得到雨',
+          'Place the bucket outdoors, away from roofs, to collect rain.',
+        ),
+        '#f99',
+      );
       return;
     }
     makeBucket('pb' + Date.now(), [player.pos.x + 0.6, player.pos.z]);
     if (--player.inv[k] <= 0) delete player.inv[k];
-    log('放下了水桶，下雨時會慢慢裝滿雨水', '#9fd0ff');
-  } else log(k === 'plank' || k === 'hammer' ? '靠近門口按 B 封門（需要木板與鐵鎚）' : '子彈會在開槍時自動使用');
+    log(tr('放下了水桶，下雨時會慢慢裝滿雨水', 'Bucket placed. It will slowly fill when it rains.'), '#9fd0ff');
+  } else
+    log(
+      k === 'plank' || k === 'hammer'
+        ? tr(
+            '靠近門口按 B 封門（需要木板與鐵鎚）',
+            'Press B near a door to barricade it (requires a plank and hammer).',
+          )
+        : tr('子彈會在開槍時自動使用', 'Ammunition is used automatically when firing.'),
+    );
   renderPanel();
 }
 let curCont: Cont | null = null;
@@ -3741,31 +3998,40 @@ function renderPanel() {
     p.appendChild(c);
     return c;
   };
-  const inv = col(`背包（${weight().toFixed(1)} / 15 kg）`);
+  const inv = col(
+    getLanguage() === 'en' ? `Inventory (${weight().toFixed(1)} / 15 kg)` : `背包（${weight().toFixed(1)} / 15 kg）`,
+  );
   for (const [k, n] of Object.entries(player.inv)) {
     const d = ITEMS[k];
     const e = document.createElement('div');
     e.className = 'it';
-    e.innerHTML = `<span><img src="${iconURL(k)}">${d.name}${d.cal ? `<small style="opacity:.6"> ${d.cal}${d.cap ? `・${d.cap}發` : ''}・${d.w}kg</small>` : ''}${player.equip === k ? ' ★' : ''} ×${n}</span><small>${{ food: '食用', drink: '飲用', med: '治療', melee: '裝備', gun: '裝備', ammo: '彈藥', tool: '工具' }[d.kind]}</small>`;
+    e.innerHTML =
+      getLanguage() === 'en'
+        ? `<span><img src="${iconURL(k)}">${d.name}${d.cal ? `<small style="opacity:.6"> ${d.cal}${d.cap ? `・${d.cap} rounds` : ''}・${d.w}kg</small>` : ''}${player.equip === k ? ' ★' : ''} ×${n}</span><small>${{ food: 'Eat', drink: 'Drink', med: 'Heal', melee: 'Equip', gun: 'Equip', ammo: 'Ammo', tool: 'Tool' }[d.kind]}</small>`
+        : `<span><img src="${iconURL(k)}">${d.name}${d.cal ? `<small style="opacity:.6"> ${d.cal}${d.cap ? `・${d.cap}發` : ''}・${d.w}kg</small>` : ''}${player.equip === k ? ' ★' : ''} ×${n}</span><small>${{ food: '食用', drink: '飲用', med: '治療', melee: '裝備', gun: '裝備', ammo: '彈藥', tool: '工具' }[d.kind]}</small>`;
     e.title = d.desc || '';
     e.onclick = () => useItem(k);
     inv.appendChild(e);
   }
-  if (!Object.keys(player.inv).length) inv.innerHTML += '<small>空的</small>';
+  if (!Object.keys(player.inv).length) inv.innerHTML += tr('<small>空的</small>', '<small>Empty</small>');
   if (curCont) {
-    const c = col(curCont.label);
+    const c = col(translateLabel(curCont.label));
     const cc = curCont;
     for (const [k, n] of Object.entries(cc.items)) {
       const e = document.createElement('div');
       e.className = 'it';
-      e.innerHTML = `<span><img src="${iconURL(k)}">${ITEMS[k].name} ×${n}</span><small>拿取</small>`;
+      e.innerHTML =
+        getLanguage() === 'en'
+          ? `<span><img src="${iconURL(k)}">${ITEMS[k].name} ×${n}</span><small>Take</small>`
+          : `<span><img src="${iconURL(k)}">${ITEMS[k].name} ×${n}</span><small>拿取</small>`;
       e.title = ITEMS[k].desc || '';
       e.onclick = () => take(cc, k);
       c.appendChild(e);
     }
-    if (!Object.keys(cc.items).length) c.innerHTML += '<small>已經搜刮一空</small>';
+    if (!Object.keys(cc.items).length)
+      c.innerHTML += tr('<small>已經搜刮一空</small>', '<small>Already looted</small>');
     const b = document.createElement('button');
-    b.textContent = '全部拿取';
+    b.textContent = tr('全部拿取', 'Take all');
     b.onclick = () => {
       for (const k of Object.keys(cc.items)) take(cc, k, true);
       renderPanel();
@@ -3773,14 +4039,14 @@ function renderPanel() {
     c.appendChild(b);
   }
   const close = document.createElement('button');
-  close.textContent = '關閉 (Esc)';
+  close.textContent = tr('關閉 (Esc)', 'Close (Esc)');
   close.onclick = closePanel;
   p.lastElementChild!.appendChild(close);
 }
 function take(c: Cont, k: string, all = false) {
   const n = all ? c.items[k] : ITEMS[k].kind === 'ammo' ? c.items[k] : 1;
   if (weight() + ITEMS[k].w * n > 15) {
-    log('背包太重了', '#f99');
+    log(tr('背包太重了', 'Inventory is too heavy'), '#f99');
     return;
   }
   addItem(k, n);
@@ -3855,11 +4121,11 @@ function doorNear(r: number) {
   return best;
 }
 function toggleDoor(d: LiveDoor) {
-  if (d.barricaded) return log('門已經封死了（B 拆除）', '#f99');
+  if (d.barricaded) return log(tr('門已經封死了（B 拆除）', 'Door is barricaded (B to remove).'), '#f99');
   d.open = !d.open;
   doorSound(!!d.open);
   noise(d.p[0], d.p[1], 4);
-  log(d.open ? '開門' : '關門', '#ccc');
+  log(d.open ? tr('開門', 'Open door') : tr('關門', 'Close door'), '#ccc');
 }
 function collideDoors(pos: THREE.Vector3, r = 0.35) {
   for (const d of doors as LiveDoor[]) {
@@ -3916,22 +4182,45 @@ function openSurv(kind: 'home' | 'trade' | 'moral') {
     let h = '';
     if (kind === 'home') {
       const here = atHome();
-      h += `<h3>🏠 避難所・第 ${S.day} 天 ${SV.isNight(gameMin) ? '🌙 夜晚（出去搜刮）' : '☀ 白天（巡邏多，留在家）'}</h3>`;
-      h += `<p>${S.ev || ''}　平均心情 ${SV.avgMood(S)}　物資緊縮 ×${S.scarcity.toFixed(2)}　良心 ${S.karma}</p><table>`;
+      h +=
+        getLanguage() === 'en'
+          ? `<h3>🏠 Shelter・Day ${S.day} ${SV.isNight(gameMin) ? '🌙 Night (go scavenging)' : '☀ Day (heavy patrols; stay home)'}</h3>`
+          : `<h3>🏠 避難所・第 ${S.day} 天 ${SV.isNight(gameMin) ? '🌙 夜晚（出去搜刮）' : '☀ 白天（巡邏多，留在家）'}</h3>`;
+      h +=
+        getLanguage() === 'en'
+          ? `<p>${S.ev || ''} Average morale ${SV.avgMood(S)} Supply scarcity ×${S.scarcity.toFixed(2)} Conscience ${S.karma}</p><table>`
+          : `<p>${S.ev || ''}　平均心情 ${SV.avgMood(S)}　物資緊縮 ×${S.scarcity.toFixed(2)}　良心 ${S.karma}</p><table>`;
       for (const g of S.group)
-        h += `<tr class="${g.dead ? 'dead' : g.here ? '' : 'away'}"><td><b>${g.name}</b><br><small>${g.role}</small></td><td>${
-          g.dead
-            ? '💀 已過世'
-            : g.here
-              ? `飽 ${Math.round(g.hunger)}｜病 ${Math.round(g.sick)}｜傷 ${Math.round(g.hurt)}｜心情 ${Math.round(g.mood)}`
-              : '還沒來'
-        }</td></tr>`;
-      h += `</table><p>存糧：${
-        Object.entries(S.stash)
-          .filter(([, n]) => n > 0)
-          .map(([k, n]) => `${iname(k)}×${n}`)
-          .join('、') || '空的'
-      }</p>`;
+        h +=
+          getLanguage() === 'en'
+            ? `<tr class="${g.dead ? 'dead' : g.here ? '' : 'away'}"><td><b>${SV.survivorName(g)}</b><br><small>${SV.survivorRole(g)}</small></td><td>${
+                g.dead
+                  ? '💀 Deceased'
+                  : g.here
+                    ? `Fullness ${Math.round(g.hunger)} | Illness ${Math.round(g.sick)} | Injury ${Math.round(g.hurt)} | Morale ${Math.round(g.mood)}`
+                    : 'Not here yet'
+              }</td></tr>`
+            : `<tr class="${g.dead ? 'dead' : g.here ? '' : 'away'}"><td><b>${SV.survivorName(g)}</b><br><small>${SV.survivorRole(g)}</small></td><td>${
+                g.dead
+                  ? '💀 已過世'
+                  : g.here
+                    ? `飽 ${Math.round(g.hunger)}｜病 ${Math.round(g.sick)}｜傷 ${Math.round(g.hurt)}｜心情 ${Math.round(g.mood)}`
+                    : '還沒來'
+              }</td></tr>`;
+      h +=
+        getLanguage() === 'en'
+          ? `</table><p>Stockpile: ${
+              Object.entries(S.stash)
+                .filter(([, n]) => n > 0)
+                .map(([k, n]) => `${iname(k)}×${n}`)
+                .join('、') || 'Empty'
+            }</p>`
+          : `</table><p>存糧：${
+              Object.entries(S.stash)
+                .filter(([, n]) => n > 0)
+                .map(([k, n]) => `${iname(k)}×${n}`)
+                .join('、') || '空的'
+            }</p>`;
       h += '<div class="row">';
       for (const [k, u] of Object.entries(SV.UPG)) {
         const has = S.upg[k as SV.Upg];
@@ -3944,29 +4233,53 @@ function openSurv(kind: 'home' | 'trade' | 'moral') {
       }
       h += '</div><div class="row">';
       h +=
-        btn('dep', '把食物／水／藥放進存糧', !here) + btn('pray', '🙏 神明廳拜拜', !here) + btn('x', '關閉') + '</div>';
-      if (!here) h += '<p><em>回到家（出生點）才能建造和存放。</em></p>';
+        btn('dep', tr('把食物／水／藥放進存糧', 'Deposit food / water / medicine'), !here) +
+        btn('pray', tr('🙏 神明廳拜拜', '🙏 Pray at the household shrine'), !here) +
+        btn('x', tr('關閉', 'Close')) +
+        '</div>';
+      if (!here)
+        h += tr(
+          '<p><em>回到家（出生點）才能建造和存放。</em></p>',
+          '<p><em>Return home (your spawn point) to build or store supplies.</em></p>',
+        );
       h += `<ul>${S.log
         .slice(0, 6)
         .map(t => `<li>${t}</li>`)
         .join('')}</ul>`;
     } else if (kind === 'trade') {
       const t = tradeAt();
-      h += `<h3>🤝 ${t ? t.name : '以物易物'}</h3><p>你有 長樂菸×${player.inv.cig || 0}。今天的行情（物資緊縮 ×${S.scarcity.toFixed(2)}）：</p><div class="row">`;
+      h +=
+        getLanguage() === 'en'
+          ? `<h3>🤝 ${t ? t.name : 'Barter'}</h3><p>You have Changle cigarettes ×${player.inv.cig || 0}. Today's prices (supply scarcity ×${S.scarcity.toFixed(2)}): </p><div class="row">`
+          : `<h3>🤝 ${t ? t.name : '以物易物'}</h3><p>你有 長樂菸×${player.inv.cig || 0}。今天的行情（物資緊縮 ×${S.scarcity.toFixed(2)}）：</p><div class="row">`;
       for (const k of Object.keys(SV.VAL)) {
         if (k === 'cig') continue;
         const pz = SV.price(S, k);
-        h += btn('b:' + k, `買 ${iname(k)}<small>${pz} 包菸</small>`, (player.inv.cig || 0) < pz);
-        if ((player.inv[k] || 0) > 0) h += btn('s:' + k, `賣 ${iname(k)}<small>得 ${Math.max(1, pz - 1)} 包菸</small>`);
+        h += btn(
+          'b:' + k,
+          getLanguage() === 'en'
+            ? `Buy ${iname(k)}<small>${pz} packs of cigarettes</small>`
+            : `買 ${iname(k)}<small>${pz} 包菸</small>`,
+          (player.inv.cig || 0) < pz,
+        );
+        if ((player.inv[k] || 0) > 0)
+          h += btn(
+            's:' + k,
+            getLanguage() === 'en'
+              ? `Sell ${iname(k)}<small>Receive ${Math.max(1, pz - 1)} packs of cigarettes</small>`
+              : `賣 ${iname(k)}<small>得 ${Math.max(1, pz - 1)} 包菸</small>`,
+          );
       }
-      h += '</div>' + btn('x', '離開');
+      h += '</div>' + btn('x', tr('離開', 'Leave'));
     } else {
+      h += tr(
+        '<h3>🚪 這戶還有人住</h3><p>門縫裡，一位獨居的阿公縮在床邊，櫃子裡是他的藥和最後一點米。</p><div class="row">',
+        '<h3>🚪 Someone still lives here</h3><p>Through the doorway, you see an elderly man alone, huddled by his bed. His cabinet holds his medicine and the last of his rice.</p><div class="row">',
+      );
       h +=
-        '<h3>🚪 這戶還有人住</h3><p>門縫裡，一位獨居的阿公縮在床邊，櫃子裡是他的藥和最後一點米。</p><div class="row">';
-      h +=
-        btn('take', '還是拿走（大家心情 −，良心 −）') +
-        btn('give', '留一包米給他（良心 +）', !(player.inv.rice > 0)) +
-        btn('leave', '輕輕把門帶上') +
+        btn('take', tr('還是拿走（大家心情 −，良心 −）', 'Take it anyway (group morale −, conscience −)')) +
+        btn('give', tr('留一包米給他（良心 +）', 'Leave him a bag of rice (conscience +)'), !(player.inv.rice > 0)) +
+        btn('leave', tr('輕輕把門帶上', 'Quietly close the door')) +
         '</div>';
     }
     d.innerHTML = h;
@@ -3980,7 +4293,10 @@ function openSurv(kind: 'home' | 'trade' | 'moral') {
       const k = a.slice(2) as SV.Upg;
       for (const [i, n] of Object.entries(SV.UPG[k].cost)) player.inv[i] -= n;
       S.upg[k] = 1;
-      log(`🔨 避難所：${SV.UPG[k].name} 完成`, '#9f9');
+      log(
+        getLanguage() === 'en' ? `🔨 Shelter: ${SV.UPG[k].name} complete` : `🔨 避難所：${SV.UPG[k].name} 完成`,
+        '#9f9',
+      );
     } else if (a === 'dep') {
       for (const k of Object.keys(player.inv)) {
         const it = ITEMS[k];
@@ -3989,7 +4305,7 @@ function openSurv(kind: 'home' | 'trade' | 'moral') {
           delete player.inv[k];
         }
       }
-      log('物資放進了存糧。', '#9f9');
+      log(tr('物資放進了存糧。', 'Supplies added to the stockpile.'), '#9f9');
     } else if (a === 'pray') log(SV.pray(S), '#fd9');
     else if (a.startsWith('b:')) {
       const k = a.slice(2);
@@ -4008,7 +4324,13 @@ function openSurv(kind: 'home' | 'trade' | 'moral') {
         S.karma--;
         S.stole++;
         S.group.forEach(g => (g.mood = Math.max(0, g.mood - 8)));
-        log('你拿走了阿公的東西。回家的路上，誰都沒說話。', '#e99');
+        log(
+          tr(
+            '你拿走了阿公的東西。回家的路上，誰都沒說話。',
+            "You take the old man's belongings. Nobody speaks on the way home.",
+          ),
+          '#e99',
+        );
         (c as any).seen = 1;
         interact();
       } else if (a === 'give') {
@@ -4016,10 +4338,16 @@ function openSurv(kind: 'home' | 'trade' | 'moral') {
         S.karma += 2;
         S.gave++;
         S.group.forEach(g => (g.mood = Math.min(100, g.mood + 5)));
-        log('你留下一包米。阿公合掌說了聲多謝。', '#9f9');
+        log(
+          tr(
+            '你留下一包米。阿公合掌說了聲多謝。',
+            'You leave a bag of rice. The old man presses his palms together and thanks you.',
+          ),
+          '#9f9',
+        );
       } else {
         S.karma++;
-        log('你輕輕把門帶上。', '#ccc');
+        log(tr('你輕輕把門帶上。', 'You quietly close the door.'), '#ccc');
       }
       return;
     }
@@ -4046,8 +4374,12 @@ function metroUse() {
   player.vel.set(0, 0, 0);
   log(
     m.down
-      ? `🚇 由 ${m.gt.no} 號出口進入北都地下鐵 ${m.st.name}站${UT.power ? '（正常營運）' : '（停電・停駛中）'}`
-      : `從 ${m.gt.no} 號出口回到地面（${m.st.name}）`,
+      ? getLanguage() === 'en'
+        ? `🚇 Entered through exit ${m.gt.no} into Beidu Metro, ${translateLabel(m.st.name)} Station${UT.power ? '(running normally)' : '(blackout; service suspended)'}`
+        : `🚇 由 ${m.gt.no} 號出口進入北都地下鐵 ${translateLabel(m.st.name)}站${UT.power ? '（正常營運）' : '（停電・停駛中）'}`
+      : getLanguage() === 'en'
+        ? `Returned to street level through Exit ${m.gt.no} (${translateLabel(m.st.name)})`
+        : `從 ${m.gt.no} 號出口回到地面（${translateLabel(m.st.name)}）`,
     '#fc8',
   );
   return true;
@@ -4085,7 +4417,8 @@ function shopAt(): Shop | null {
 }
 function shopUse(sh: Shop) {
   if (UT.power) {
-    if (sh.kind === 'locker') log('🔒 投幣置物櫃：每一格都有人在用，鎖著。', '#ccc');
+    if (sh.kind === 'locker')
+      log(tr('🔒 投幣置物櫃：每一格都有人在用，鎖著。', '🔒 Coin lockers: all occupied and locked.'), '#ccc');
     else openShop(sh);
     return true;
   }
@@ -4099,7 +4432,12 @@ function shopUse(sh: Shop) {
   const list = Object.entries(got)
     .map(([k, n]) => `${ITEMS[k]?.name || k}×${n}`)
     .join('、');
-  log(`${tool ? `🔧 用${ITEMS[tool].name}撬開` : '💥 硬是砸開'}${sh.name}（好大聲）：${list}`, '#fc8');
+  log(
+    getLanguage() === 'en'
+      ? `${tool ? `🔧 Used ${ITEMS[tool].name} to pry open ` : '💥 Smashed open '}${sh.name} (very loud): ${list}`
+      : `${tool ? `🔧 用${ITEMS[tool].name}撬開` : '💥 硬是砸開'}${sh.name}（好大聲）：${list}`,
+    '#fc8',
+  );
   return true;
 }
 function openShop(sh: Shop) {
@@ -4108,11 +4446,13 @@ function openShop(sh: Shop) {
   d.id = 'shop';
   const draw = () =>
     (d.innerHTML =
-      `<h3>${sh.vend ? '🥤' : '🏪'} ${sh.name}</h3><p>錢包 NT$ ${wallet()}</p>` +
+      (getLanguage() === 'en'
+        ? `<h3>${sh.vend ? '🥤' : '🏪'} ${sh.name}</h3><p>Wallet NT$ ${wallet()}</p>`
+        : `<h3>${sh.vend ? '🥤' : '🏪'} ${sh.name}</h3><p>錢包 NT$ ${wallet()}</p>`) +
       sh.stock
         .map(([k, pr]) => `<button data-k="${k}" data-p="${pr}">${ITEMS[k]?.name || k}　NT$ ${pr}</button>`)
         .join('') +
-      '<button data-k="" class="x">離開</button>');
+      tr('<button data-k="" class="x">離開</button>', '<button data-k="" class="x">Leave</button>'));
   draw();
   d.onclick = e => {
     const t = e.target as HTMLElement;
@@ -4120,11 +4460,17 @@ function openShop(sh: Shop) {
     if (k == null) return;
     if (!k) return d.remove();
     const pr = Number(t.dataset.p);
-    if (wallet() < pr) return log('💸 錢不夠了', '#f99');
+    if (wallet() < pr) return log(tr('💸 錢不夠了', '💸 Not enough money'), '#f99');
     surv.cash = wallet() - pr;
     addItem(k);
     log(
-      sh.vend ? `🥤 喀噹！${ITEMS[k].name}掉了出來（NT$ ${pr}）` : `🏪 在${sh.name}買了 ${ITEMS[k].name}（NT$ ${pr}）`,
+      sh.vend
+        ? getLanguage() === 'en'
+          ? `🥤 Clunk! ${ITEMS[k].name} drops out (NT$ ${pr})`
+          : `🥤 喀噹！${ITEMS[k].name}掉了出來（NT$ ${pr}）`
+        : getLanguage() === 'en'
+          ? `🏪 Bought ${ITEMS[k].name} at ${sh.name} (NT$ ${pr})`
+          : `🏪 在${sh.name}買了 ${ITEMS[k].name}（NT$ ${pr}）`,
       '#cfc',
     );
     draw();
@@ -4136,9 +4482,19 @@ function openRide(i: number) {
   const d = document.createElement('div');
   d.id = 'ride';
   d.innerHTML =
-    `<h3>🚇 艋舺橘線・${metro[i].name}站</h3><p>選擇下車站（約 3 分鐘車程）</p>` +
-    metro.map((s, j) => (j === i ? '' : `<button data-j="${j}">${s.name}站 橘${s.no}</button>`)).join('') +
-    '<button data-j="-1" class="x">取消</button>';
+    (getLanguage() === 'en'
+      ? `<h3>🚇 Monga Orange Line · ${translateLabel(metro[i].name)} Station</h3><p>Choose your stop (about a 3-minute ride).</p>`
+      : `<h3>🚇 艋舺橘線・${translateLabel(metro[i].name)}站</h3><p>選擇下車站（約 3 分鐘車程）</p>`) +
+    metro
+      .map((s, j) =>
+        j === i
+          ? ''
+          : getLanguage() === 'en'
+            ? `<button data-j="${j}">${translateLabel(s.name)} Station O${s.no}</button>`
+            : `<button data-j="${j}">${translateLabel(s.name)}站 橘${s.no}</button>`,
+      )
+      .join('') +
+    tr('<button data-j="-1" class="x">取消</button>', '<button data-j="-1" class="x">Cancel</button>');
   d.onclick = e => {
     const j = Number((e.target as HTMLElement).dataset?.j ?? NaN);
     if (Number.isNaN(j)) return;
@@ -4152,10 +4508,18 @@ function rideTo(i: number, j: number) {
   riding = true;
   const f = document.createElement('div');
   f.id = 'ridefade';
-  f.innerHTML = `<div class="car"><div class="win"></div><div class="win"></div><div class="win"></div></div><p>車廂內・往 ${metro[j].name}站</p><small>下一站 ${metro[j].name}　請握緊扶手</small>`;
+  f.innerHTML =
+    getLanguage() === 'en'
+      ? `<div class="car"><div class="win"></div><div class="win"></div><div class="win"></div></div><p>On the train · To ${translateLabel(metro[j].name)} Station</p><small>Next stop: ${translateLabel(metro[j].name)} — Please hold the handrail</small>`
+      : `<div class="car"><div class="win"></div><div class="win"></div><div class="win"></div></div><p>車廂內・往 ${translateLabel(metro[j].name)}站</p><small>下一站 ${translateLabel(metro[j].name)}　請握緊扶手</small>`;
   document.body.appendChild(f);
   requestAnimationFrame(() => f.classList.add('on'));
-  log(`🚇 在${metro[i].name}站上車，往${metro[j].name}站`, '#fc8');
+  log(
+    getLanguage() === 'en'
+      ? `🚇 Boarded at ${translateLabel(metro[i].name)} Station, heading to ${translateLabel(metro[j].name)} Station`
+      : `🚇 在${translateLabel(metro[i].name)}站上車，往${translateLabel(metro[j].name)}站`,
+    '#fc8',
+  );
   setTimeout(() => {
     ensureInterior(scene, metro[j], j);
     const [OX, OZ] = stationOrigin(j);
@@ -4164,7 +4528,12 @@ function rideTo(i: number, j: number) {
   }, 1400);
   setTimeout(() => {
     f.classList.remove('on');
-    log(`🚇 ${metro[j].name}站到了`, '#fc8');
+    log(
+      getLanguage() === 'en'
+        ? `🚇 ${translateLabel(metro[j].name)} Station reached`
+        : `🚇 ${translateLabel(metro[j].name)}站到了`,
+      '#fc8',
+    );
     setTimeout(() => (f.remove(), (riding = false)), 700);
   }, 3000);
 }
@@ -4200,7 +4569,7 @@ function interact() {
     player.pos.copy(o);
     collide(player.pos, 0.35);
     player.mesh.visible = true;
-    log(`下車（${v.s.name}）`, '#ccc');
+    log(getLanguage() === 'en' ? `Exit vehicle (${v.s.name})` : `下車（${v.s.name}）`, '#ccc');
     return;
   }
   {
@@ -4210,7 +4579,9 @@ function interact() {
       const got = WRECK_LOOT[Math.floor(Math.random() * WRECK_LOOT.length)];
       for (const [k, n] of got) addItem(k, n);
       log(
-        `🚗 翻找${w.kind === 'bus' ? '燒毀的公車' : '廢棄車輛'}：` +
+        (getLanguage() === 'en'
+          ? `🚗 Searching ${w.kind === 'bus' ? 'burned-out bus' : 'abandoned vehicle'}: `
+          : `🚗 翻找${w.kind === 'bus' ? '燒毀的公車' : '廢棄車輛'}：`) +
           got.map(([k, n]) => `${ITEMS[k]?.name || k}×${n}`).join('、'),
         '#9f9',
       );
@@ -4233,7 +4604,12 @@ function interact() {
       const m = drive.enter(v);
       if (!m) {
         player.mesh.visible = v.s.two;
-        log(`${v.s.two ? '騎上' : '坐進'} ${v.s.name}｜${drive.status(v)}`, '#9f9');
+        log(
+          getLanguage() === 'en'
+            ? `${v.s.two ? 'Get on' : 'Get in'} ${v.s.name} | ${drive.status(v)}`
+            : `${v.s.two ? '騎上' : '坐進'} ${v.s.name}｜${drive.status(v)}`,
+          '#9f9',
+        );
         return;
       }
       if (player.inv.hose && !v.s.pedal && !v.s.elec && v.fuel > 1 && !/接線/.test(m)) {
@@ -4247,16 +4623,21 @@ function interact() {
   const c = nearestCont();
   const v = !c && vehicles.nearest(player.pos, 2.2);
   if (v) {
-    log(v.kind === 'truck' ? '佔領軍卡車，油箱上鎖' : '這台被鎖死了，零件也被拆光，找別台吧', '#ccc');
+    log(
+      v.kind === 'truck'
+        ? tr('佔領軍卡車，油箱上鎖', "Occupation forces' truck. Fuel tank locked.")
+        : tr('這台被鎖死了，零件也被拆光，找別台吧', 'Locked tight and stripped of parts. Find another vehicle.'),
+      '#ccc',
+    );
     return;
   }
   if (c && /飲水機|流理台|廚房/.test(c.label)) {
     if (!UT.water) {
-      log('水龍頭只流出幾滴…停水了。', '#e88');
+      log(tr('水龍頭只流出幾滴…停水了。', 'Only a few drops from the tap... The water is off.'), '#e88');
     } else if ((c as any).tapT === undefined || gameMin > (c as any).tapT) {
       (c as any).tapT = gameMin + 90;
       c.items.water = (c.items.water || 0) + 1;
-      log('接了一瓶自來水。', '#9cf');
+      log(tr('接了一瓶自來水。', 'Filled a bottle with tap water.'), '#9cf');
     }
   }
   if (c && !(c as any).seen) {
@@ -4273,7 +4654,7 @@ function interact() {
     if (SV.isNight(gameMin) && Math.abs(hsh) % 3 === 0) {
       const k = ['cig', 'battery', 'can', 'rice', 'pill'][Math.abs(hsh) % 5];
       c.items[k] = (c.items[k] || 0) + 1;
-      log('🌙 夜裡摸黑翻找，多找到一些東西。', '#adf');
+      log(tr('🌙 夜裡摸黑翻找，多找到一些東西。', '🌙 Searching in the dark, you find a few extra supplies.'), '#adf');
     }
   }
   if (c) {
@@ -4307,7 +4688,7 @@ function setBarricade(d: Door) {
 function barricade() {
   const d = nearestDoor();
   if (!d) {
-    log('附近沒有門');
+    log(tr('附近沒有門', 'No door nearby'));
     return;
   }
   if (d.barricaded) {
@@ -4315,38 +4696,38 @@ function barricade() {
     scene.remove(d.mesh!);
     d.barricaded = false;
     addItem('plank');
-    log('拆掉了封門木板');
+    log(tr('拆掉了封門木板', 'Barricade planks removed'));
     noise(player.pos.x, player.pos.z, 10);
     return;
   }
   if (!player.inv.hammer || !player.inv.plank) {
-    log('封門需要 鐵鎚 + 木板', '#f99');
+    log(tr('封門需要 鐵鎚 + 木板', 'Barricading requires a hammer and plank.'), '#f99');
     return;
   }
   if (--player.inv.plank <= 0) delete player.inv.plank;
   setBarricade(d);
   noise(player.pos.x, player.pos.z, 18);
-  log('門封好了（敲打聲可能引來巡邏）', '#9f9');
+  log(tr('門封好了（敲打聲可能引來巡邏）', 'Door barricaded (hammering may attract patrols).'), '#9f9');
 }
 function sleep() {
   if (!bldAt(player.pos.x, player.pos.z)) {
-    log('只能在室內睡覺', '#f99');
+    log(tr('只能在室內睡覺', 'You can only sleep indoors.'), '#f99');
     return;
   }
   if (sols.some(s => s.state === 'combat')) {
-    log('有敵人在追你，睡不著', '#f99');
+    log(tr('有敵人在追你，睡不著', 'Enemies are chasing you. You cannot sleep.'), '#f99');
     return;
   }
   if (player.fatigue < 20) {
-    log('你還不累');
+    log(tr('你還不累', 'You are not tired yet.'));
     return;
   }
   if (dangerNear()) {
-    log('附近有佔領軍，現在睡太危險', '#f99');
+    log(tr('附近有佔領軍，現在睡太危險', 'Occupation troops nearby. Too dangerous to sleep.'), '#f99');
     return;
   }
   player.sleeping = true;
-  log('你閉上眼睛…（時間快轉 ×20）', '#aaf');
+  log(tr('你閉上眼睛…（時間快轉 ×20）', 'You close your eyes... (Time speed ×20)'), '#aaf');
   renderSpeed();
 }
 
@@ -4362,14 +4743,15 @@ function tryVault() {
   let hit: Seg | null = null;
   for (const sg of nearSegs(p[0], p[1]))
     if (segX(p, q, sg.a, sg.b)) {
-      if (!sg.low) return log('太高了，翻不過去');
+      if (!sg.low) return log(tr('太高了，翻不過去', 'Too high to vault'));
       hit = sg;
     }
   if (!hit) return;
   const to = new THREE.Vector3(player.pos.x + fwd.x * 1.5, 0, player.pos.z + fwd.z * 1.5);
   const chk = to.clone();
   collide(chk, 0.35);
-  if (chk.distanceTo(to) > 0.2 || bldAt(to.x, to.z) !== bldAt(player.pos.x, player.pos.z)) return log('另一側沒有空間');
+  if (chk.distanceTo(to) > 0.2 || bldAt(to.x, to.z) !== bldAt(player.pos.x, player.pos.z))
+    return log(tr('另一側沒有空間', 'No room on the other side'));
   player.vFrom.copy(player.pos);
   player.vTo.copy(to);
   player.vaultT = 0.55;
@@ -4396,7 +4778,7 @@ function shove() {
     s.state = 'combat';
     s.alert = 1;
     s.lastSeen = [player.pos.x, player.pos.z];
-    log('推開！敵人踉蹌', '#ff9');
+    log(tr('推開！敵人踉蹌', 'Shoved! The enemy staggers.'), '#ff9');
     break;
   }
 }
@@ -4411,7 +4793,7 @@ function playerAttack() {
   const dir = new THREE.Vector3(aimPt.x - player.pos.x, 0, aimPt.z - player.pos.z).normalize();
   if (d.kind === 'gun') {
     if (!player.inv[d.ammo]) {
-      log('沒有子彈了', '#f99');
+      log(tr('沒有子彈了', 'Out of ammunition'), '#f99');
       player.cd = 0.5;
       return;
     }
@@ -4498,7 +4880,12 @@ function meleeResolve(d: any, dir: THREE.Vector3): Sol | null {
     );
     if (s) {
       snp.hit(s, d.dmg * 4, s.st !== 'aim');
-      log(s.dead ? '你從背後制伏了狙擊手。' : '狙擊手掙扎反抗！', '#ff9');
+      log(
+        s.dead
+          ? tr('你從背後制伏了狙擊手。', 'You subdue the sniper from behind.')
+          : tr('狙擊手掙扎反抗！', 'The sniper fights back!'),
+        '#ff9',
+      );
       return null;
     }
   }
@@ -4523,17 +4910,17 @@ function meleeResolve(d: any, dir: THREE.Vector3): Sol | null {
 }
 function damageSol(s: Sol, dmg: number, stealth: boolean) {
   s.hp -= dmg;
-  if (stealth) log('偷襲！', '#ff9');
+  if (stealth) log(tr('偷襲！', 'Sneak attack!'), '#ff9');
   if (s.hp <= 0) {
     s.state = 'dead';
     AU.death(pDist(s.pos.x, s.pos.z));
     s.cone.visible = false;
     if (s.tile) district.save(s.tile, 'dead', { ...(district.saved[s.tile]?.dead || {}), [s.tid!]: 1 });
     player.kills++;
-    log('擊倒一名佔領軍士兵', '#ffd76a');
+    log(tr('擊倒一名佔領軍士兵', 'An occupation soldier is down.'), '#ffd76a');
     const it = plaDrop(s.id);
     const dc = makeCont('d' + s.id, [s.pos.x, s.pos.z], 'crate', undefined, it);
-    dc.label = '士兵遺留裝備';
+    dc.label = tr('士兵遺留裝備', 'Dropped soldier equipment');
     dropGun(dc, s.pos, it);
     checkSectors();
   } else {
@@ -4561,7 +4948,11 @@ function checkSectors(silent = false) {
     }
     if (total > 0 && alive === 0) {
       liberated.add(i);
-      if (!silent) log(`★ ${SECTOR_LABEL(i)} 街區已奪回！`, '#7fff7f');
+      if (!silent)
+        log(
+          getLanguage() === 'en' ? `★ ${SECTOR_LABEL(i)} district reclaimed!` : `★ ${SECTOR_LABEL(i)} 街區已奪回！`,
+          '#7fff7f',
+        );
     }
   }
   rocCheck(silent);
@@ -4592,12 +4983,15 @@ function doEvac(mode: 'heli' | 'boat' = 'heli') {
   playEvac(renderer, mode, () => {
     const d = document.createElement('div');
     d.id = 'evacend';
-    d.innerHTML = `<h1>您已成功撤離至 福特號航空母艦（USS Gerald R. Ford, CVN-78）</h1><h2>另一個結局：你活了下來，把萬華的故事帶出去。（撤離路線：${mode === 'boat' ? '小艇・淡水河出海' : '直升機・河濱撤離區'}）</h2><table><tr><td>撤離路線</td><td>${mode === 'boat' ? '🚤 小艇（聯絡人接應）' : '🚁 直升機'}</td></tr><tr><td>存活天數</td><td>${day} 天（第 ${day} 天 ${hh2}）</td></tr><tr><td>奪回街區</td><td>${liberated.size} / ${NSEC}</td></tr><tr><td>擊倒佔領軍</td><td>${player.kills}</td></tr><tr><td>攜帶物品</td><td>${items} 件</td></tr></table><div><button id=evcont>繼續留在萬華（奪回之路）</button><button id=evnew>新遊戲</button></div><p style="font-size:12px;color:#678;margin-top:18px">虛構作品・艦艇與直升機為通用低多邊形模型</p>`;
+    d.innerHTML =
+      getLanguage() === 'en'
+        ? `<h1>You have reached safety aboard USS Gerald R. Ford (CVN-78)</h1><h2>An alternate ending: you survived and carried Wanhua's story to the world. (Evacuation route: ${mode === 'boat' ? 'Boat · Out to sea via the Tamsui River' : 'Helicopter · Riverside extraction zone'})</h2><table><tr><td>Evacuation route</td><td>${mode === 'boat' ? '🚤 Boat (contact pickup)' : '🚁 Helicopter'}</td></tr><tr><td>Days survived</td><td>${day} days (Day ${day}, ${hh2})</td></tr><tr><td>Districts reclaimed</td><td>${liberated.size} / ${NSEC}</td></tr><tr><td>Occupation troops defeated</td><td>${player.kills}</td></tr><tr><td>Items carried</td><td>${items} items</td></tr></table><div><button id=evcont>Stay in Wanhua (the road to liberation)</button><button id=evnew>New game</button></div><p style="font-size:12px;color:#678;margin-top:18px">A work of fiction · Ships and helicopters use generic low-poly models</p>`
+        : `<h1>您已成功撤離至 福特號航空母艦（USS Gerald R. Ford, CVN-78）</h1><h2>另一個結局：你活了下來，把萬華的故事帶出去。（撤離路線：${mode === 'boat' ? '小艇・淡水河出海' : '直升機・河濱撤離區'}）</h2><table><tr><td>撤離路線</td><td>${mode === 'boat' ? '🚤 小艇（聯絡人接應）' : '🚁 直升機'}</td></tr><tr><td>存活天數</td><td>${day} 天（第 ${day} 天 ${hh2}）</td></tr><tr><td>奪回街區</td><td>${liberated.size} / ${NSEC}</td></tr><tr><td>擊倒佔領軍</td><td>${player.kills}</td></tr><tr><td>攜帶物品</td><td>${items} 件</td></tr></table><div><button id=evcont>繼續留在萬華（奪回之路）</button><button id=evnew>新遊戲</button></div><p style="font-size:12px;color:#678;margin-top:18px">虛構作品・艦艇與直升機為通用低多邊形模型</p>`;
     document.body.appendChild(d);
     $('evcont').onclick = () => {
       d.remove();
       started = true;
-      log('你決定留下來，繼續奪回萬華。', '#ffd27a');
+      log(tr('你決定留下來，繼續奪回萬華。', 'You choose to stay and keep fighting to reclaim Wanhua.'), '#ffd27a');
     };
     $('evnew').onclick = () => {
       clearSave();
@@ -4609,32 +5003,47 @@ const STORY: { t: number; id: string; who: string; msg: string; fx?: () => void 
   {
     t: 8 * 60 + 5,
     id: 'a',
-    who: '📱 國家級警報',
-    msg: '萬華、中正一帶實施戒嚴，民眾非必要請勿外出。夜間 20:00 後宵禁。',
+    who: tr('📱 國家級警報', '📱 National emergency alert'),
+    msg: tr(
+      '萬華、中正一帶實施戒嚴，民眾非必要請勿外出。夜間 20:00 後宵禁。',
+      'Martial law is in effect in Wanhua and Zhongzheng. Avoid nonessential travel. Curfew begins at 20:00.',
+    ),
   },
   {
     t: 12 * 60,
     id: 'b',
-    who: '📻 北廣 AM765（北都廣播電台）',
-    msg: '…佔領當局宣稱「水電維持正常供應」，但多處變電所已遭接管…',
+    who: tr('📻 北廣 AM765（北都廣播電台）', '📻 Beiguang AM765 (Beidu Radio)'),
+    msg: tr(
+      '…佔領當局宣稱「水電維持正常供應」，但多處變電所已遭接管…',
+      '...Occupation authorities claim water and power supplies remain normal, but several substations have been seized...',
+    ),
   },
   {
     t: 1440 + 9 * 60,
     id: 'c',
-    who: '💬 里長通訊群組',
-    msg: '各位鄰居：聽說電力公司員工被帶走了，大家趕快把水桶裝滿、手機充飽電！',
+    who: tr('💬 里長通訊群組', '💬 Neighborhood chief group chat'),
+    msg: tr(
+      '各位鄰居：聽說電力公司員工被帶走了，大家趕快把水桶裝滿、手機充飽電！',
+      'Neighbors: we heard the power company staff were taken away. Fill your buckets and charge your phones now!',
+    ),
   },
   {
     t: 2 * 1440 + 14 * 60,
     id: 'd',
-    who: '📱 電力公司簡訊',
-    msg: '【停電通知】因「軍事管制」，萬華區即日起停止供電，復電時間未定。',
+    who: tr('📱 電力公司簡訊', '📱 Power company text'),
+    msg: tr(
+      '【停電通知】因「軍事管制」，萬華區即日起停止供電，復電時間未定。',
+      '[Power outage notice] Due to military control, power to Wanhua is suspended immediately. Restoration time unknown.',
+    ),
   },
   {
     t: POWER_OFF,
     id: 'P',
-    who: '⚡ 斷電',
-    msg: '整條街一瞬間暗了下來。冰箱停了，裡面的食物撐不了多久。',
+    who: tr('⚡ 斷電', '⚡ Blackout'),
+    msg: tr(
+      '整條街一瞬間暗了下來。冰箱停了，裡面的食物撐不了多久。',
+      'The whole street goes dark at once. The fridge stops. The food inside will not last long.',
+    ),
     fx: () => {
       UT.power = false;
     },
@@ -4642,65 +5051,103 @@ const STORY: { t: number; id: string; who: string; msg: string; fx?: () => void 
   {
     t: 3 * 1440 + 10 * 60,
     id: 'e',
-    who: '📻 收音機（電池）',
-    msg: '…自來水事業處人員已撤離，加壓站停擺，高樓層將最先停水…',
+    who: tr('📻 收音機（電池）', '📻 Radio (battery powered)'),
+    msg: tr(
+      '…自來水事業處人員已撤離，加壓站停擺，高樓層將最先停水…',
+      '...Water department staff have evacuated. Pumping stations are down. Upper floors will lose water first...',
+    ),
   },
   {
     t: 1440 + 7 * 60,
     id: 'r1',
-    who: '📻 地下電台「自由之聲」',
-    msg: '…這裡是自由之聲。國軍與志願者仍在新店溪南岸堅守，請萬華的鄉親保持冷靜、儲水、避開大馬路…',
+    who: tr('📻 地下電台「自由之聲」', '📻 Underground radio: Voice of Freedom'),
+    msg: tr(
+      '…這裡是自由之聲。國軍與志願者仍在新店溪南岸堅守，請萬華的鄉親保持冷靜、儲水、避開大馬路…',
+      '...This is Voice of Freedom. ROC troops and volunteers are still holding the south bank of the Xindian River. People of Wanhua, stay calm, store water and avoid main roads...',
+    ),
   },
   {
     t: 2 * 1440 + 21 * 60,
     id: 'r2',
-    who: '📻 地下電台「自由之聲」',
-    msg: '…停電了？別慌。收音機用電池還能撐。宵禁時佔領軍會帶手電筒巡邏，看到光束就躲進騎樓…',
+    who: tr('📻 地下電台「自由之聲」', '📻 Underground radio: Voice of Freedom'),
+    msg: tr(
+      '…停電了？別慌。收音機用電池還能撐。宵禁時佔領軍會帶手電筒巡邏，看到光束就躲進騎樓…',
+      '...No power? Stay calm. A battery-powered radio still works. Occupation troops patrol with flashlights during curfew. If you see a beam, duck under an arcade...',
+    ),
   },
   {
     t: 3 * 1440 + 13 * 60,
     id: 'r3',
-    who: '📻 地下電台「自由之聲」',
-    msg: '…注意！今天 15:00 前後會有一批物資空投到萬華，紅色煙霧就是信號。佔領軍也會去搶，動作要快！',
+    who: tr('📻 地下電台「自由之聲」', '📻 Underground radio: Voice of Freedom'),
+    msg: tr(
+      '…注意！今天 15:00 前後會有一批物資空投到萬華，紅色煙霧就是信號。佔領軍也會去搶，動作要快！',
+      '...Attention! Supplies will be airdropped into Wanhua around 15:00 today. Look for red smoke. Occupation troops will try to seize them too. Move fast!',
+    ),
   },
   {
     t: 3 * 1440 + 15 * 60,
     id: 'AD',
-    who: '🪂 空投',
-    msg: '遠處升起一道紅色煙霧——物資箱落地了！佔領軍的巡邏隊正往那邊移動。',
+    who: tr('🪂 空投', '🪂 Airdrop'),
+    msg: tr(
+      '遠處升起一道紅色煙霧——物資箱落地了！佔領軍的巡邏隊正往那邊移動。',
+      'Red smoke rises in the distance. The supply crate has landed! Occupation patrols are heading toward it.',
+    ),
     fx: () => airdrop(),
   },
   {
     t: 4 * 1440 + 20 * 60,
     id: 'r4',
-    who: '📻 地下電台「自由之聲」',
-    msg: '…停水第一天。把水桶、臉盆放到頂樓或戶外，下雨就能接水。雨水記得煮過再喝…',
+    who: tr('📻 地下電台「自由之聲」', '📻 Underground radio: Voice of Freedom'),
+    msg: tr(
+      '…停水第一天。把水桶、臉盆放到頂樓或戶外，下雨就能接水。雨水記得煮過再喝…',
+      '...First day without running water. Put buckets and basins on rooftops or outside to catch rain. Remember to boil rainwater before drinking...',
+    ),
   },
   {
     t: 6 * 1440 + 12 * 60,
     id: 'r5',
-    who: '📻 地下電台「自由之聲」',
-    msg: '…西門町一帶已有三個街區被奪回！每一區的勝利，都讓他們更害怕…',
+    who: tr('📻 地下電台「自由之聲」', '📻 Underground radio: Voice of Freedom'),
+    msg: tr(
+      '…西門町一帶已有三個街區被奪回！每一區的勝利，都讓他們更害怕…',
+      '...Three districts around Ximending have been reclaimed! Every victory makes them more afraid...',
+    ),
   },
   {
     t: 5 * 1440 + 20 * 60,
     id: 'e0',
-    who: '📻 地下電台「自由之聲」',
-    msg: '…有消息說，盟軍正在河濱準備一條撤離通道。明早請守在收音機旁…',
+    who: tr('📻 地下電台「自由之聲」', '📻 Underground radio: Voice of Freedom'),
+    msg: tr(
+      '…有消息說，盟軍正在河濱準備一條撤離通道。明早請守在收音機旁…',
+      '...Reports say allied forces are preparing an evacuation route by the river. Stay by your radio tomorrow morning...',
+    ),
   },
   {
     t: EV0,
     id: 'e1',
-    who: '📻 地下電台「自由之聲」',
-    msg: '撤離窗口開啟！西側河濱撤離區（綠色 H、紅色信號彈）將有直升機接應，時限至第 8 天 18:00。想留下來奪回家園的人，我們也與你同在。',
-    fx: () => slowDown('撤離廣播'),
+    who: tr('📻 地下電台「自由之聲」', '📻 Underground radio: Voice of Freedom'),
+    msg: tr(
+      '撤離窗口開啟！西側河濱撤離區（綠色 H、紅色信號彈）將有直升機接應，時限至第 8 天 18:00。想留下來奪回家園的人，我們也與你同在。',
+      'The evacuation window is open! Helicopters will pick you up at the western riverside extraction zone, marked by a green H and red flare. Open until Day 8, 18:00. To those staying to reclaim their homes: we stand with you too.',
+    ),
+    fx: () => slowDown(tr('撤離廣播', 'Evacuation broadcast')),
   },
-  { t: EV1, id: 'e2', who: '📻 地下電台「自由之聲」', msg: '撤離窗口已關閉。留下來的人——台北靠你們奪回。' },
+  {
+    t: EV1,
+    id: 'e2',
+    who: tr('📻 地下電台「自由之聲」', '📻 Underground radio: Voice of Freedom'),
+    msg: tr(
+      '撤離窗口已關閉。留下來的人——台北靠你們奪回。',
+      'The evacuation window has closed. To everyone still here: reclaiming Taipei is in your hands.',
+    ),
+  },
   {
     t: WATER_OFF,
     id: 'W',
-    who: '🚱 停水',
-    msg: '水龍頭只流出幾滴黃水就停了。從現在起，每一瓶水都很珍貴。',
+    who: tr('🚱 停水', '🚱 Water supply cut'),
+    msg: tr(
+      '水龍頭只流出幾滴黃水就停了。從現在起，每一瓶水都很珍貴。',
+      'A few drops of yellow water trickle from the tap, then nothing. From now on, every bottle matters.',
+    ),
     fx: () => {
       UT.water = false;
     },
@@ -4709,9 +5156,12 @@ const STORY: { t: number; id: string; who: string; msg: string; fx?: () => void 
 // v23.1 radio log (saved) — every 📻 broadcast with its in-game time
 let radioLog: [m: number, who: string, msg: string][] = [];
 function radioLogHtml() {
-  if (!radioLog.length) return '<p class="mnote">還沒有收到任何廣播。</p>';
+  if (!radioLog.length)
+    return tr('<p class="mnote">還沒有收到任何廣播。</p>', '<p class="mnote">No broadcasts received yet.</p>');
   const t = (m: number) =>
-    `第 ${Math.floor(m / 1440) + 1} 天 ${String(Math.floor((m % 1440) / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    getLanguage() === 'en'
+      ? `Day ${Math.floor(m / 1440) + 1} ${String(Math.floor((m % 1440) / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+      : `第 ${Math.floor(m / 1440) + 1} 天 ${String(Math.floor((m % 1440) / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
   const esc = (x: string) => x.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!);
   return `<div class="rlog">${radioLog
     .slice()
@@ -4820,6 +5270,37 @@ function save() {
 // ---------- main loop ----------
 let started = false,
   dead = false;
+addEventListener('dt:before-language-change', event => {
+  if (started && !dead && (MP || PRO.on)) {
+    event.preventDefault();
+    alert(
+      tr(
+        '請先結束開場或離開多人遊戲，再切換語言。',
+        'Finish the prologue or leave multiplayer before changing language.',
+      ),
+    );
+    return;
+  }
+  if (started && !dead && NOSAVE) {
+    event.preventDefault();
+    alert(
+      tr(
+        '目前無法安全存檔，請稍後再切換語言。',
+        'Progress cannot be saved safely right now. Try changing language later.',
+      ),
+    );
+    return;
+  }
+  if (started && !dead) {
+    try {
+      save();
+      (event as CustomEvent).detail.resume = true;
+    } catch {
+      event.preventDefault();
+      alert(tr('無法儲存進度，因此沒有切換語言。', 'Progress could not be saved, so the language was not changed.'));
+    }
+  }
+});
 const clock = new THREE.Clock();
 let acc = 0,
   saveT = 0,
@@ -4837,7 +5318,7 @@ function update(dt: number) {
   if (evac) evac.update(dt, evacOpen());
   if (metro.length && PS.src !== surv.pried) setPried(new Set((PS.src = surv.pried ||= [])));
   if (metro.length) metroTick(performance.now() / 1000, gameMin, UT.power, player.pos.x, player.pos.z);
-  if (evac && evacOpen()) gmap?.intel('evac0', evac.pos[0], evac.pos[1], 'evac', '撤離點');
+  if (evac && evacOpen()) gmap?.intel('evac0', evac.pos[0], evac.pos[1], 'evac', tr('撤離點', 'Extraction point'));
   if (started) {
     gmap?.update();
     updatePrologue(dt);
@@ -4846,9 +5327,9 @@ function update(dt: number) {
   if (!started || dead || paused) return;
   updateInformant(dt);
   if (evac && evacOpen() && Math.hypot(player.pos.x - evac.pos[0], player.pos.z - evac.pos[1]) < 5) doEvac();
-  if (speed > 1 && dangerNear()) slowDown('佔領軍接近');
-  if (player.sleeping && dangerNear()) slowDown('佔領軍接近');
-  if (player.hp < lastHp - 2) slowDown('你受傷了');
+  if (speed > 1 && dangerNear()) slowDown(tr('佔領軍接近', 'Occupation troops approaching'));
+  if (player.sleeping && dangerNear()) slowDown(tr('佔領軍接近', 'Occupation troops approaching'));
+  if (player.hp < lastHp - 2) slowDown(tr('你受傷了', 'You are hurt'));
   lastHp = player.hp;
   const tscale = player.sleeping ? 20 : speed;
   gameMin += dt * tscale * MPS(); // day length chosen at new game (1h/2h/4h real per in-game day)
@@ -4873,12 +5354,12 @@ function update(dt: number) {
   player.fatigue += player.sleeping ? -gm * 14 * (ROLE.skills.rest ?? 1) : gm * 2.6;
   if (player.sleeping && player.fatigue <= 0) {
     player.sleeping = false;
-    log('你醒了', '#aaf');
+    log(tr('你醒了', 'You wake up'), '#aaf');
     renderSpeed();
   }
   if (player.sleeping && sols.some(s => s.state === 'combat')) {
     player.sleeping = false;
-    log('你被驚醒了！', '#f66');
+    log(tr('你被驚醒了！', 'You wake with a start!'), '#f66');
   }
   player.hunger = clamp(player.hunger, 0, 100);
   player.thirst = clamp(player.thirst, 0, 100);
@@ -4933,7 +5414,7 @@ function update(dt: number) {
         v.v *= 0.5;
         v.eng = Math.max(0, v.eng - 0.08);
         noise(v.pos.x, v.pos.z, 30);
-        log('💥 撞開路障！引擎受損', '#fc8');
+        log(tr('💥 撞開路障！引擎受損', '💥 Smashed through the roadblock! Engine damaged.'), '#fc8');
       } else {
         v.pos.x -= Math.sin(v.hd) * Math.sign(v.v) * 0.3;
         v.pos.z -= Math.cos(v.hd) * Math.sign(v.v) * 0.3;
@@ -4946,7 +5427,7 @@ function update(dt: number) {
       v.pos.z -= Math.cos(v.hd) * Math.sign(v.v) * 0.4;
       if (Math.abs(v.v) > 8) {
         v.eng = Math.max(0, v.eng - 0.1);
-        log('💥 撞上廢棄車！', '#fc8');
+        log(tr('💥 撞上廢棄車！', '💥 Crashed into an abandoned vehicle!'), '#fc8');
       }
       v.v = 0;
     }
@@ -5147,7 +5628,7 @@ function update(dt: number) {
     } else s.alert = Math.max(0, s.alert - dt * 0.15);
     if (s.alert >= 1 && s.state !== 'combat') {
       s.state = 'combat';
-      log('你被佔領軍發現了！', '#f66');
+      log(tr('你被佔領軍發現了！', 'Occupation troops spotted you!'), '#f66');
       noise(s.pos.x, s.pos.z, 25);
       radio(pp, s);
     }
@@ -5237,7 +5718,7 @@ function update(dt: number) {
                 player.pos.copy(kb);
               }
               blastFx.kick(0.6, 0.05);
-              log('你被槍托擊中！', '#f66');
+              log(tr('你被槍托擊中！', 'You were hit with a rifle butt!'), '#f66');
               flashRed();
             } else AU.swish(dist, true);
           }
@@ -5283,8 +5764,8 @@ function update(dt: number) {
             player.hp -= 10 + rnd() * 12;
             if (rnd() < 0.45 && !player.bleed) {
               player.bleed = true;
-              log('你中彈流血了！用繃帶止血', '#f66');
-            } else log('你被擊中了！', '#f66');
+              log(tr('你中彈流血了！用繃帶止血', 'You were shot and are bleeding! Use a bandage.'), '#f66');
+            } else log(tr('你被擊中了！', 'You were hit!'), '#f66');
             flashRed();
           }
         }
@@ -5301,7 +5782,12 @@ function update(dt: number) {
           s.search = SQ.searchPoints(lk, s.slot || 0, s.sqN || 1, b, (x, z) => bldAt(x, z) === b);
           if ((s.slot || 0) === 0) {
             aiStats.search++;
-            callout(s, b ? '目標躲進樓裡，分頭搜！' : '分散搜索！');
+            callout(
+              s,
+              b
+                ? tr('目標躲進樓裡，分頭搜！', 'Target went inside! Split up and search!')
+                : tr('分散搜索！', 'Spread out and search!'),
+            );
           }
           s.lastSeen = undefined;
           s.state = 'investigate';
@@ -5321,7 +5807,7 @@ function update(dt: number) {
       s.retreated = true;
       s.retreatT = SQ.AI.retreatT;
       aiStats.retreat++;
-      callout(s, '我中彈了，掩護我！');
+      callout(s, tr('我中彈了，掩護我！', "I'm hit! Cover me!"));
     }
     if (s.retreatT && s.retreatT > 0) {
       s.retreatT -= dt;
@@ -5523,42 +6009,52 @@ function updateStreet() {
   }
   const sec = sectorOf(player.pos.x, player.pos.z);
   $('street').textContent =
-    `📍 ${best || '巷弄'}・${SECTOR_LABEL(sec)}區 ${liberated.has(sec) ? '（已奪回）' : '（佔領中）'}`;
+    getLanguage() === 'en'
+      ? `📍 ${translateLabel(best) || 'Alley'}・${SECTOR_LABEL(sec)} district ${liberated.has(sec) ? '(reclaimed)' : '(occupied)'}`
+      : `📍 ${translateLabel(best) || '巷弄'}・${SECTOR_LABEL(sec)}區 ${liberated.has(sec) ? '（已奪回）' : '（佔領中）'}`;
 }
 function bar(name: string, v: number, col: string) {
   return `<div class="bar"><div class="t"><span>${name}</span><span>${Math.round(v)}</span></div><div class="b"><i style="width:${clamp(v, 0, 100)}%;background:${col}"></i></div></div>`;
 }
 function drawHud(inside: Bld | null) {
   const m: string[] = [];
-  if (player.hunger < 25) m.push('飢餓');
-  if (player.thirst < 25) m.push('口渴');
-  if (player.fatigue > 75) m.push('疲憊');
-  if (player.bleed) m.push('流血');
-  if (player.hp < 30) m.push('重傷');
-  if (player.sneak) m.push('潛行中');
-  if (player.sleeping) m.push('睡眠中');
-  if (sols.some(s => s.state === 'combat' && s.mesh.visible)) m.push('被追捕');
+  if (player.hunger < 25) m.push(tr('飢餓', 'Hungry'));
+  if (player.thirst < 25) m.push(tr('口渴', 'Thirsty'));
+  if (player.fatigue > 75) m.push(tr('疲憊', 'Exhausted'));
+  if (player.bleed) m.push(tr('流血', 'Bleeding'));
+  if (player.hp < 30) m.push(tr('重傷', 'Severely injured'));
+  if (player.sneak) m.push(tr('潛行中', 'Sneaking'));
+  if (player.sleeping) m.push(tr('睡眠中', 'Sleeping'));
+  if (sols.some(s => s.state === 'combat' && s.mesh.visible)) m.push(tr('被追捕', 'Being pursued'));
   $('stats').innerHTML =
-    bar('生命', player.hp, '#c33') +
-    bar('飽足', player.hunger, '#c9842a') +
-    bar('水分', player.thirst, '#3a8ad6') +
-    bar('精神', 100 - player.fatigue, '#8a6ad6') +
+    bar(tr('生命', 'Health'), player.hp, '#c33') +
+    bar(tr('飽足', 'Fullness'), player.hunger, '#c9842a') +
+    bar(tr('水分', 'Hydration'), player.thirst, '#3a8ad6') +
+    bar(tr('精神', 'Energy'), 100 - player.fatigue, '#8a6ad6') +
     `<div class="moodles">${m.map(x => `<span>${x}</span>`).join('')}</div>`;
   const day = Math.floor(gameMin / 1440) + 1,
     h = Math.floor(gameMin / 60) % 24,
     mi = Math.floor(gameMin) % 60;
   $('clock').textContent =
-    `第 ${day} 天 ${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')} ${isNight() ? '🌙 宵禁' : '☀'}${raining() ? ' 🌧' : ''}`;
+    getLanguage() === 'en'
+      ? `Day ${day} ${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')} ${isNight() ? '🌙 Curfew' : '☀'}${raining() ? ' 🌧' : ''}`
+      : `第 ${day} 天 ${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')} ${isNight() ? '🌙 宵禁' : '☀'}${raining() ? ' 🌧' : ''}`;
   const alive = sols.filter(s => s.state !== 'dead').length;
   if (!PRO.on)
     $('objective').textContent =
-      `已奪回街區 ${liberated.size} / ${NSEC}｜殘存佔領軍 ${alive}` +
+      (getLanguage() === 'en'
+        ? `Districts reclaimed ${liberated.size} / ${NSEC} | Occupation troops remaining ${alive}`
+        : `已奪回街區 ${liberated.size} / ${NSEC}｜殘存佔領軍 ${alive}`) +
       (evacOpen()
-        ? `｜🚁 撤離窗口剩 ${Math.floor((EV1 - gameMin) / 60)} 小時 ${Math.floor((EV1 - gameMin) % 60)} 分`
+        ? getLanguage() === 'en'
+          ? ` | 🚁 Evacuation closes in ${Math.floor((EV1 - gameMin) / 60)} h ${Math.floor((EV1 - gameMin) % 60)} min`
+          : `｜🚁 撤離窗口剩 ${Math.floor((EV1 - gameMin) / 60)} 小時 ${Math.floor((EV1 - gameMin) % 60)} 分`
         : '');
   const eq = player.equip ? ITEMS[player.equip] : null;
   $('equip').innerHTML =
-    `武器：<b>${eq ? eq.name : '徒手'}</b>${eq && eq.kind === 'gun' ? `　彈藥 ${player.inv[eq.ammo!] || 0}` : ''}　負重 ${weight().toFixed(1)}kg${player.light ? '　🔦' : ''}`;
+    getLanguage() === 'en'
+      ? `Weapon: <b>${eq ? eq.name : 'Unarmed'}</b>${eq && eq.kind === 'gun' ? ` Ammo ${player.inv[eq.ammo!] || 0}` : ''} Load ${weight().toFixed(1)}kg${player.light ? ' 🔦' : ''}`
+      : `武器：<b>${eq ? eq.name : '徒手'}</b>${eq && eq.kind === 'gun' ? `　彈藥 ${player.inv[eq.ammo!] || 0}` : ''}　負重 ${weight().toFixed(1)}kg${player.light ? '　🔦' : ''}`;
   const c = nearestCont(),
     d = nearestDoor();
   const pr = $('prompt');
@@ -5571,19 +6067,25 @@ function drawHud(inside: Bld | null) {
     if (!bldAt(player.pos.x, player.pos.z) && exitMark.b && !pip([player.pos.x, player.pos.z], exitMark.b.pts)) {
       const hd = exitMark.b.door;
       if (!hd || Math.hypot(hd.p[0] - player.pos.x, hd.p[1] - player.pos.z) > 4)
-        (scene.remove(exitMark.m), (exitMark = null), log('你走出了家門。', '#9cf'));
+        (scene.remove(exitMark.m), (exitMark = null), log(tr('你走出了家門。', 'You step out of your home.'), '#9cf'));
     }
   }
   const rd = roofB ? null : roofDoor();
   if (roofB && !panelOpen) {
     pr.style.display = 'block';
-    pr.textContent = '[E] 走樓梯下到街上';
+    pr.textContent = tr('[E] 走樓梯下到街上', '[E] Take the stairs down to the street');
   } else if (rd && !panelOpen) {
     pr.style.display = 'block';
-    pr.textContent = `[E] 爬上頂樓（${rd.dead ? '已清除的狙擊點' : '狙擊手所在'}）`;
+    pr.textContent =
+      getLanguage() === 'en'
+        ? `[E] Climb to the rooftop (${rd.dead ? 'cleared sniper position' : 'sniper position'})`
+        : `[E] 爬上頂樓（${rd.dead ? '已清除的狙擊點' : '狙擊手所在'}）`;
   } else if (dn && !dn.barricaded && !panelOpen && !np && (!dn.open || (!c && !atHome()))) {
     pr.style.display = 'block';
-    pr.textContent = `[E] ${dn.open ? '關門' : '開門'}${isHomeDoor(dn) ? '（家門）' : ''}｜[${keyLabel('barricade')}] 封門`;
+    pr.textContent =
+      getLanguage() === 'en'
+        ? `[E] ${dn.open ? 'Close door' : 'Open door'}${isHomeDoor(dn) ? ' (home)' : ''} | [${keyLabel('barricade')}] Barricade`
+        : `[E] ${dn.open ? '關門' : '開門'}${isHomeDoor(dn) ? '（家門）' : ''}｜[${keyLabel('barricade')}] 封門`;
   } else if (np && !panelOpen) {
     pr.style.display = 'block';
     pr.textContent = np;
@@ -5592,40 +6094,59 @@ function drawHud(inside: Bld | null) {
     pr.textContent = `[E] ${tradeAt()!.name}`;
   } else if (!panelOpen && !survOpen && atHome() && !c) {
     pr.style.display = 'block';
-    pr.textContent = '[E] 避難所（升級／存糧／拜拜）';
+    pr.textContent = tr('[E] 避難所（升級／存糧／拜拜）', '[E] Shelter (upgrades / stockpile / prayer)');
   } else if (shopAt() && !panelOpen && !c) {
     const sh = shopAt()!;
     pr.style.display = 'block';
     pr.textContent = UT.power
       ? sh.kind === 'locker'
         ? `[E] ${sh.name}`
-        : `[E] ${sh.vend ? '投幣購買' : '購物'}：${sh.name}（錢包 NT$ ${wallet()}）`
-      : `[E] 撬開${sh.name}（會發出很大的聲響）`;
+        : getLanguage() === 'en'
+          ? `[E] ${sh.vend ? 'Insert coins' : 'Shop'}: ${sh.name} (Wallet NT$ ${wallet()})`
+          : `[E] ${sh.vend ? '投幣購買' : '購物'}：${sh.name}（錢包 NT$ ${wallet()}）`
+      : getLanguage() === 'en'
+        ? `[E] Pry open ${sh.name} (very loud)`
+        : `[E] 撬開${sh.name}（會發出很大的聲響）`;
   } else if (metroBoard() >= 0 && !panelOpen && !riding) {
     pr.style.display = 'block';
-    pr.textContent = '[E] 搭乘艋舺橘線（選擇目的地）';
+    pr.textContent = tr('[E] 搭乘艋舺橘線（選擇目的地）', '[E] Ride the Monga Orange Line (choose destination)');
   } else if (metroAt() && !panelOpen) {
     const m = metroAt()!;
     pr.style.display = 'block';
     pr.textContent = m.down
-      ? `[E] 進站：北都地下鐵 ${m.st.name}站 ${m.gt.no} 號出口`
-      : `[E] 往 ${m.gt.no} 號出口回地面（${m.st.name}）`;
+      ? getLanguage() === 'en'
+        ? `[E] Enter Beidu Metro: ${translateLabel(m.st.name)} Station, Exit ${m.gt.no}`
+        : `[E] 進站：北都地下鐵 ${translateLabel(m.st.name)}站 ${m.gt.no} 號出口`
+      : getLanguage() === 'en'
+        ? `[E] Return to street level through Exit ${m.gt.no} (${translateLabel(m.st.name)})`
+        : `[E] 往 ${m.gt.no} 號出口回地面（${translateLabel(m.st.name)}）`;
   } else if (c && !panelOpen) {
     pr.style.display = 'block';
-    pr.textContent = `[E] 搜刮 ${c.label}${Object.keys(c.items).length ? '' : '（空）'}`;
+    pr.textContent =
+      getLanguage() === 'en'
+        ? `[E] Loot ${translateLabel(c.label)}${Object.keys(c.items).length ? '' : ' (empty)'}`
+        : `[E] 搜刮 ${translateLabel(c.label)}${Object.keys(c.items).length ? '' : '（空）'}`;
   } else if (!panelOpen && drive.cur) {
     pr.style.display = 'block';
-    pr.textContent = `[E] 下車｜${drive.status(drive.cur)}｜${Math.round(Math.abs(drive.cur.v) * 3.6)} km/h`;
+    pr.textContent =
+      getLanguage() === 'en'
+        ? `[E] Exit vehicle | ${drive.status(drive.cur)} | ${Math.round(Math.abs(drive.cur.v) * 3.6)} km/h`
+        : `[E] 下車｜${drive.status(drive.cur)}｜${Math.round(Math.abs(drive.cur.v) * 3.6)} km/h`;
   } else if (!panelOpen && drive.nearest(player.pos)) {
     const v = drive.nearest(player.pos)!;
     pr.style.display = 'block';
-    pr.textContent = `[E] ${v.s.drive ? (v.s.two ? '騎' : '開') : '查看'} ${v.s.name}${v.key || !v.s.key ? '（鑰匙還在）' : ''}`;
+    pr.textContent =
+      getLanguage() === 'en'
+        ? `[E] ${v.s.drive ? (v.s.two ? 'Ride' : 'Drive') : 'Inspect'} ${v.s.name}${v.key || !v.s.key ? ' (keys present)' : ''}`
+        : `[E] ${v.s.drive ? (v.s.two ? '騎' : '開') : '查看'} ${v.s.name}${v.key || !v.s.key ? '（鑰匙還在）' : ''}`;
   } else if (!panelOpen && vehicles.nearest(player.pos, 2.2)) {
     pr.style.display = 'block';
-    pr.textContent = '[E] 查看載具';
+    pr.textContent = tr('[E] 查看載具', '[E] Inspect vehicle');
   } else if (d && !panelOpen) {
     pr.style.display = 'block';
-    pr.textContent = d.barricaded ? '[B] 拆除封門' : '[B] 封門（鐵鎚+木板）';
+    pr.textContent = d.barricaded
+      ? tr('[B] 拆除封門', '[B] Remove barricade')
+      : tr('[B] 封門（鐵鎚+木板）', '[B] Barricade (hammer + plank)');
   } else pr.style.display = 'none';
   // v22.4 prompts show the key actually bound (settings → 按鍵設定)
   const t0 = pr.textContent || '';
@@ -5641,7 +6162,10 @@ function die() {
   const t = $('title');
   t.style.display = 'flex';
   const day = Math.floor(gameMin / 1440) + 1;
-  t.innerHTML = `<h1 style="color:#c33">你陣亡了</h1><h2>這就是你的結局。</h2><p>你在淪陷的台北撐過了 ${day} 天，擊倒 ${player.kills} 名佔領軍，奪回了 ${liberated.size} 個街區。</p><button onclick="location.reload()">重新開始（新的倖存者）</button>`;
+  t.innerHTML =
+    getLanguage() === 'en'
+      ? `<h1 style="color:#c33">You died</h1><h2>This is how your story ends.</h2><p>You survived occupied Taipei for ${day} days, defeated ${player.kills} occupation troops and reclaimed ${liberated.size} districts.</p><button onclick="location.reload()">Start again (new survivor)</button>`
+      : `<h1 style="color:#c33">你陣亡了</h1><h2>這就是你的結局。</h2><p>你在淪陷的台北撐過了 ${day} 天，擊倒 ${player.kills} 名佔領軍，奪回了 ${liberated.size} 個街區。</p><button onclick="location.reload()">重新開始（新的倖存者）</button>`;
 }
 function loop() {
   const dt = Math.min(clock.getDelta(), 0.05);
@@ -5729,11 +6253,14 @@ function startPrologue(from: V2, dest: V2, label: string) {
   PRO.beam = g;
   const ov = document.createElement('div');
   ov.id = 'wake';
-  ov.innerHTML = `<div>07:20　⏰ 鬧鐘響了</div><small>${ROLE.names[player.gender === 'm' ? 0 : 1]}・${ROLE.name}｜今天也要去${label}</small>`;
+  ov.innerHTML =
+    getLanguage() === 'en'
+      ? `<div>07:20 ⏰ The alarm rings</div><small>${ROLE.names[player.gender === 'm' ? 0 : 1]}・${ROLE.name} | Another day heading to ${label}</small>`
+      : `<div>07:20　⏰ 鬧鐘響了</div><small>${ROLE.names[player.gender === 'm' ? 0 : 1]}・${ROLE.name}｜今天也要去${label}</small>`;
   document.body.appendChild(ov);
   const sk = document.createElement('button');
   sk.id = 'skipbtn';
-  sk.textContent = '跳過開場 ⏭';
+  sk.textContent = tr('跳過開場 ⏭', 'Skip intro ⏭');
   sk.onclick = () => endPrologue();
   document.body.appendChild(sk);
 }
@@ -5746,7 +6273,13 @@ function endPrologue() {
   if (PRO.beam) scene.remove(PRO.beam);
   document.getElementById('skipbtn')?.remove();
   document.getElementById('wake')?.remove();
-  log('解放軍已攻入萬華，街上到處是哨兵與裝甲車。從現在起，活下去，一區一區奪回來。', '#ffd76a');
+  log(
+    tr(
+      '解放軍已攻入萬華，街上到處是哨兵與裝甲車。從現在起，活下去，一區一區奪回來。',
+      'PLA troops have entered Wanhua. Sentries and armored vehicles fill the streets. From now on, survive—and reclaim it one district at a time.',
+    ),
+    '#ffd76a',
+  );
 }
 function updatePrologue(dt: number) {
   if (!PRO.on) return;
@@ -5767,7 +6300,10 @@ function updatePrologue(dt: number) {
       const [, w, m] = PRO_NEWS[PRO.msgs++];
       phone(w, m);
     }
-    $('objective').textContent = `🧭 前往${PRO.label}（還有 ${Math.round(left)} m）｜跟著黃色光柱`;
+    $('objective').textContent =
+      getLanguage() === 'en'
+        ? `🧭 Head to ${PRO.label} (${Math.round(left)} m remaining) | Follow the yellow beam`
+        : `🧭 前往${PRO.label}（還有 ${Math.round(left)} m）｜跟著黃色光柱`;
     if (prog > 0.45 || PRO.t > 75 || left < 6) {
       PRO.stage = 2;
       PRO.t = 0;
@@ -5775,12 +6311,24 @@ function updatePrologue(dt: number) {
       traffic.panic();
       roadT.rebuild();
       scrFlash('rgba(200,20,10,.55)', 900);
-      phone('⚠️ 國家級警報', '飛彈空襲警報！共軍部隊於淡水河沿岸登陸，請立即就近避難，遠離窗戶。');
-      log('📢 防空廣播：「這不是演習！這不是演習！請民眾立即進入地下室或避難處所……」', '#ff8a7a');
+      phone(
+        tr('⚠️ 國家級警報', '⚠️ National emergency alert'),
+        tr(
+          '飛彈空襲警報！共軍部隊於淡水河沿岸登陸，請立即就近避難，遠離窗戶。',
+          'Missile air-raid warning! PLA forces have landed along the Tamsui River. Take shelter nearby immediately and stay away from windows.',
+        ),
+      );
+      log(
+        tr(
+          '📢 防空廣播：「這不是演習！這不是演習！請民眾立即進入地下室或避難處所……」',
+          '📢 Air-raid announcement: This is not a drill! This is not a drill! Get into a basement or shelter immediately...',
+        ),
+        '#ff8a7a',
+      );
       noise(P.x, P.z, 1);
     }
   } else if (PRO.stage === 2) {
-    $('objective').textContent = '⚠️ 空襲警報！找掩蔽！';
+    $('objective').textContent = tr('⚠️ 空襲警報！找掩蔽！', '⚠️ Air raid! Take cover!');
     PRO.nb -= dt;
     if (PRO.nb <= 0 && PRO.t < 14) {
       PRO.nb = 1.2 + Math.random() * 1.5;
@@ -5792,8 +6340,20 @@ function updatePrologue(dt: number) {
     }
     if (PRO.t > 5 && PRO.hide) {
       PRO.hide = false;
-      phone('📱 家族群組', '你在哪？？西園路那邊有軍車開進來了！不要出門！');
-      log('街口傳來履帶聲——穿著陌生迷彩的士兵封鎖了路口。', '#ff8a7a');
+      phone(
+        tr('📱 家族群組', '📱 Family group chat'),
+        tr(
+          '你在哪？？西園路那邊有軍車開進來了！不要出門！',
+          'Where are you?? Military vehicles are coming down Xiyuan Road! Stay inside!',
+        ),
+      );
+      log(
+        tr(
+          '街口傳來履帶聲——穿著陌生迷彩的士兵封鎖了路口。',
+          'Tracks rumble at the corner. Soldiers in unfamiliar camouflage block the intersection.',
+        ),
+        '#ff8a7a',
+      );
     }
     if (PRO.t > 16) endPrologue();
   }
@@ -5820,7 +6380,7 @@ function pumpRoofs(px: number, pz: number, budgetMs: number, maxD = 1e9) {
   }
 }
 async function boot() {
-  await prog(0.3, '下載萬華地圖資料（OpenStreetMap）…');
+  await prog(0.3, tr('下載萬華地圖資料（OpenStreetMap）…', 'Downloading Wanhua map data (OpenStreetMap)...'));
   const data = await (await fetch(import.meta.env.BASE_URL + 'data/wanhua.json')).json();
   await district.ready;
   {
@@ -5836,10 +6396,10 @@ async function boot() {
       return !R.some(r => c[0] > r[0] && c[0] < r[2] && c[1] > r[1] && c[1] < r[3]);
     });
   }
-  await prog(0.45, '建造街區…');
+  await prog(0.45, tr('建造街區…', 'Building neighborhoods...'));
   buildMap(data);
   Object.assign(WORLD, WORLD_B);
-  await prog(0.65, '佈置出生點附近的室內與巷弄…');
+  await prog(0.65, tr('佈置出生點附近的室內與巷弄…', 'Furnishing interiors and alleys near the spawn point...'));
   const sv = readSave();
   // ---- detailed blocks around spawn (剝皮寮 / 康定路 / 西門町 edge) ----
   const homes = blds.filter(b => b.door && b.type === 'home' && Math.abs(b.c[0]) < 167 && Math.abs(b.c[1]) < 167);
@@ -6054,7 +6614,7 @@ async function boot() {
       }
   }
   checkSectors(true);
-  await prog(0.85, '加蓋頂樓（目前街區）…');
+  await prog(0.85, tr('加蓋頂樓（目前街區）…', 'Adding rooftops (current district)...'));
   pumpRoofs(start.c[0], start.c[1], 1e9, 160);
   (window as any).__roofLeft = () => roofJobs.length;
   import('../map/map').then(({ GameMap }) => {
@@ -6097,33 +6657,36 @@ async function boot() {
       });
       for (const st of metro) for (const l of st.loot) makeCont(l.id, l.p, l.type, undefined, rollLoot(l.type, r));
     }
-    if (player.inv.rocradio) mapIntelOutposts('解放軍哨點（國軍情資）');
+    if (player.inv.rocradio) mapIntelOutposts(tr('解放軍哨點（國軍情資）', 'PLA checkpoint (ROC intelligence)'));
     if (MOBILE) {
       const mb = document.createElement('button');
       mb.id = 'mapbtn';
       mb.textContent = '🗺';
-      mb.title = '地圖';
+      mb.title = tr('地圖', 'Map');
       mb.style.display = 'none';
       mb.onclick = () => gmap?.toggle();
       document.body.appendChild(mb);
       const cb = document.createElement('button');
       cb.id = 'coverbtn';
       cb.textContent = '🛡';
-      cb.title = '掩體';
+      cb.title = tr('掩體', 'Cover');
       cb.onclick = () => toggleCover();
       document.body.appendChild(cb);
       initPortraitButtons();
     }
     (window as any).__game && ((window as any).__game.map = gmap);
   });
-  await prog(1, '完成');
+  await prog(1, tr('完成', 'Done'));
   // v22.7.1 watchdog: if the title menu has not appeared shortly after loading, offer a clean reload
   setTimeout(() => {
     const tm = document.getElementById('tmenu');
-    if (!started && (!tm || !tm.offsetHeight)) bootRescue('選單沒有出現');
+    if (!started && (!tm || !tm.offsetHeight)) bootRescue(tr('選單沒有出現', 'Menu did not appear'));
   }, 6000);
   const btns = $('btns');
-  $('loadmsg').textContent = `地圖：萬華・西門町（${blds.length} 棟建築，${roads.length} 條街道）`;
+  $('loadmsg').textContent =
+    getLanguage() === 'en'
+      ? `Map: Wanhua / Ximending (${blds.length} buildings, ${roads.length} streets)`
+      : `地圖：萬華・西門町（${blds.length} 棟建築，${roads.length} 條街道）`;
   const findBed = (b: Bld): V2 | null => {
     let r: V2 | null = null;
     const v = new THREE.Vector3();
@@ -6169,7 +6732,10 @@ async function boot() {
         eng: 1,
         bat: 1,
       });
-      log('你的外送機車就停在門口，鑰匙在身上。', '#9cf');
+      log(
+        tr('你的外送機車就停在門口，鑰匙在身上。', 'Your delivery scooter is parked outside. You have the key.'),
+        '#9cf',
+      );
     } else {
       const bed = findBed(home);
       // v21.2: wake beside the bed on whichever side is open floor inside the home and connected to the door
@@ -6279,7 +6845,7 @@ async function boot() {
       const hb = bldAt(player.pos.x, player.pos.z);
       const hd = hb?.door || doorNear(30);
       if (hd && gameMin < 2 * 1440) {
-        gmap?.intel('homeexit', hd.p[0], hd.p[1], 'safe', '家門口（出口）');
+        gmap?.intel('homeexit', hd.p[0], hd.p[1], 'safe', tr('家門口（出口）', 'Home entrance (exit)'));
         const ar = new THREE.Mesh(
           new THREE.ConeGeometry(0.35, 0.8, 4),
           new THREE.MeshBasicMaterial({ color: 0xffa020, depthTest: false, transparent: true }),
@@ -6304,21 +6870,35 @@ async function boot() {
       sp.id = 'speed';
       sp.innerHTML =
         '<span class="st"></span>' +
-        SPEEDS.map(
-          (v, i) => `<button data-s="${v}" title="按 ${i + 1}">${v === 1 ? '▶' : v === 3 ? '⏩' : '⏭'} ×${v}</button>`,
+        SPEEDS.map((v, i) =>
+          getLanguage() === 'en'
+            ? `<button data-s="${v}" title="Press ${i + 1}">${v === 1 ? '▶' : v === 3 ? '⏩' : '⏭'} ×${v}</button>`
+            : `<button data-s="${v}" title="按 ${i + 1}">${v === 1 ? '▶' : v === 3 ? '⏩' : '⏭'} ×${v}</button>`,
         ).join('') +
-        `<small>一天 = ${DAYH} 小時</small>`;
+        (getLanguage() === 'en' ? `<small>One day = ${DAYH} hours</small>` : `<small>一天 = ${DAYH} 小時</small>`);
       sp.querySelectorAll('button').forEach(
         b => ((b as HTMLElement).onclick = () => setSpeed(+(b as HTMLElement).dataset.s!)),
       );
       $('topright').appendChild(sp);
       renderSpeed();
     }
-    PRO.on || log('十月某日清晨，解放軍登陸後三天，台北淪陷。萬華的電燈還亮著，水龍頭還有水——但能撐多久？', '#ffd76a');
+    PRO.on ||
+      log(
+        tr(
+          '十月某日清晨，解放軍登陸後三天，台北淪陷。萬華的電燈還亮著，水龍頭還有水——但能撐多久？',
+          'One October morning, three days after the PLA landed, Taipei has fallen. Wanhua still has lights and running water—but for how long?',
+        ),
+        '#ffd76a',
+      );
     log(
       MOBILE
-        ? '提示：先按「搜」搜刮身邊的櫥櫃，☰ 開選單。'
-        : `提示：先搜刮身邊的櫥櫃（${keyLabel('interact')}），按 ${keyLabel('inv')} 開背包裝備菜刀；Esc 開選單。`,
+        ? tr(
+            '提示：先按「搜」搜刮身邊的櫥櫃，☰ 開選單。',
+            'Tip: tap Loot to search nearby cabinets. Tap ☰ for the menu.',
+          )
+        : getLanguage() === 'en'
+          ? `Tip: search nearby cabinets (${keyLabel('interact')}), then press ${keyLabel('inv')} to open your inventory and equip the cleaver; Esc opens the menu.`
+          : `提示：先搜刮身邊的櫥櫃（${keyLabel('interact')}），按 ${keyLabel('inv')} 開背包裝備菜刀；Esc 開選單。`,
       '#ccc',
     );
   };
@@ -6326,8 +6906,15 @@ async function boot() {
   const tm = document.createElement('div');
   tm.id = 'tmenu';
   tm.innerHTML =
-    (sv ? '<button data-a="cont" class="pri">繼續遊戲</button>' : '') +
-    `<button data-a="new"${sv ? '' : ' class="pri"'}>新遊戲</button><button data-a="mp"${MP_ON ? '' : ' class="soon" aria-disabled="true"'}>${MP_ON ? '多人連線' : '多人連線<small>（即將開放）</small>'}</button><button data-a="set">設定</button><button data-a="help">操作說明</button><button data-a="about">製作名單／關於</button>`;
+    (sv
+      ? tr(
+          '<button data-a="cont" class="pri">繼續遊戲</button>',
+          '<button data-a="cont" class="pri">Continue game</button>',
+        )
+      : '') +
+    (getLanguage() === 'en'
+      ? `<button data-a="new"${sv ? '' : ' class="pri"'}>New game</button><button data-a="mp"${MP_ON ? '' : ' class="soon" aria-disabled="true"'}>${MP_ON ? 'Multiplayer' : 'Multiplayer<small> (coming soon)</small>'}</button><button data-a="set">Settings</button><button data-a="help">Controls</button><button data-a="about">Credits / About</button>`
+      : `<button data-a="new"${sv ? '' : ' class="pri"'}>新遊戲</button><button data-a="mp"${MP_ON ? '' : ' class="soon" aria-disabled="true"'}>${MP_ON ? '多人連線' : '多人連線<small>（即將開放）</small>'}</button><button data-a="set">設定</button><button data-a="help">操作說明</button><button data-a="about">製作名單／關於</button>`);
   const showSel = (mp = false) => {
     document.body.classList.add('selmode');
     btns.style.display = '';
@@ -6346,11 +6933,17 @@ async function boot() {
         const a = (b as HTMLElement).dataset.a;
         if (a === 'cont') go(true);
         else if (a === 'new') {
-          if (sv && !confirm('開始新遊戲會覆蓋目前的存檔，確定？')) return;
+          if (
+            sv &&
+            !confirm(
+              tr('開始新遊戲會覆蓋目前的存檔，確定？', 'Starting a new game will overwrite your save. Continue?'),
+            )
+          )
+            return;
           showSel();
         } else if (a === 'mp') {
           if (MP_ON) showSel(true);
-          else soonToast('多人連線即將開放，敬請期待');
+          else soonToast(tr('多人連線即將開放，敬請期待', 'Multiplayer is coming soon. Stay tuned!'));
         } else if (a === 'set') openSettings();
         else if (a === 'help') openHelp();
         else openAbout();
@@ -6360,7 +6953,7 @@ async function boot() {
   {
     const back = document.createElement('button');
     back.id = 'selback';
-    back.textContent = '← 返回主選單';
+    back.textContent = tr('← 返回主選單', '← Return to main menu');
     back.onclick = showTm;
     btns.appendChild(back);
   }
@@ -6373,34 +6966,44 @@ async function boot() {
   let skipI = false;
   const gsw = document.createElement('div');
   gsw.id = 'gsel';
-  gsw.innerHTML = `<button data-x="m" class="on">男</button><button data-x="f">女</button><label><input type="checkbox" id="skipintro"> 跳過開場</label>`;
+  gsw.innerHTML = tr(
+    `<button data-x="m" class="on">男</button><button data-x="f">女</button><label><input type="checkbox" id="skipintro"> 跳過開場</label>`,
+    `<button data-x="m" class="on">Male</button><button data-x="f">Female</button><label><input type="checkbox" id="skipintro"> Skip intro</label>`,
+  );
   const mpw = document.createElement('div');
   mpw.id = 'mpsel';
   if (!MP_ON) mpw.style.display = 'none';
   const defB = MPQ.get('mp') || 'http://localhost:8787';
-  mpw.innerHTML = `<span>🌐 多人連線（實驗・2–4 人）：</span><input id="mpbase" value="${defB}" size="22"><button id="mpnew">建立房間</button><input id="mpcode" placeholder="房間代碼" maxlength="5" size="6" value="${MPQ.get('room') || ''}"><button id="mpjoin">加入</button><em id="mpmsg"></em>`;
+  mpw.innerHTML =
+    getLanguage() === 'en'
+      ? `<span>🌐 Multiplayer (experimental, 2–4 players): </span><input id="mpbase" value="${defB}" size="22"><button id="mpnew">Create room</button><input id="mpcode" placeholder="Room code" maxlength="5" size="6" value="${MPQ.get('room') || ''}"><button id="mpjoin">Join</button><em id="mpmsg"></em>`
+      : `<span>🌐 多人連線（實驗・2–4 人）：</span><input id="mpbase" value="${defB}" size="22"><button id="mpnew">建立房間</button><input id="mpcode" placeholder="房間代碼" maxlength="5" size="6" value="${MPQ.get('room') || ''}"><button id="mpjoin">加入</button><em id="mpmsg"></em>`;
   const mpMsg = (t: string) => {
     (mpw.querySelector('#mpmsg') as HTMLElement).textContent = t;
   };
   (mpw.querySelector('#mpnew') as HTMLElement).onclick = async () => {
     const base = (mpw.querySelector('#mpbase') as HTMLInputElement).value.replace(/\/$/, '');
-    mpMsg('建立中…');
+    mpMsg(tr('建立中…', 'Creating...'));
     try {
       const { Net } = await import('../net/net');
       const code = await new Net(base).create();
       (mpw.querySelector('#mpcode') as HTMLInputElement).value = code;
       MP = { base, code };
-      mpMsg(`房間 ${code} 已建立，選角色開始；把代碼給朋友`);
+      mpMsg(
+        getLanguage() === 'en'
+          ? `Room ${code} created. Choose a character to start; share the code with friends.`
+          : `房間 ${code} 已建立，選角色開始；把代碼給朋友`,
+      );
     } catch (e) {
-      mpMsg('伺服器連不上：' + (e as Error).message);
+      mpMsg(tr('伺服器連不上：', 'Cannot connect to server: ') + (e as Error).message);
     }
   };
   (mpw.querySelector('#mpjoin') as HTMLElement).onclick = () => {
     const base = (mpw.querySelector('#mpbase') as HTMLInputElement).value.replace(/\/$/, '');
     const code = (mpw.querySelector('#mpcode') as HTMLInputElement).value.trim().toUpperCase();
-    if (!/^[A-Z2-9]{5}$/.test(code)) return mpMsg('代碼是 5 碼');
+    if (!/^[A-Z2-9]{5}$/.test(code)) return mpMsg(tr('代碼是 5 碼', 'The code must be 5 characters.'));
     MP = { base, code };
-    mpMsg(`將加入 ${code}，選角色開始`);
+    mpMsg(getLanguage() === 'en' ? `Joining ${code}. Choose a character to start.` : `將加入 ${code}，選角色開始`);
   };
   if (MPQ.get('room')) MP = { base: defB, code: MPQ.get('room')!.toUpperCase() };
   let selR = ROLES[0].id;
@@ -6413,7 +7016,9 @@ async function boot() {
   const drawSel = () => {
     sel.innerHTML = ROLES.map(r => {
       const o = r.look[selG];
-      return `<div class="ch" data-g="${selG}" data-r="${r.id}"><img class="pv" alt="" src="${rolePortrait(r.id, selG)}"><b>${r.names[selG === 'm' ? 0 : 1]}・${r.name}</b><small class="ag">${selG === 'm' ? '男' : '女'}・${r.age[selG === 'm' ? 0 : 1]} 歲</small><small class="bl">${r.blurb}</small><small class="pk"><em>${r.perks.join('・')}</em></small></div>`;
+      return getLanguage() === 'en'
+        ? `<div class="ch" data-g="${selG}" data-r="${r.id}"><img class="pv" alt="" src="${rolePortrait(r.id, selG)}"><b>${r.names[selG === 'm' ? 0 : 1]}・${r.name}</b><small class="ag">${selG === 'm' ? 'Male' : 'Female'}・${r.age[selG === 'm' ? 0 : 1]} years old</small><small class="bl">${r.blurb}</small><small class="pk"><em>${r.perks.join('・')}</em></small></div>`
+        : `<div class="ch" data-g="${selG}" data-r="${r.id}"><img class="pv" alt="" src="${rolePortrait(r.id, selG)}"><b>${r.names[selG === 'm' ? 0 : 1]}・${r.name}</b><small class="ag">${selG === 'm' ? '男' : '女'}・${r.age[selG === 'm' ? 0 : 1]} 歲</small><small class="bl">${r.blurb}</small><small class="pk"><em>${r.perks.join('・')}</em></small></div>`;
     }).join('');
     sel.querySelectorAll('.ch').forEach(
       el =>
@@ -6448,9 +7053,13 @@ async function boot() {
   const dl = document.createElement('div');
   dl.id = 'daylen';
   dl.innerHTML =
-    '<span>新遊戲・一天長度（現實時間）：</span>' +
+    tr('<span>新遊戲・一天長度（現實時間）：</span>', '<span>New game · Day length (real time): </span>') +
     [1, 2, 4]
-      .map(x => `<button data-h="${x}" class="${x === 1 ? 'on' : ''}">${x} 小時${x === 1 ? '（預設）' : ''}</button>`)
+      .map(x =>
+        getLanguage() === 'en'
+          ? `<button data-h="${x}" class="${x === 1 ? 'on' : ''}">${x} hours${x === 1 ? ' (default)' : ''}</button>`
+          : `<button data-h="${x}" class="${x === 1 ? 'on' : ''}">${x} 小時${x === 1 ? '（預設）' : ''}</button>`,
+      )
       .join('');
   dl.querySelectorAll('button').forEach(
     b =>
@@ -6461,7 +7070,7 @@ async function boot() {
   );
   const h = document.createElement('div');
   h.className = 'selh';
-  h.textContent = '選擇你的倖存者：';
+  h.textContent = tr('選擇你的倖存者：', 'Choose your survivor:');
   btns.appendChild(h);
   btns.appendChild(dl);
   btns.appendChild(gsw);
@@ -6470,7 +7079,10 @@ async function boot() {
   {
     const sb = document.createElement('div');
     sb.id = 'startbar';
-    sb.innerHTML = '<span>已選：<b></b></span><button id="startgo">開始遊戲 ▶</button>';
+    sb.innerHTML = tr(
+      '<span>已選：<b></b></span><button id="startgo">開始遊戲 ▶</button>',
+      '<span>Selected: <b></b></span><button id="startgo">Start game ▶</button>',
+    );
     (sb.querySelector('#startgo') as HTMLElement).onclick = () => go(false, selG, selR, skipI);
     document.body.appendChild(sb);
     markSel();
@@ -6757,7 +7369,7 @@ function bootRescue(why: string) {
   if (document.getElementById('rescue')) return;
   const b = document.createElement('button');
   b.id = 'rescue';
-  b.textContent = `${why}：清除快取並重新載入`;
+  b.textContent = getLanguage() === 'en' ? `${why}: clear cache and reload` : `${why}：清除快取並重新載入`;
   b.onclick = async () => {
     try {
       for (const r of (await navigator.serviceWorker?.getRegistrations?.()) || []) await r.unregister();
@@ -6767,12 +7379,13 @@ function bootRescue(why: string) {
   };
   $('title').appendChild(b);
 }
-$('title').querySelector('h2')!.textContent = `萬華淪陷區 · 生存原型 ${VERSION}`;
+$('title').querySelector('h2')!.textContent =
+  getLanguage() === 'en' ? `Occupied Wanhua · Survival Prototype ${VERSION}` : `萬華淪陷區 · 生存原型 ${VERSION}`;
 applyBtnSize();
 boot().catch(e => {
   console.error(e);
-  $('loadmsg').textContent = '載入失敗：' + e;
-  bootRescue('載入失敗');
+  $('loadmsg').textContent = tr('載入失敗：', 'Loading failed: ') + e;
+  bootRescue(tr('載入失敗', 'Loading failed'));
 });
 loop();
 // PWA: offline play after the first load (cache is versioned per deploy in sw.js)

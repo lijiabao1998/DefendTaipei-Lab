@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 // Multiplayer client (v20): anonymous auth, room create/join by code, own-player prediction with server
 // reconciliation, snapshot+delta state replication (shared core), interpolated remote players, auto-reconnect.
 import { patch, TICK_HZ, type State, type Snapshot, type Delta, type Cmd } from '../core/sim/core';
@@ -59,7 +60,9 @@ export class Net {
     this.open();
   }
   private open() {
-    this.status = this.tries ? `重新連線中…（第 ${this.tries} 次）` : '連線中…';
+    this.status = this.tries
+      ? tr(`重新連線中…（第 ${this.tries} 次）`, `Reconnecting… (attempt ${this.tries})`)
+      : tr('連線中…', 'Connecting…');
     this.ev.onStatus?.(this.status);
     const ws = new WebSocket(
       this.base.replace(/^http/, 'ws') + `/api/rooms/${this.code}/ws?token=${encodeURIComponent(this.tok)}`,
@@ -78,7 +81,7 @@ export class Net {
         this.s = sn.s;
         this.you = sn.you;
         this.tries = 0;
-        this.status = `房間 ${this.code}`;
+        this.status = tr(`房間 ${this.code}`, `Room ${this.code}`);
         this.ev.onStatus?.(this.status);
       } else if (m.k === 'delta' && this.s) {
         const d = m as Delta & { ack?: number };
@@ -94,7 +97,9 @@ export class Net {
         }
         return;
       } else if (m.k === 'err') {
-        this.status = '無法加入：' + (m.e === 'room full' ? '房間已滿（最多 4 人）' : m.e);
+        this.status =
+          tr('無法加入：', 'Unable to join: ') +
+          (m.e === 'room full' ? tr('房間已滿（最多 4 人）', 'Room is full (4 players maximum)') : m.e);
         this.closed = true;
         this.ev.onStatus?.(this.status);
         return;
@@ -118,7 +123,7 @@ export class Net {
     };
     ws.onclose = () => {
       if (this.ws !== ws || this.closed) return;
-      this.status = '連線中斷';
+      this.status = tr('連線中斷', 'Disconnected');
       this.ev.onStatus?.(this.status);
       this.tries++;
       setTimeout(() => this.open(), Math.min(8000, 500 * 2 ** this.tries));

@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 import { markMusic } from '../ui/settings';
 // 撤離動畫（lazy-loaded）：hand-modelled generic Ford-class carrier, MH-60-style helicopter, RHIB, Gerstner ocean, dawn grade.
 // All geometry is procedural (no third-party models). Environment HDRI: Poly Haven "Kloofendal 48d Partly Cloudy (Pure Sky)", CC0.
@@ -1092,7 +1093,10 @@ export async function play(renderer: THREE.WebGLRenderer, mode: 'heli' | 'boat',
       {
         t0: 0,
         t1: 6,
-        cap: '黎明。萬華河濱——紅色信號彈標示出撤離點',
+        cap: tr(
+          '黎明。萬華河濱——紅色信號彈標示出撤離點',
+          "Dawn on Wanhua's riverbank. A red flare marks the extraction point.",
+        ),
         cam: k => [
           lerpV(pick.clone().add(new V3(-60, 4, 70)), pick.clone().add(new V3(-30, 22, 40)), k),
           heliPos(k * 6).lerp(pick, 0.4),
@@ -1102,13 +1106,13 @@ export async function play(renderer: THREE.WebGLRenderer, mode: 'heli' | 'boat',
       {
         t0: 6,
         t1: 10,
-        cap: '旋翼下洗氣流捲起河水與塵土——快上機！',
+        cap: tr('旋翼下洗氣流捲起河水與塵土——快上機！', 'Rotor wash whips up water and dust. Get aboard!'),
         cam: (k, t) => [pick.clone().add(new V3(18 - k * 6, 2.2 + k * 3, 14)), heliPos(t).add(new V3(0, 1.5, 0)), 38],
       },
       {
         t0: 10,
         t1: 16,
-        cap: '身後，台北還在燃燒',
+        cap: tr('身後，台北還在燃燒', 'Behind you, Taipei is still burning.'),
         cam: (k, t) => {
           const p = heliPos(t);
           return [p.clone().add(new V3(60 - k * 20, 8 + k * 6, 40)), p.clone().lerp(new V3(-700, 60, 300), 0.35), 34];
@@ -1117,13 +1121,13 @@ export async function play(renderer: THREE.WebGLRenderer, mode: 'heli' | 'boat',
       {
         t0: 16,
         t1: 22,
-        cap: '台灣海峽・國際水域——航艦打擊群',
+        cap: tr('台灣海峽・國際水域——航艦打擊群', 'Taiwan Strait, international waters. A carrier strike group.'),
         cam: k => [new V3(CV.x - 900 + k * 250, 60 + k * 30, 520 - k * 80), CV.clone().add(new V3(0, 20, 0)), 30],
       },
       {
         t0: 22,
         t1: 28,
-        cap: '前方：福特號航空母艦（USS Gerald R. Ford, CVN-78）',
+        cap: tr('前方：福特號航空母艦（USS Gerald R. Ford, CVN-78）', 'Ahead: USS Gerald R. Ford (CVN-78).'),
         cam: (k, t) => {
           const p = heliPos(t);
           return [p.clone().add(new V3(-45 + k * 10, 10, -35 + k * 20)), p.clone().lerp(padW, 0.25 + k * 0.4), 36];
@@ -1132,7 +1136,7 @@ export async function play(renderer: THREE.WebGLRenderer, mode: 'heli' | 'boat',
       {
         t0: 28,
         t1: 33,
-        cap: '著艦。甲板人員揮手迎接',
+        cap: tr('著艦。甲板人員揮手迎接', 'Touchdown. The deck crew waves you in.'),
         cam: k => [
           padW.clone().add(new V3(38 - k * 10, 3 + k * 16, 26 + k * 10)),
           padW.clone().add(new V3(0, 3 - k * 1, 0)),
@@ -1146,7 +1150,10 @@ export async function play(renderer: THREE.WebGLRenderer, mode: 'heli' | 'boat',
       {
         t0: 0,
         t1: 7,
-        cap: '深夜。真正的聯絡人——橡皮艇在堤防下等你',
+        cap: tr(
+          '深夜。真正的聯絡人——橡皮艇在堤防下等你',
+          'Late at night. The real contact has a rubber boat waiting below the levee.',
+        ),
         cam: (k, t) => {
           const p = boatPos(t);
           return [p.clone().add(new V3(-14 + k * 4, 1.6, 4)), p.clone().add(new V3(20, 0.5, -1)), 40];
@@ -1155,7 +1162,7 @@ export async function play(renderer: THREE.WebGLRenderer, mode: 'heli' | 'boat',
       {
         t0: 7,
         t1: 14,
-        cap: '熄燈，順著淡水河往下游——兩岸火光',
+        cap: tr('熄燈，順著淡水河往下游——兩岸火光', 'Lights out. Down the Tamsui River, fires glowing on both banks.'),
         cam: (k, t) => {
           const p = boatPos(t);
           return [p.clone().add(new V3(-40 - k * 30, 26 + k * 30, 40)), p.clone().add(new V3(30, 0, 0)), 38];
@@ -1164,7 +1171,7 @@ export async function play(renderer: THREE.WebGLRenderer, mode: 'heli' | 'boat',
       {
         t0: 14,
         t1: 21,
-        cap: '出海口。浪變大了，天快亮',
+        cap: tr('出海口。浪變大了，天快亮', 'At the river mouth, the waves grow rougher. Dawn is near.'),
         cam: (k, t) => {
           const p = boatPos(t);
           return [p.clone().add(new V3(16, 2.2 + Math.sin(t * 2) * 0.6, -10)), p.clone().add(new V3(-4, 1, 0)), 42];
@@ -1173,7 +1180,10 @@ export async function play(renderer: THREE.WebGLRenderer, mode: 'heli' | 'boat',
       {
         t0: 21,
         t1: 27,
-        cap: '曙光中，福特號航空母艦（CVN-78）在國際水域等候',
+        cap: tr(
+          '曙光中，福特號航空母艦（CVN-78）在國際水域等候',
+          'In the first light, USS Gerald R. Ford (CVN-78) waits in international waters.',
+        ),
         cam: (k, t) => {
           const p = boatPos(t);
           return [p.clone().add(new V3(-60 + k * 20, 6 + k * 8, -30)), CV.clone().add(new V3(0, 30, 0)), 32];
@@ -1182,7 +1192,7 @@ export async function play(renderer: THREE.WebGLRenderer, mode: 'heli' | 'boat',
       {
         t0: 27,
         t1: 32,
-        cap: '舷側登艦梯放下——你安全了',
+        cap: tr('舷側登艦梯放下——你安全了', 'A boarding ladder drops over the side. You are safe.'),
         cam: (k, t) => {
           const p = boatPos(t);
           return [

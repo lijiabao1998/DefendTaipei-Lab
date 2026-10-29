@@ -9,6 +9,7 @@
 // B1 and B2 are laid out side by side on one plane (B1 north, B2 south) joined by the stair/escalator banks;
 // camera-side walls are cut down low so the interior reads from the fixed camera.
 import * as THREE from 'three';
+import { translateLabel } from '../labels';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { V2, Seg } from '../core/world';
 
@@ -1468,7 +1469,7 @@ export function stationShops(i: number): Shop[] {
   return SHOP_DEF.map((d, k) => ({
     id: `s${i}:${k}`,
     kind: d.kind,
-    name: d.name,
+    name: translateLabel(d.name),
     p: [OX + d.x, OZ + d.z] as V2,
     stock: d.stock,
     vend: d.kind[0] === 'v' || d.kind === 'locker',

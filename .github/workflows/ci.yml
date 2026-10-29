@@ -27,6 +27,8 @@ jobs:
       - run: npx prettier --check .
       - name: Unit checks (bus, save, map tiles, story)
         run: node scripts/checks/modules.mjs
+      - name: English localization contracts
+        run: node scripts/checks/i18n.mjs
       - run: npm run build
 
   browser:
@@ -38,6 +40,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - name: English language and mobile layout
+            script: scripts/checks/english-browser.mjs
           - name: smoke
             script: scripts/smoke.mjs
           - name: story save lifecycle
