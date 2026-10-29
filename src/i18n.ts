@@ -73,6 +73,12 @@ export function initTitleLanguage() {
   if (!title) return;
   const h1 = title.querySelector('h1');
   if (h1) h1.textContent = tr('保衛台北', 'Defend Taipei');
+  const subtitle = title.querySelector('h2');
+  if (subtitle && language === 'en')
+    subtitle.textContent = (subtitle.textContent || '').replace(
+      '萬華淪陷區 · 生存原型',
+      'Occupied Wanhua · Survival prototype',
+    );
   const intro = title.querySelector('p');
   if (intro && language === 'en')
     intro.innerHTML =

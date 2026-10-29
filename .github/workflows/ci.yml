@@ -40,6 +40,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - name: English language and mobile layout
+            script: scripts/checks/english-browser.mjs
           - name: smoke
             script: scripts/smoke.mjs
           - name: story save lifecycle
