@@ -98,6 +98,29 @@ async function exercise(options, name) {
     assert.match(hud, /Health/);
     assert.doesNotMatch(hud, /生命|飢餓|口渴|精神/);
     record.hud = hud;
+    if (options.hasTouch) {
+      record.touchLabels = await page.evaluate(() =>
+        ['pbact', 'pbsec'].map(id => {
+          const button = document.getElementById(id);
+          const range = document.createRange();
+          range.selectNodeContents(button);
+          const text = range.getBoundingClientRect();
+          const box = button.getBoundingClientRect();
+          return {
+            id,
+            label: button.textContent,
+            textWidth: text.width,
+            textHeight: text.height,
+            width: box.width,
+            height: box.height,
+          };
+        }),
+      );
+      for (const label of record.touchLabels) {
+        assert.ok(label.textWidth <= label.width - 8, `${label.id} label fits horizontally`);
+        assert.ok(label.textHeight <= label.height - 8, `${label.id} label fits vertically`);
+      }
+    }
     record.screenshots.push(await capture(page, `${name}-hud`));
     if (options.hasTouch) {
       await page.locator('#menubtn').tap();

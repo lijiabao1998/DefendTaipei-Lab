@@ -1957,12 +1957,18 @@ html[lang='en'] .srow > span {
 html[lang='en'] .mhead h3 {
   overflow-wrap: anywhere;
 }
-html[lang='en'] .pbtn {
-  font-size: 16px;
+html[lang='en'] #pbact,
+html[lang='en'] #pbsec {
+  padding: 0;
+  white-space: nowrap;
+  line-height: 1.1;
 }
-html[lang='en'] .pbtn.long {
-  font-size: 13px;
-  overflow-wrap: anywhere;
+html[lang='en'] #pbact,
+html[lang='en'] #pbact.long {
+  font-size: calc(15px * var(--pbs, 1));
+}
+html[lang='en'] #pbsec {
+  font-size: calc(11px * var(--pbs, 1));
 }
 html[lang='en'] #stats .t span:first-child {
   white-space: normal;
