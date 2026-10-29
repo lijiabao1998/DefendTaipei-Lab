@@ -1,3 +1,4 @@
+import { tr, getLanguage } from '../i18n';
 // v22.4 player settings + key bindings, persisted in localStorage.
 export type Quality = 'low' | 'med' | 'high';
 export interface Settings {
@@ -37,6 +38,7 @@ function load<T>(k: string, d: T): T {
   }
 }
 export const SET: Settings = load(SKEY, DEF);
+SET.lang = getLanguage();
 export function saveSettings() {
   localStorage.setItem(SKEY, JSON.stringify(SET));
   applyVolumes();
@@ -46,25 +48,25 @@ export const QPIX: Record<Quality, number> = { low: 1, med: 1.25, high: 1.5 };
 
 /** rebindable actions; fire = left mouse, menu = Esc are fixed */
 export const ACTIONS: [id: string, label: string, def: string][] = [
-  ['up', '前進', 'KeyW'],
-  ['down', '後退', 'KeyS'],
-  ['left', '向左', 'KeyA'],
-  ['right', '向右', 'KeyD'],
-  ['sprint', '奔跑（按住）', 'ShiftLeft'],
-  ['sneak', '潛行／蹲低（切換）', 'KeyC'],
-  ['cover', '掩體', 'KeyG'],
-  ['interact', '搜刮／互動', 'KeyE'],
-  ['vault', '翻越矮牆／沙包', 'Space'],
-  ['shove', '推開', 'KeyQ'],
-  ['inv', '背包（I 亦可）', 'Tab'],
-  ['map', '地圖', 'KeyM'],
-  ['shelter', '避難所', 'KeyH'],
-  ['barricade', '封門', 'KeyB'],
-  ['sleep', '睡覺（快轉）', 'KeyZ'],
-  ['light', '手電筒', 'KeyF'],
-  ['speed1', '時間 ×1', 'Digit1'],
-  ['speed2', '時間 ×3', 'Digit2'],
-  ['speed3', '時間 ×20', 'Digit3'],
+  ['up', tr('前進', 'Move forward'), 'KeyW'],
+  ['down', tr('後退', 'Move backward'), 'KeyS'],
+  ['left', tr('向左', 'Move left'), 'KeyA'],
+  ['right', tr('向右', 'Move right'), 'KeyD'],
+  ['sprint', tr('奔跑（按住）', 'Sprint (hold)'), 'ShiftLeft'],
+  ['sneak', tr('潛行／蹲低（切換）', 'Sneak / crouch (toggle)'), 'KeyC'],
+  ['cover', tr('掩體', 'Take cover'), 'KeyG'],
+  ['interact', tr('搜刮／互動', 'Loot / interact'), 'KeyE'],
+  ['vault', tr('翻越矮牆／沙包', 'Vault low walls / sandbags'), 'Space'],
+  ['shove', tr('推開', 'Shove'), 'KeyQ'],
+  ['inv', tr('背包（I 亦可）', 'Inventory (also I)'), 'Tab'],
+  ['map', tr('地圖', 'Map'), 'KeyM'],
+  ['shelter', tr('避難所', 'Shelter'), 'KeyH'],
+  ['barricade', tr('封門', 'Barricade door'), 'KeyB'],
+  ['sleep', tr('睡覺（快轉）', 'Sleep (fast-forward)'), 'KeyZ'],
+  ['light', tr('手電筒', 'Flashlight'), 'KeyF'],
+  ['speed1', tr('時間 ×1', 'Time ×1'), 'Digit1'],
+  ['speed2', tr('時間 ×3', 'Time ×3'), 'Digit2'],
+  ['speed3', tr('時間 ×20', 'Time ×20'), 'Digit3'],
 ];
 const KDEF = Object.fromEntries(ACTIONS.map(a => [a[0], a[2]]));
 export const BIND: Record<string, string> = load(KKEY, KDEF);
@@ -84,11 +86,11 @@ export function keyName(code: string) {
   if (code.startsWith('Key')) return code.slice(3);
   if (code.startsWith('Digit')) return code.slice(5);
   const m: Record<string, string> = {
-    Space: '空白鍵',
+    Space: tr('空白鍵', 'Space'),
     ShiftLeft: 'Shift',
-    ShiftRight: '右 Shift',
+    ShiftRight: tr('右 Shift', 'Right Shift'),
     ControlLeft: 'Ctrl',
-    ControlRight: '右 Ctrl',
+    ControlRight: tr('右 Ctrl', 'Right Ctrl'),
     AltLeft: 'Alt',
     Tab: 'Tab',
     CapsLock: 'Caps',
@@ -99,7 +101,7 @@ export function keyName(code: string) {
     Enter: 'Enter',
     Backquote: '`',
   };
-  return m[code] || code.replace(/^Numpad/, '數字鍵 ');
+  return m[code] || code.replace(/^Numpad/, tr('數字鍵 ', 'Numpad '));
 }
 export const keyLabel = (a: string) => keyName(BIND[a]);
 /** bind; a key already used by another action is swapped onto it so there are never two actions on one key */

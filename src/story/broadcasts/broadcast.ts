@@ -1,3 +1,4 @@
+import { getLanguage } from '../../i18n';
 // v23.1 voiced radio broadcasts + 萬安-style air-raid sirens, all synthesized at runtime (no recordings).
 // Speech: the browser's Web Speech API (zh-TW voice, else any zh-*); speechSynthesis cannot be routed through
 // WebAudio, so a WebAudio "radio bed" (hiss, crackle, tuning blips, dropouts) plays alongside it in its own
@@ -22,10 +23,12 @@ function pickVoice() {
   if (!ss) return;
   const v = ss.getVoices();
   voice =
-    v.find(x => /zh[-_]TW/i.test(x.lang)) ||
-    v.find(x => /zh[-_](HK|Hant)/i.test(x.lang)) ||
-    v.find(x => /^zh/i.test(x.lang)) ||
-    null;
+    getLanguage() === 'en'
+      ? v.find(x => /^en[-_]US/i.test(x.lang)) || v.find(x => /^en/i.test(x.lang)) || null
+      : v.find(x => /zh[-_]TW/i.test(x.lang)) ||
+        v.find(x => /zh[-_](HK|Hant)/i.test(x.lang)) ||
+        v.find(x => /^zh/i.test(x.lang)) ||
+        null;
   bcStats.voice = voice ? `${voice.name} (${voice.lang})` : '';
 }
 /** mobile: speech + the bed context need a user gesture once */
@@ -156,10 +159,11 @@ function next() {
   try {
     const u = new SpeechSynthesisUtterance(clean);
     if (voice) u.voice = voice;
-    u.lang = voice?.lang || 'zh-TW';
+    u.lang = voice?.lang || (getLanguage() === 'en' ? 'en-US' : 'zh-TW');
     // occupation broadcasts slower / lower, the underground station hurried
-    const occ = /佔領|解放軍|軍管/.test(who + text) && !/自由之聲/.test(who);
-    u.rate = /自由之聲/.test(who) ? 1.12 : occ ? 0.9 : 1.0;
+    const occ =
+      /佔領|解放軍|軍管|occupation|\bPLA\b|martial law/i.test(who + text) && !/自由之聲|Voice of Freedom/i.test(who);
+    u.rate = /自由之聲|Voice of Freedom/i.test(who) ? 1.12 : occ ? 0.9 : 1.0;
     u.pitch = occ ? 0.8 : 1.0;
     u.volume = Math.min(1, SET.master * SET.radio);
     u.onend = u.onerror = done;

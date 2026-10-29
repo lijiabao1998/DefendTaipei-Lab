@@ -27,6 +27,8 @@ jobs:
       - run: npx prettier --check .
       - name: Unit checks (bus, save, map tiles, story)
         run: node scripts/checks/modules.mjs
+      - name: English localization contracts
+        run: node scripts/checks/i18n.mjs
       - run: npm run build
 
   browser:

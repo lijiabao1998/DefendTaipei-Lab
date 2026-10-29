@@ -1,3 +1,4 @@
+import { tr } from '../../i18n';
 import * as THREE from 'three';
 // 撤離區 marker + extraction cinematic (fictional / generic models, no real insignia)
 export const cine = {
@@ -55,7 +56,7 @@ export function buildEvacZone(scene: THREE.Scene, x: number, z: number) {
   g.add(pole);
   const flag = box(1.4, 0.8, 0.04, M(0xff7a00, 0.3), 7.2, 4.5, 0);
   g.add(flag);
-  const sign = label('撤離區 EVAC', '#b02020', 3.4, 0.85);
+  const sign = label(tr('撤離區 EVAC', 'EVAC ZONE'), '#b02020', 3.4, 0.85);
   sign.position.set(-6.5, 2.2, 0);
   g.add(sign, box(0.1, 2.2, 0.1, M(0x666666), -6.5, 1.1, 0.05));
   const flare = new THREE.PointLight(0xff3020, 0, 30);

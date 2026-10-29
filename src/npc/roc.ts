@@ -1,12 +1,13 @@
+import { tr } from '../i18n';
 // 國軍 (ROC Army) support vehicles — AI only, not player-driven. Low-poly boxy meshes, fictional game use.
 // M1A2T (120mm M256), CM-11 Brave Tiger (105mm M68A1), CM-32/34 Clouded Leopard 8x8 (30mm Mk44 on CM34).
 import * as THREE from 'three';
 type V2 = [number, number];
 export type RocKind = 'm1a2t' | 'cm11' | 'cm32';
 export const ROC_NAME: Record<RocKind, string> = {
-  m1a2t: 'M1A2T 艾布蘭戰車',
-  cm11: 'CM-11 勇虎戰車',
-  cm32: 'CM-32/34 雲豹甲車',
+  m1a2t: tr('M1A2T 艾布蘭戰車', 'M1A2T Abrams tank'),
+  cm11: tr('CM-11 勇虎戰車', 'CM-11 Brave Tiger tank'),
+  cm32: tr('CM-32/34 雲豹甲車', 'CM-32/34 Clouded Leopard armored vehicle'),
 };
 const green = new THREE.MeshStandardMaterial({ color: 0x4c5638, roughness: 0.85 }),
   dark = new THREE.MeshStandardMaterial({ color: 0x2c3022, roughness: 0.9 }),
@@ -201,7 +202,13 @@ export class RocSystem {
       }
       if (u.life <= 0 && !u.leaving) {
         u.leaving = true;
-        this.d.log(`${ROC_NAME[u.kind]} 完成支援，撤離戰區`, '#9cf');
+        this.d.log(
+          tr(
+            `${ROC_NAME[u.kind]} 完成支援，撤離戰區`,
+            `${ROC_NAME[u.kind]} has completed support and is leaving the combat zone`,
+          ),
+          '#9cf',
+        );
       }
     }
     for (const u of this.list.filter(u => u.leaving)) {

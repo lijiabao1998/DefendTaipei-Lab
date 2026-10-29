@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 // Drivable Taiwan-street vehicles. All names, liveries and plates are invented; shapes are generic by class
 // (no real brands, logos, grilles or signature design lines).
 import * as THREE from 'three';
@@ -35,7 +36,7 @@ export type DSpec = {
 };
 export const SPEC: Record<DKind, DSpec> = {
   scooter: {
-    name: '迅風 125',
+    name: tr('迅風 125', 'Swiftwind 125'),
     drive: true,
     two: true,
     L: 1.8,
@@ -51,7 +52,7 @@ export const SPEC: Record<DKind, DSpec> = {
     seatY: 0.62,
   },
   moto: {
-    name: '老狼 150',
+    name: tr('老狼 150', 'Old Wolf 150'),
     drive: true,
     two: true,
     L: 2.0,
@@ -67,7 +68,7 @@ export const SPEC: Record<DKind, DSpec> = {
     seatY: 0.78,
   },
   escooter: {
-    name: '電驢 E',
+    name: tr('電驢 E', 'E-Mule'),
     drive: true,
     two: true,
     L: 1.8,
@@ -84,7 +85,7 @@ export const SPEC: Record<DKind, DSpec> = {
     seatY: 0.62,
   },
   delivery: {
-    name: '迅風 125（外送版）',
+    name: tr('迅風 125（外送版）', 'Swiftwind 125 (Delivery)'),
     drive: true,
     two: true,
     L: 1.9,
@@ -100,7 +101,7 @@ export const SPEC: Record<DKind, DSpec> = {
     seatY: 0.62,
   },
   ubike: {
-    name: '微笑單車',
+    name: tr('微笑單車', 'Smile Bike'),
     drive: true,
     two: true,
     L: 1.75,
@@ -117,7 +118,7 @@ export const SPEC: Record<DKind, DSpec> = {
     seatY: 0.85,
   },
   basket: {
-    name: '菜籃車（淑女車）',
+    name: tr('菜籃車（淑女車）', 'Basket bicycle (step-through)'),
     drive: true,
     two: true,
     L: 1.7,
@@ -134,7 +135,7 @@ export const SPEC: Record<DKind, DSpec> = {
     seatY: 0.8,
   },
   kei: {
-    name: '勇馬小貨卡',
+    name: tr('勇馬小貨卡', 'Brave Horse mini truck'),
     drive: true,
     two: false,
     L: 3.4,
@@ -150,7 +151,7 @@ export const SPEC: Record<DKind, DSpec> = {
     seatY: 0.9,
   },
   taxi: {
-    name: '萬順車隊 計程車',
+    name: tr('萬順車隊 計程車', 'Wanshun Taxi'),
     drive: true,
     two: false,
     L: 4.6,
@@ -166,7 +167,7 @@ export const SPEC: Record<DKind, DSpec> = {
     seatY: 0.8,
   },
   sedan: {
-    name: '老款四門轎車',
+    name: tr('老款四門轎車', 'Old four-door sedan'),
     drive: true,
     two: false,
     L: 4.4,
@@ -182,7 +183,7 @@ export const SPEC: Record<DKind, DSpec> = {
     seatY: 0.8,
   },
   van: {
-    name: '麵包車（可當移動安全屋）',
+    name: tr('麵包車（可當移動安全屋）', 'Van (mobile safe house)'),
     drive: true,
     two: false,
     L: 4.3,
@@ -198,7 +199,7 @@ export const SPEC: Record<DKind, DSpec> = {
     seatY: 1.0,
   },
   bus: {
-    name: '萬華客運',
+    name: tr('萬華客運', 'Wanhua Transit'),
     drive: false,
     two: false,
     L: 11,
@@ -214,7 +215,7 @@ export const SPEC: Record<DKind, DSpec> = {
     seatY: 0,
   },
   garbage: {
-    name: '垃圾車',
+    name: tr('垃圾車', 'Garbage truck'),
     drive: false,
     two: false,
     L: 7,
@@ -331,7 +332,7 @@ export function scooterModel(kind: DKind, r: () => number) {
   if (kind === 'delivery') {
     const bx = new THREE.Group();
     box(bx, 0.46, 0.42, 0.42, M(0x3a3f8a, 0.6), 0, 0, 0);
-    const lb = label('飽飽送', 0.46, 0.2, '#3a3f8a', '#ffe680');
+    const lb = label(tr('飽飽送', 'Full Belly'), 0.46, 0.2, '#3a3f8a', '#ffe680');
     box(bx, 0.44, 0.18, 0.005, lb, 0, 0.02, -0.215);
     bx.position.set(0, 0.92, -0.38);
     g.add(bx);
@@ -369,7 +370,7 @@ function bikeModel(kind: DKind, r: () => number) {
   box(g, 0.2, 0.06, 0.26, dark, 0, 0.86, -0.22);
   if (kind === 'ubike') {
     box(g, 0.36, 0.22, 0.28, M(0xe8f0ec, 0.6), 0, 0.82, 0.68);
-    box(g, 0.34, 0.1, 0.005, label('微笑', 0.34, 0.1, '#2a9a8a', '#fff'), 0, 0.82, 0.825);
+    box(g, 0.34, 0.1, 0.005, label(tr('微笑', 'Smile'), 0.34, 0.1, '#2a9a8a', '#fff'), 0, 0.82, 0.825);
     box(g, 0.08, 0.12, 0.6, M(0xe8f0ec, 0.6), 0, 0.42, 0.15);
   } else box(g, 0.36, 0.24, 0.3, M(0x9a8a6a, 0.9), 0, 0.82, 0.68);
   for (const z of [-0.55, 0.6]) wheels.push(cyl(g, 0.33, 0.04, dark, 0, 0.33, z));
@@ -427,12 +428,30 @@ export function carModel(kind: DKind, r: () => number) {
     if (kind === 'bus') {
       for (const x of [-W / 2 - 0.005, W / 2 + 0.005]) box(g, 0.01, 0.9, L * 0.85, glass, x, 2.1, 0);
       box(g, W - 0.01, 0.5, 0.42, M(0x2a8a5a, 0.5), 0, 0.75, 0);
-      box(g, 0.01, 0.35, 2.2, label('萬華客運　萬88', 2.2, 0.35, '#2a8a5a', '#fff'), W / 2 + 0.012, 0.75, 0);
-      box(g, 1.4, 0.3, 0.02, label('萬88 龍山寺', 1.4, 0.3, '#111', '#ffb020'), 0, 2.75, L / 2 + 0.01);
+      box(
+        g,
+        0.01,
+        0.35,
+        2.2,
+        label(tr('萬華客運　萬88', 'Wanhua Transit W88'), 2.2, 0.35, '#2a8a5a', '#fff'),
+        W / 2 + 0.012,
+        0.75,
+        0,
+      );
+      box(
+        g,
+        1.4,
+        0.3,
+        0.02,
+        label(tr('萬88 龍山寺', 'W88 Longshan Temple'), 1.4, 0.3, '#111', '#ffb020'),
+        0,
+        2.75,
+        L / 2 + 0.01,
+      );
     } else {
       box(g, W, 1.7, 1.8, paint, 0, 1.25, L / 2 - 0.9);
       box(g, W * 0.9, 0.6, 0.04, glass, 0, 1.6, L / 2 + 0.01);
-      box(g, 0.01, 0.4, 2.2, label('清潔隊', 2.2, 0.4, '#f2c818', '#1a4a2a'), W / 2 + 0.012, 1.3, -1);
+      box(g, 0.01, 0.4, 2.2, label(tr('清潔隊', 'Sanitation'), 2.2, 0.4, '#f2c818', '#1a4a2a'), W / 2 + 0.012, 1.3, -1);
     }
   } else {
     box(g, W, 0.62, L, paint, 0, 0.66, 0);
@@ -442,8 +461,17 @@ export function carModel(kind: DKind, r: () => number) {
     box(g, W * 0.86, 0.45, 0.04, glass, 0, 1.24, -0.15 - cabL / 2 - 0.01);
     for (const x of [-W * 0.45 - 0.005, W * 0.45 + 0.005]) box(g, 0.01, 0.4, cabL * 0.9, glass, x, 1.26, -0.15);
     if (kind === 'taxi') {
-      box(g, 0.62, 0.2, 0.26, label('計程車', 0.62, 0.2, '#ffffff', '#1a1a1a'), 0, 1.62, -0.15);
-      box(g, 0.01, 0.16, 1.2, label('萬順車隊', 1.2, 0.16, '#f0c020', '#1a1a1a'), W / 2 + 0.006, 0.7, -0.2);
+      box(g, 0.62, 0.2, 0.26, label(tr('計程車', 'Taxi'), 0.62, 0.2, '#ffffff', '#1a1a1a'), 0, 1.62, -0.15);
+      box(
+        g,
+        0.01,
+        0.16,
+        1.2,
+        label(tr('萬順車隊', 'Wanshun'), 1.2, 0.16, '#f0c020', '#1a1a1a'),
+        W / 2 + 0.006,
+        0.7,
+        -0.2,
+      );
     }
   }
   if (kind !== 'bus' && kind !== 'garbage') {
@@ -546,37 +574,72 @@ export class DriveSystem {
     const f = s.pedal
       ? ''
       : s.elec
-        ? `電量 ${Math.round((v.fuel / s.fuelCap) * 100)}%`
-        : `油 ${v.fuel.toFixed(1)}/${s.fuelCap}L`;
-    return `${s.name}｜${f}｜輪胎 ${Math.round(v.tyre * 100)}%｜電瓶 ${Math.round(v.bat * 100)}%｜引擎 ${Math.round(v.eng * 100)}%`;
+        ? tr(`電量 ${Math.round((v.fuel / s.fuelCap) * 100)}%`, `Charge ${Math.round((v.fuel / s.fuelCap) * 100)}%`)
+        : tr(`油 ${v.fuel.toFixed(1)}/${s.fuelCap}L`, `Fuel ${v.fuel.toFixed(1)}/${s.fuelCap} L`);
+    return tr(
+      `${s.name}｜${f}｜輪胎 ${Math.round(v.tyre * 100)}%｜電瓶 ${Math.round(v.bat * 100)}%｜引擎 ${Math.round(v.eng * 100)}%`,
+      `${s.name}｜${f}｜Tires ${Math.round(v.tyre * 100)}%｜Battery ${Math.round(v.bat * 100)}%｜Engine ${Math.round(v.eng * 100)}%`,
+    );
   }
   /** try to get on; returns message or '' when entered */
   enter(v: DV): string {
     const s = v.s,
       sk = this.d.skills(),
       inv = this.d.inv();
-    if (!s.drive) return `${s.name}：太大台，開不動（可當路障或拿來引誘巡邏）`;
+    if (!s.drive)
+      return tr(
+        `${s.name}：太大台，開不動（可當路障或拿來引誘巡邏）`,
+        `${s.name}: too large to drive (can serve as a barricade or lure patrols)`,
+      );
     if (v.docked) {
       if (inv.hammer || inv.pipe) {
         v.docked = false;
         this.d.noise(v.pos.x, v.pos.z, 26);
-        this.d.log('哐！你把微笑單車從停車柱上硬撬下來——聲音很大。', '#fc8');
-      } else return '微笑單車鎖在停車柱上：需要鐵鎚或鐵管撬開';
+        this.d.log(
+          tr(
+            '哐！你把微笑單車從停車柱上硬撬下來——聲音很大。',
+            'Clang! You pry the Smile Bike off its dock—with a very loud noise.',
+          ),
+          '#fc8',
+        );
+      } else
+        return tr(
+          '微笑單車鎖在停車柱上：需要鐵鎚或鐵管撬開',
+          'The Smile Bike is locked to its dock. You need a hammer or metal pipe to pry it free.',
+        );
     }
     if (s.key && !v.key && !inv['key' + v.id]) {
-      if (!sk.lockpick) return `${s.name}：沒有鑰匙（水電師傅可以接線發動）`;
+      if (!sk.lockpick)
+        return tr(`${s.name}：沒有鑰匙（水電師傅可以接線發動）`, `${s.name}: no key (a handyman can hot-wire it)`);
       if (this.wireV !== v) {
         this.wireV = v;
         this.wire = sk.repair ? 2.5 : 4;
-        return '🔧 拆開鎖頭蓋，開始接線…（再按一次互動繼續）';
+        return tr(
+          '🔧 拆開鎖頭蓋，開始接線…（再按一次互動繼續）',
+          '🔧 You remove the ignition cover and start hot-wiring… (interact again to continue)',
+        );
       }
-      if (this.wire > 0) return `🔧 接線中…還要 ${this.wire.toFixed(1)} 秒`;
+      if (this.wire > 0)
+        return tr(`🔧 接線中…還要 ${this.wire.toFixed(1)} 秒`, `🔧 Hot-wiring… ${this.wire.toFixed(1)} seconds left`);
       v.key = true;
     }
-    if (!s.pedal && !s.elec && v.fuel <= 0.05) return `${s.name}：油箱是空的（用塑膠管從別的車抽油，或找汽油桶）`;
-    if (s.elec && v.fuel <= 0.02) return `${s.name}：電池沒電了${this.d.power() ? '' : '——停電後沒地方充電'}`;
-    if (!s.pedal && v.bat < 0.15) return `${s.name}：電瓶沒電，發不動（找汽車電瓶換上）`;
-    if (!s.pedal && v.eng < 0.1) return `${s.name}：引擎壞了（需要修理）`;
+    if (!s.pedal && !s.elec && v.fuel <= 0.05)
+      return tr(
+        `${s.name}：油箱是空的（用塑膠管從別的車抽油，或找汽油桶）`,
+        `${s.name}: empty fuel tank (siphon another vehicle with a plastic hose, or find a gas can)`,
+      );
+    if (s.elec && v.fuel <= 0.02)
+      return tr(
+        `${s.name}：電池沒電了${this.d.power() ? '' : '——停電後沒地方充電'}`,
+        `${s.name}: battery empty${this.d.power() ? '' : '—there is nowhere to charge during the blackout'}`,
+      );
+    if (!s.pedal && v.bat < 0.15)
+      return tr(
+        `${s.name}：電瓶沒電，發不動（找汽車電瓶換上）`,
+        `${s.name}: dead starter battery (find a car battery to replace it)`,
+      );
+    if (!s.pedal && v.eng < 0.1)
+      return tr(`${s.name}：引擎壞了（需要修理）`, `${s.name}: broken engine (repairs needed)`);
     this.cur = v;
     v.g.rotation.z = 0;
     return '';
@@ -620,7 +683,11 @@ export class DriveSystem {
   update(dt: number, want: THREE.Vector3, power: boolean) {
     if (this.wireV && this.wire > 0) {
       this.wire -= dt;
-      if (this.wire <= 0) this.d.log('⚡ 線接好了，再按互動發動。', '#9f9');
+      if (this.wire <= 0)
+        this.d.log(
+          tr('⚡ 線接好了，再按互動發動。', '⚡ Wiring complete. Interact again to start the engine.'),
+          '#9f9',
+        );
     }
     for (const v of this.list)
       if (v.s.elec && power && v !== this.cur) v.fuel = Math.min(v.s.fuelCap, v.fuel + dt * 0.0005); // trickle charge only while grid is up (parked at home outlet)
@@ -653,11 +720,20 @@ export class DriveSystem {
         v.tyre = Math.max(0, v.tyre - hit * 0.01);
         this.d.hurt(s.two ? hit * 1.5 : hit * 0.4);
         this.d.noise(v.pos.x, v.pos.z, 30);
-        this.d.log(`💥 撞上了！引擎 ${Math.round(v.eng * 100)}%`, '#f88');
+        this.d.log(
+          tr(`💥 撞上了！引擎 ${Math.round(v.eng * 100)}%`, `💥 Collision! Engine ${Math.round(v.eng * 100)}%`),
+          '#f88',
+        );
       }
       v.v = -v.v * 0.15;
       if (!s.two && this.d.roadW(v.pos.x, v.pos.z) < s.W + 0.8 && hit > 1)
-        this.d.log('巷子太窄，汽車過不去——改騎機車或用走的。', '#ccc');
+        this.d.log(
+          tr(
+            '巷子太窄，汽車過不去——改騎機車或用走的。',
+            'The alley is too narrow for a car. Take a scooter or go on foot.',
+          ),
+          '#ccc',
+        );
     } else {
       v.pos.x = nx;
       v.pos.z = nz;
@@ -667,7 +743,13 @@ export class DriveSystem {
     for (const w of v.wheels) w.rotation.x += (v.v * dt) / 0.3;
     if (!s.pedal) {
       v.fuel = Math.max(0, v.fuel - s.burn * dt * (0.2 + Math.abs(v.v) / Math.max(1, s.vmax)));
-      if (v.fuel <= 0 && !out) this.d.log(s.elec ? '🔋 電池沒電了。' : '⛽ 沒油了，車子慢慢停下來。', '#fc8');
+      if (v.fuel <= 0 && !out)
+        this.d.log(
+          s.elec
+            ? tr('🔋 電池沒電了。', '🔋 The battery is empty.')
+            : tr('⛽ 沒油了，車子慢慢停下來。', '⛽ Out of fuel. The vehicle rolls to a stop.'),
+          '#fc8',
+        );
     }
     this.acc += dt;
     if (this.acc > 0.6 && s.noise > 0) {
@@ -680,7 +762,7 @@ export class DriveSystem {
         v.tyre = 0.2;
         v.v = 0;
         this.d.hurt(s.two ? 35 : 15);
-        this.d.log('💥 裝甲車直接撞上來！', '#f66');
+        this.d.log(tr('💥 裝甲車直接撞上來！', '💥 An armored vehicle rams you!'), '#f66');
         v.pos.x -= (a.x - v.pos.x) * 0.5;
         v.pos.z -= (a.z - v.pos.z) * 0.5;
       }
@@ -688,25 +770,32 @@ export class DriveSystem {
   }
   siphon(from: DV): string {
     const inv = this.d.inv();
-    if (from.s.pedal || from.s.elec || from.s.fuelCap <= 0) return '這台沒有油箱';
-    if (!inv.hose) return `${from.s.name}：油箱還有 ${from.fuel.toFixed(1)} L——需要塑膠管才能抽油`;
-    if (from.fuel < 1) return '油箱幾乎是空的';
+    if (from.s.pedal || from.s.elec || from.s.fuelCap <= 0) return tr('這台沒有油箱', 'This vehicle has no fuel tank.');
+    if (!inv.hose)
+      return tr(
+        `${from.s.name}：油箱還有 ${from.fuel.toFixed(1)} L——需要塑膠管才能抽油`,
+        `${from.s.name}: ${from.fuel.toFixed(1)} L in the tank—a plastic hose is needed to siphon it`,
+      );
+    if (from.fuel < 1) return tr('油箱幾乎是空的', 'The fuel tank is almost empty.');
     const n = Math.min(Math.floor(from.fuel), 5);
     from.fuel -= n;
     inv.gas = (inv.gas || 0) + n;
     this.d.noise(from.pos.x, from.pos.z, 4);
-    return `用塑膠管抽出 ${n} L 汽油（嘴裡一股油味）`;
+    return tr(
+      `用塑膠管抽出 ${n} L 汽油（嘴裡一股油味）`,
+      `Siphoned ${n} L of gasoline through a plastic hose (leaving a taste of fuel)`,
+    );
   }
   refuel(v: DV): string {
     const inv = this.d.inv();
-    if (v.s.pedal || v.s.elec) return v.s.elec ? '電動車不能加汽油' : '';
+    if (v.s.pedal || v.s.elec) return v.s.elec ? tr('電動車不能加汽油', 'Electric vehicles cannot use gasoline.') : '';
     if (!inv.gas) return '';
     const n = Math.min(inv.gas, Math.ceil(v.s.fuelCap - v.fuel));
-    if (n <= 0) return '油箱滿了';
+    if (n <= 0) return tr('油箱滿了', 'The fuel tank is full.');
     v.fuel += n;
     inv.gas -= n;
     if (!inv.gas) delete inv.gas;
-    return `倒進 ${n} L 汽油`;
+    return tr(`倒進 ${n} L 汽油`, `Added ${n} L of gasoline`);
   }
   repair(v: DV): string {
     const inv = this.d.inv(),
@@ -715,16 +804,20 @@ export class DriveSystem {
     if (v.tyre < 0.9 && inv.patch) {
       v.tyre = 1;
       if (--inv.patch <= 0) delete inv.patch;
-      out.push('補好輪胎');
+      out.push(tr('補好輪胎', 'Patched the tire'));
     }
     if (v.bat < 0.5 && inv.carbat && !v.s.pedal) {
       v.bat = 1;
       if (--inv.carbat <= 0) delete inv.carbat;
-      out.push('換上電瓶');
+      out.push(tr('換上電瓶', 'Replaced the battery'));
     }
     if (v.eng < 0.7 && !v.s.pedal && (inv.hammer || inv.pipe)) {
       v.eng = Math.min(1, v.eng + (sk.repair ? 0.6 : 0.25));
-      out.push(sk.repair ? '師傅手法：引擎大致修好' : '敲敲打打，引擎好一點');
+      out.push(
+        sk.repair
+          ? tr('師傅手法：引擎大致修好', 'Expert repairs: engine mostly restored')
+          : tr('敲敲打打，引擎好一點', 'A few makeshift repairs improve the engine'),
+      );
       this.d.noise(v.pos.x, v.pos.z, 12);
     }
     return out.join('、');

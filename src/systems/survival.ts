@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 // v22 This War of Mine–style survival layer.
 //  • Day / night: 06–18 patrols are out (stay home, manage the shelter, scavenging is risky); 18–06 is scavenging
 //    time (extra finds while looting at night).
@@ -22,11 +23,31 @@ export type Survivor = {
 };
 export type Upg = 'boards' | 'beds' | 'stove' | 'rain' | 'planter';
 export const UPG: Record<Upg, { name: string; cost: Record<string, number>; desc: string }> = {
-  boards: { name: '釘木板封窗', cost: { plank: 3 }, desc: '夜裡被搶的機會大減' },
-  beds: { name: '撿來的床墊', cost: { plank: 2, cloth: 2 }, desc: '大家睡得好，生病和受傷好得快' },
-  stove: { name: '瓦斯爐', cost: { scrap: 3, gas: 1 }, desc: '一包米煮成全組的一餐' },
-  rain: { name: '頂樓集雨桶', cost: { scrap: 2, bucket: 1 }, desc: '下雨天自動接雨水' },
-  planter: { name: '陽台菜圃', cost: { plank: 1, seeds: 1 }, desc: '每兩天收一把地瓜葉' },
+  boards: {
+    name: tr('釘木板封窗', 'Board up the windows'),
+    cost: { plank: 3 },
+    desc: tr('夜裡被搶的機會大減', 'Greatly reduces the risk of overnight theft'),
+  },
+  beds: {
+    name: tr('撿來的床墊', 'Salvaged mattresses'),
+    cost: { plank: 2, cloth: 2 },
+    desc: tr('大家睡得好，生病和受傷好得快', 'Better sleep helps everyone recover from illness and injury'),
+  },
+  stove: {
+    name: tr('瓦斯爐', 'Gas stove'),
+    cost: { scrap: 3, gas: 1 },
+    desc: tr('一包米煮成全組的一餐', 'One bag of rice feeds the whole group'),
+  },
+  rain: {
+    name: tr('頂樓集雨桶', 'Rooftop rain barrel'),
+    cost: { scrap: 2, bucket: 1 },
+    desc: tr('下雨天自動接雨水', 'Automatically collects water when it rains'),
+  },
+  planter: {
+    name: tr('陽台菜圃', 'Balcony vegetable garden'),
+    cost: { plank: 1, seeds: 1 },
+    desc: tr('每兩天收一把地瓜葉', 'Harvest sweet potato leaves every two days'),
+  },
 };
 /** barter values (in 香菸 equivalents); scarcity raises what food and meds are worth */
 export const VAL: Record<string, number> = {
@@ -50,8 +71,8 @@ export const VAL: Record<string, number> = {
   gas: 3,
 };
 export const TRADE_SPOTS: { name: string; x: number; z: number }[] = [
-  { name: '龍山寺廟埕・以物易物', x: -260, z: 392 },
-  { name: '東園街市場・以物易物', x: -40, z: 610 },
+  { name: tr('龍山寺廟埕・以物易物', 'Longshan Temple courtyard · Barter'), x: -260, z: 392 },
+  { name: tr('東園街市場・以物易物', 'Dongyuan Street Market · Barter'), x: -40, z: 610 },
 ];
 export type SurvState = {
   day: number;
@@ -96,10 +117,16 @@ export function newSurv(): SurvState {
     scarcity: 1,
     upg: {},
     group: [
-      S('ama', '阿嬤', '隔壁的阿嬤（會煮飯）', 'cook', true),
-      S('miao', '廟公', '青山宮廟公（會安定人心）', 'pray', false),
-      S('adi', '阿迪', '印尼移工（會修東西）', 'build', false),
-      S('mei', '小美', '樓下的鄰居（會找東西）', 'scav', true),
+      S('ama', tr('阿嬤', 'Grandma'), tr('隔壁的阿嬤（會煮飯）', 'Grandma next door (cooking)'), 'cook', true),
+      S(
+        'miao',
+        tr('廟公', 'Temple keeper'),
+        tr('青山宮廟公（會安定人心）', 'Qingshan Temple keeper (morale)'),
+        'pray',
+        false,
+      ),
+      S('adi', tr('阿迪', 'Adi'), tr('印尼移工（會修東西）', 'Indonesian migrant worker (repairs)'), 'build', false),
+      S('mei', tr('小美', 'Xiaomei'), tr('樓下的鄰居（會找東西）', 'Downstairs neighbor (scavenging)'), 'scav', true),
     ],
     stash: { rice: 2, water: 2 },
     ev: '',
@@ -111,37 +138,81 @@ export function newSurv(): SurvState {
     gave: 0,
   };
 }
+/** Render legacy saves in the active locale without rewriting stored identity fields. */
+const SURVIVOR_LABELS = new Map(newSurv().group.map(g => [g.id, { name: g.name, role: g.role }]));
+export const survivorName = (g: Pick<Survivor, 'id' | 'name'>) => SURVIVOR_LABELS.get(g.id)?.name ?? g.name;
+export const survivorRole = (g: Pick<Survivor, 'id' | 'role'>) => SURVIVOR_LABELS.get(g.id)?.role ?? g.role;
+
 const EVENTS: { id: string; t: string; fx: (s: SurvState, u: UtilFx) => string }[] = [
-  { id: 'blackout', t: '⚡ 停電', fx: (_, u) => (u.power(false), '整區停電，冰箱裡的東西撐不了多久。') },
-  { id: 'watercut', t: '🚱 停水', fx: (_, u) => (u.water(false), '自來水停了，只能靠存水和雨水。') },
+  {
+    id: 'blackout',
+    t: tr('⚡ 停電', '⚡ Blackout'),
+    fx: (_, u) => (
+      u.power(false),
+      tr('整區停電，冰箱裡的東西撐不了多久。', 'The district has lost power. Food in the fridge will not last long.')
+    ),
+  },
+  {
+    id: 'watercut',
+    t: tr('🚱 停水', '🚱 Water outage'),
+    fx: (_, u) => (
+      u.water(false),
+      tr('自來水停了，只能靠存水和雨水。', 'The taps have run dry. Only stored water and rainwater remain.')
+    ),
+  },
   {
     id: 'siren',
-    t: '📢 防空警報',
-    fx: s => (s.group.forEach(g => (g.mood -= 6)), '防空警報響了一整晚，大家都沒睡好。'),
+    t: tr('📢 防空警報', '📢 Air-raid warning'),
+    fx: s => (
+      s.group.forEach(g => (g.mood -= 6)),
+      tr('防空警報響了一整晚，大家都沒睡好。', 'Air-raid sirens sounded all night. Nobody slept well.')
+    ),
   },
   {
     id: 'typhoon',
-    t: '🌀 颱風',
+    t: tr('🌀 颱風', '🌀 Typhoon'),
     fx: s => {
       if (s.upg.rain) s.stash.rainwater = (s.stash.rainwater || 0) + 4;
-      return s.upg.boards ? '颱風過境，封好的窗撐住了。' : '颱風把沒封的窗吹破，大家又濕又冷。';
+      return s.upg.boards
+        ? tr('颱風過境，封好的窗撐住了。', 'The typhoon passed. The boarded windows held.')
+        : tr(
+            '颱風把沒封的窗吹破，大家又濕又冷。',
+            'The typhoon shattered the unboarded windows, leaving everyone cold and wet.',
+          );
     },
   },
   {
     id: 'aid',
-    t: '🍚 鄰長發物資',
+    t: tr('🍚 鄰長發物資', '🍚 Neighborhood relief'),
     fx: s => (
       (s.stash.rice = (s.stash.rice || 0) + 2),
       (s.stash.can = (s.stash.can || 0) + 1),
-      '鄰長挨家挨戶送來兩包米和罐頭。'
+      tr(
+        '鄰長挨家挨戶送來兩包米和罐頭。',
+        'The neighborhood chief went door to door, delivering two bags of rice and canned food.',
+      )
     ),
   },
   {
     id: 'evacb',
-    t: '📻 疏散廣播',
-    fx: s => (s.group.forEach(g => (g.mood -= 3)), '廣播要老弱婦孺往南疏散，但橋都被封了。'),
+    t: tr('📻 疏散廣播', '📻 Evacuation broadcast'),
+    fx: s => (
+      s.group.forEach(g => (g.mood -= 3)),
+      tr(
+        '廣播要老弱婦孺往南疏散，但橋都被封了。',
+        'The broadcast urges vulnerable civilians to evacuate south, but every bridge is blocked.',
+      )
+    ),
   },
-  { id: 'calm', t: '☁ 平靜的一天', fx: () => '難得沒有槍聲，大家在屋裡補衣服、聊天。' },
+  {
+    id: 'calm',
+    t: tr('☁ 平靜的一天', '☁ A quiet day'),
+    fx: () =>
+      tr(
+        '難得沒有槍聲，大家在屋裡補衣服、聊天。',
+        'For once, there is no gunfire. Everyone stays inside, mending clothes and talking.',
+      ),
+  },
 ];
 export type UtilFx = { power: (on: boolean) => void; water: (on: boolean) => void };
 
@@ -165,7 +236,7 @@ export function dayTick(s: SurvState, raining: boolean, u: UtilFx) {
   if (s.upg.stove && (s.stash.rice || 0) > 0) {
     s.stash.rice--;
     meals = here.length;
-    out.push('阿嬤用瓦斯爐煮了一鍋稀飯。');
+    out.push(tr('阿嬤用瓦斯爐煮了一鍋稀飯。', 'Grandma cooked a pot of rice porridge on the gas stove.'));
   }
   for (const g of here) {
     if (meals > 0) {
@@ -189,7 +260,12 @@ export function dayTick(s: SurvState, raining: boolean, u: UtilFx) {
     if ((s.stash.pill || 0) > 0 && g.sick > 30) {
       s.stash.pill--;
       g.sick -= 35;
-      out.push(`${g.name}吃了止痛錠，燒退了一點。`);
+      out.push(
+        tr(
+          `${survivorName(g)}吃了止痛錠，燒退了一點。`,
+          `${survivorName(g)} took a painkiller; the fever eased a little.`,
+        ),
+      );
     } else g.sick = Math.max(0, g.sick - (s.upg.beds ? 10 : 4));
     g.mood -= 2 + s.scarcity * 1.5;
     if (s.karma < -2) g.mood -= 4;
@@ -197,16 +273,22 @@ export function dayTick(s: SurvState, raining: boolean, u: UtilFx) {
     g.mood = Math.max(0, Math.min(100, g.mood));
     if (g.sick >= 100 || (g.hunger <= 0 && g.sick > 60)) {
       g.dead = true;
-      out.push(`💀 ${g.name}沒撐過這一夜。`);
+      out.push(tr(`💀 ${survivorName(g)}沒撐過這一夜。`, `💀 ${survivorName(g)} did not survive the night.`));
       s.group.forEach(o => (o.mood -= 20));
-    } else if (g.mood < 15) out.push(`${g.name}整天不說話，眼神空洞（憂鬱）。`);
+    } else if (g.mood < 15)
+      out.push(
+        tr(
+          `${survivorName(g)}整天不說話，眼神空洞（憂鬱）。`,
+          `${survivorName(g)} has been silent all day, staring blankly (depressed).`,
+        ),
+      );
   }
   // planter / rain collector
   if (s.upg.planter && s.day - s.plantDay >= 2) {
     s.plantDay = s.day;
     s.stash.veg = (s.stash.veg || 0) + 2;
     s.stash.snack = (s.stash.snack || 0) + 1;
-    out.push('陽台的地瓜葉可以收了。');
+    out.push(tr('陽台的地瓜葉可以收了。', 'The sweet potato leaves on the balcony are ready to harvest.'));
   }
   if (s.upg.rain && raining) s.stash.rainwater = (s.stash.rainwater || 0) + 3;
   // night raid on an unboarded shelter
@@ -215,28 +297,42 @@ export function dayTick(s: SurvState, raining: boolean, u: UtilFx) {
     if (k) {
       s.stash[k] = Math.max(0, s.stash[k] - 2);
       s.raided++;
-      out.push(`🔦 半夜有人撬窗，偷走了一些${k === 'rice' ? '米' : '存貨'}。`);
+      out.push(
+        tr(
+          `🔦 半夜有人撬窗，偷走了一些${k === 'rice' ? '米' : '存貨'}。`,
+          `🔦 Someone forced a window during the night and stole some ${k === 'rice' ? 'rice' : 'supplies'}.`,
+        ),
+      );
     }
   }
   // newcomers knock on the door
   const away = s.group.find(g => !g.here && !g.dead);
   if (away && r() < 0.35 + s.karma * 0.05) {
     away.here = true;
-    out.push(`🚪 ${away.role}敲門求收留，你讓他進來了。`);
+    out.push(
+      tr(
+        `🚪 ${survivorRole(away)}敲門求收留，你讓他進來了。`,
+        `🚪 ${survivorRole(away)} knocked, asking for shelter. You let them in.`,
+      ),
+    );
   }
   const ev = EVENTS[Math.floor(r() * EVENTS.length)];
   s.ev = ev.t;
-  out.unshift(`第 ${s.day} 天・${ev.t}：${ev.fx(s, u)}`);
+  const eventText = ev.fx(s, u);
+  out.unshift(tr(`第 ${s.day} 天・${ev.t}：${eventText}`, `Day ${s.day} · ${ev.t}: ${eventText}`));
   s.log = [...out, ...s.log].slice(0, 30);
   return out;
 }
 /** praying at the home 神明廳 (once a day): mood up for everyone, more with the 廟公 */
 export function pray(s: SurvState) {
-  if (s.prayDay === s.day) return '今天已經拜過了。';
+  if (s.prayDay === s.day) return tr('今天已經拜過了。', 'You have already prayed today.');
   s.prayDay = s.day;
   const b = s.group.some(g => g.id === 'miao' && g.here && !g.dead) ? 15 : 8;
   s.group.forEach(g => !g.dead && (g.mood = Math.min(100, g.mood + b)));
-  return `點了香，在神明廳前拜拜。大家的心情好一點（+${b}）。`;
+  return tr(
+    `點了香，在神明廳前拜拜。大家的心情好一點（+${b}）。`,
+    `You lit incense and prayed at the household altar. Everyone feels a little better (+${b}).`,
+  );
 }
 export function avgMood(s: SurvState) {
   const a = s.group.filter(g => g.here && !g.dead);
@@ -252,11 +348,30 @@ export function endingText(s: SurvState) {
   const alive = s.group.filter(g => g.here && !g.dead);
   const dead = s.group.filter(g => g.dead);
   const m = avgMood(s);
-  let t = `撐了 ${s.day} 天，避難所裡還有 ${alive.length} 位街坊：${alive.map(g => g.name).join('、') || '沒有人'}。`;
-  if (dead.length) t += `${dead.map(g => g.name).join('、')}沒能看到這一天。`;
-  if (s.karma <= -3) t += '萬華奪回了，但你拿走過別人的救命藥，夜裡還是會想起那扇門。';
-  else if (s.karma >= 3) t += '大家都記得，最難的時候是你把米分給了巷口的人。';
-  else t += '萬華奪回了，大家互相扶著走出巷子。';
-  if (m < 30) t += '活下來的人笑不太出來。';
+  let t = tr(
+    `撐了 ${s.day} 天，避難所裡還有 ${alive.length} 位街坊：${alive.map(g => survivorName(g)).join('、') || '沒有人'}。`,
+    `After ${s.day} days, ${alive.length} neighbors remain at the shelter: ${alive.map(g => survivorName(g)).join(', ') || 'no one'}.`,
+  );
+  if (dead.length)
+    t += tr(
+      `${dead.map(g => survivorName(g)).join('、')}沒能看到這一天。`,
+      `${dead.map(g => survivorName(g)).join(', ')} did not live to see this day.`,
+    );
+  if (s.karma <= -3)
+    t += tr(
+      '萬華奪回了，但你拿走過別人的救命藥，夜裡還是會想起那扇門。',
+      'Wanhua is free, but you took someone else’s life-saving medicine. At night, you still remember that door.',
+    );
+  else if (s.karma >= 3)
+    t += tr(
+      '大家都記得，最難的時候是你把米分給了巷口的人。',
+      'Everyone remembers how you shared your rice with the people at the alley entrance when times were hardest.',
+    );
+  else
+    t += tr(
+      '萬華奪回了，大家互相扶著走出巷子。',
+      'Wanhua is free. Supporting one another, everyone walks out of the alley.',
+    );
+  if (m < 30) t += tr('活下來的人笑不太出來。', 'The survivors find little reason to smile.');
   return t;
 }

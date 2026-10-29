@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 // Project-Zomboid-style paper map rendered from the same OpenStreetMap data as the 3D world (© OpenStreetMap contributors, ODbL).
 // Fog of war, player notes, intel markers, 奪回/佔領 sector tint. Street names come from OSM `name` tags; no house numbers.
 import { readMapSave, writeMapSave } from '../systems/save';
@@ -31,12 +32,12 @@ export type MapDeps = {
 };
 type Note = { x: number; z: number; k: string; t?: string; intel?: boolean; id?: string };
 const KINDS: Record<string, [string, string]> = {
-  sup: ['補給', '#2f7d3a'],
-  dng: ['危險', '#c0281c'],
-  evac: ['撤離', '#1f5fae'],
-  safe: ['安全屋', '#b07a12'],
-  intel: ['情報', '#7a2a9a'],
-  out: ['佔領軍據點', '#8a1010'],
+  sup: [tr('補給', 'Supplies'), '#2f7d3a'],
+  dng: [tr('危險', 'Danger'), '#c0281c'],
+  evac: [tr('撤離', 'Evacuation'), '#1f5fae'],
+  safe: [tr('安全屋', 'Safe house'), '#b07a12'],
+  intel: [tr('情報', 'Intel'), '#7a2a9a'],
+  out: [tr('佔領軍據點', 'Occupation outpost'), '#8a1010'],
 };
 const ZONE = (b: MapBld) => {
   const n = b.n || '';
@@ -102,21 +103,21 @@ export class GameMap {
     this.el = document.createElement('div');
     this.el.id = 'gmap';
     this.el.className = 'hidden';
-    this.el.innerHTML = `<div class="mhead"><b>萬華 · 生存者地圖</b><span class="mhint">拖曳平移・滾輪／雙指縮放・點一下加註記</span><button class="mz" data-z="1.4">＋</button><button class="mz" data-z="0.7">－</button><button class="mc">置中</button><button class="mall">全區</button><button class="mx">關閉 (M)</button></div><div class="mleg"></div><div class="mcred">© OpenStreetMap contributors (ODbL)</div>`;
+    this.el.innerHTML = `<div class="mhead"><b>${tr('萬華 · 生存者地圖', 'Wanhua · Survivor map')}</b><span class="mhint">${tr('拖曳平移・滾輪／雙指縮放・點一下加註記', 'Drag to pan · Scroll / pinch to zoom · Tap to add a note')}</span><button class="mz" data-z="1.4">＋</button><button class="mz" data-z="0.7">－</button><button class="mc">${tr('置中', 'Center')}</button><button class="mall">${tr('全區', 'Whole district')}</button><button class="mx">${tr('關閉 (M)', 'Close (M)')}</button></div><div class="mleg"></div><div class="mcred">© OpenStreetMap contributors (ODbL)</div>`;
     this.cv = document.createElement('canvas');
     this.el.appendChild(this.cv);
     document.body.appendChild(this.el);
     this.el.querySelector('.mleg')!.innerHTML =
       [
-        ['#2e6e8e', '淡水河'],
-        ['#bdb6a2', '住宅'],
-        ['#d7b98a', '商業／市場'],
-        ['#c9a35a', '寺廟'],
-        ['#7fa860', '公園'],
-        ['#e0a0a8', '醫療'],
-        ['#a8a4b0', '工業／倉庫'],
-        ['rgba(60,170,70,.5)', '已奪回'],
-        ['rgba(200,40,30,.45)', '佔領中'],
+        ['#2e6e8e', tr('淡水河', 'Tamsui River')],
+        ['#bdb6a2', tr('住宅', 'Residential')],
+        ['#d7b98a', tr('商業／市場', 'Shops / markets')],
+        ['#c9a35a', tr('寺廟', 'Temples')],
+        ['#7fa860', tr('公園', 'Parks')],
+        ['#e0a0a8', tr('醫療', 'Medical')],
+        ['#a8a4b0', tr('工業／倉庫', 'Industry / warehouses')],
+        ['rgba(60,170,70,.5)', tr('已奪回', 'Liberated')],
+        ['rgba(200,40,30,.45)', tr('佔領中', 'Occupied')],
       ]
         .map(([c, t]) => `<i style="background:${c}"></i>${t}`)
         .join(' ') +
@@ -203,7 +204,7 @@ export class GameMap {
     c.fillStyle = '#1e4e6e';
     c.font = 'italic bold 44px serif';
     c.textAlign = 'center';
-    c.fillText('淡 水 河', 0, 0);
+    c.fillText(tr('淡 水 河', 'Tamsui River'), 0, 0);
     c.restore();
     for (const p of d.parks) {
       c.fillStyle = '#7fa860';
@@ -453,7 +454,7 @@ export class GameMap {
       m.innerHTML = `<b style="color:${KINDS[n.k][1]}">${KINDS[n.k][0]}</b>${n.t ? `<p>${n.t}</p>` : ''}`;
       if (!n.intel) {
         const b = document.createElement('button');
-        b.textContent = '刪除註記';
+        b.textContent = tr('刪除註記', 'Delete note');
         b.onclick = () => {
           this.notes.splice(hit, 1);
           this.save();
@@ -525,7 +526,7 @@ export class GameMap {
       c.font = 'bold 34px "Noto Sans TC", sans-serif';
       c.lineWidth = 6;
       c.strokeStyle = 'rgba(239,233,218,.85)';
-      const t = `${d.sectorName(s)}（${L.has(s) ? '已奪回' : '佔領中'}）`;
+      const t = `${d.sectorName(s)}（${L.has(s) ? tr('已奪回', 'Liberated') : tr('佔領中', 'Occupied')}）`;
       c.strokeText(t, this.wx(q.x), this.wy(q.z));
       c.fillStyle = L.has(s) ? 'rgba(30,110,40,.9)' : 'rgba(150,30,20,.85)';
       c.fillText(t, this.wx(q.x), this.wy(q.z));
@@ -568,9 +569,10 @@ export class GameMap {
     };
     for (const n of this.notes) pin(n.x, n.z, KINDS[n.k][1], n.intel ? n.t?.slice(0, 10) : KINDS[n.k][0], n.intel);
     const ev = d.evac();
-    if (ev && this.notes.some(n => n.k === 'evac' && n.intel)) pin(ev[0], ev[1], KINDS.evac[1], '撤離點', true);
+    if (ev && this.notes.some(n => n.k === 'evac' && n.intel))
+      pin(ev[0], ev[1], KINDS.evac[1], tr('撤離點', 'Evacuation point'), true);
     const hm = d.home();
-    if (hm) pin(hm[0], hm[1], KINDS.safe[1], '起點');
+    if (hm) pin(hm[0], hm[1], KINDS.safe[1], tr('起點', 'Starting point'));
     const p = d.player();
     const X = this.wx(p.x),
       Y = this.wy(p.z),
