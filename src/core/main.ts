@@ -4870,7 +4870,7 @@ function update(dt: number) {
   }
   player.hunger -= gm * 2.2;
   player.thirst -= gm * 3.2;
-  player.fatigue += player.sleeping ? -gm * 14 : gm * 2.6;
+  player.fatigue += player.sleeping ? -gm * 14 * (ROLE.skills.rest ?? 1) : gm * 2.6;
   if (player.sleeping && player.fatigue <= 0) {
     player.sleeping = false;
     log('你醒了', '#aaf');
