@@ -70,6 +70,10 @@ export class Room {
       server.addEventListener('message', ev => this.onMsg(c, ev.data as string));
       const bye = () => {
         this.conns.delete(server);
+        // Workers must acknowledge a close frame or browser clients stay CLOSING.
+        try {
+          server.close();
+        } catch {}
         if (![...this.conns.values()].some(o => o.uid === uid)) {
           const p = this.s?.players[uid];
           if (p) {

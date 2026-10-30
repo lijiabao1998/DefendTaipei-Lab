@@ -109,7 +109,9 @@ try {
         await p
           .evaluate(() => ({
             url: location.href,
-            status: window.__game?.net?.status,
+            status: (window.__game?.net || window.net)?.status,
+            socket: (window.__game?.net || window.net)?.ws?.readyState,
+            tries: (window.__game?.net || window.net)?.tries,
             hud: document.getElementById('mphud')?.textContent,
           }))
           .catch(() => null),
