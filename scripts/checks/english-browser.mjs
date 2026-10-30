@@ -116,6 +116,10 @@ async function exercise(options, name) {
       options.hasTouch ? cards.detail.top >= cards.grid.bottom : cards.detail.left >= cards.grid.right,
       'profile card is below on phone and beside on desktop',
     );
+    if (!options.hasTouch) {
+      const footerTop = await page.locator('#startbar').evaluate(el => el.getBoundingClientRect().top);
+      assert.ok(cards.grid.bottom < footerTop, 'desktop character rows stay above fixed navigation');
+    }
     record.selectionCards = cards;
     if (options.hasTouch) {
       await page.locator('#selection-role-detail').scrollIntoViewIfNeeded();
