@@ -106,6 +106,11 @@ async function exercise(options, name) {
     assert.equal(await page.evaluate(() => window.__game.started()), false, 'card selection never starts game');
     await page.locator('#startgo').click();
     assert.equal(await page.locator('#btns').getAttribute('data-step'), '1');
+    assert.equal(
+      await page.locator('#charsel').isVisible(),
+      false,
+      'roles hide during preferences, including portrait',
+    );
     await page.locator('#daylen [data-h="2"]').click();
     await page.locator('#skipintro').check();
     record.screenshots.push(await capture(page, `${name}-stage-settings`));

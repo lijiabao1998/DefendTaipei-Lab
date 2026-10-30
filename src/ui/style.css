@@ -2096,7 +2096,7 @@ body.mobile #panel button {
   }
 }
 /* Staged new-game flow: one decision at a time, identical on touch and desktop. */
-#btns [hidden] {
+body.selmode #btns [hidden] {
   display: none !important;
 }
 body.selmode #logo,
