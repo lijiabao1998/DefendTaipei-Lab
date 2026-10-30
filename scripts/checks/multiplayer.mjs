@@ -3,6 +3,8 @@
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { pickRole, shot } from '../lib.mjs';
+const backend = process.env.MP_SERVER || 'http://localhost:8787';
+const useDefault = process.env.MP_USE_DEFAULT === '1';
 const browser = await chromium.launch({
   executablePath: process.env.PW_CHROMIUM || undefined,
   args: ['--no-sandbox', '--use-gl=swiftshader', '--enable-unsafe-swiftshader'],
@@ -21,10 +23,10 @@ try {
     p.on('pageerror', e => console.error('pageerror:', e.message));
     p.on('requestfailed', r => console.error('requestfailed:', r.url(), r.failure()));
     await p.goto('http://localhost:5173/defendtaipei/scripts/checks/mp-transport.html');
-    await p.evaluate(async () => {
+    await p.evaluate(async base => {
       const { Net } = await import('/defendtaipei/src/net/net.ts');
-      window.net = new Net('http://localhost:8787');
-    });
+      window.net = new Net(base);
+    }, backend);
   }
   const code = await pages[0].evaluate(() => net.create());
   for (let i = 0; i < 2; i++)
@@ -67,8 +69,11 @@ try {
     await p.evaluate(() => localStorage.setItem('dt.settings', JSON.stringify({ quality: 'low' })));
   console.log('Transport movement/reconnect/save protection passed; loading two real game clients at low quality.');
   for (const p of pages) {
-    await p.goto(`http://localhost:5173/defendtaipei/?mp=http://localhost:8787&room=${gameCode}`);
+    await p.goto(
+      `http://localhost:5173/defendtaipei/?${useDefault ? '' : 'mp=' + encodeURIComponent(backend) + '&'}room=${gameCode}`,
+    );
     await pickRole(p, { g: 'm', role: 'courier', skipIntro: true, entryTimeout: 360000 });
+    assert.equal(await p.locator('#mpbase').inputValue(), backend);
   }
   for (const p of pages)
     await p.waitForFunction(
@@ -117,6 +122,8 @@ try {
   console.log(
     JSON.stringify({
       passed: true,
+      backend,
+      defaultEndpoint: useDefault,
       code,
       isolatedClients: 2,
       bidirectionalMovement: true,

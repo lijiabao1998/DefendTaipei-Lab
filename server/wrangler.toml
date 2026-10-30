@@ -17,9 +17,11 @@ database_name = "dt_saves"
 database_id = "00000000-0000-0000-0000-000000000000" # placeholder: replace with `wrangler d1 create dt_saves` output before deploy
 migrations_dir = "migrations"
 
-[[r2_buckets]]
-binding = "ARCHIVE"
-bucket_name = "dt-room-archive"
+# No R2 subscription required. D1 retains the latest room recovery checkpoint.
+# Optional historical copies only after explicit billing approval:
+# [[r2_buckets]]
+# binding = "ARCHIVE"
+# bucket_name = "dt-room-archive"
 
 [vars]
 ALLOWED_ORIGINS = "https://game.lijiabao.uk,https://lijiabao1998.github.io,http://localhost:4173,http://localhost:4180,http://localhost:5173"

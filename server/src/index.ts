@@ -4,7 +4,7 @@ export { Room };
 export interface Env {
   ROOM: DurableObjectNamespace;
   DB: D1Database;
-  ARCHIVE: R2Bucket;
+  ARCHIVE?: R2Bucket; // Optional historical snapshots; D1 remains the recovery source.
   AUTH_SECRET: string;
   ALLOWED_ORIGINS: string;
 }

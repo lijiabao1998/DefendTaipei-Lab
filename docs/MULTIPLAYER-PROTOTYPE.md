@@ -18,7 +18,7 @@ The dot sandbox passed typecheck, build, module checks and the new unit tests. L
 
 ## Public deployment still required
 
-GitHub Pages only hosts static files; it cannot run this Worker. `server/wrangler.toml` still has a placeholder D1 database ID. Need the user's approved Cloudflare account/resources, Worker/Durable Object + D1 + R2 provisioned (or an explicitly approved archive removal), server-side AUTH_SECRET, approved origin configuration, and an HTTPS backend URL. No account/resources/paid plan or production secret was created by this change.
+GitHub Pages only hosts static files; it cannot run this Worker. `server/wrangler.toml` still has a placeholder D1 database ID. Need the user's approved Cloudflare account/resources, Worker/Durable Object + D1 provisioned (R2 historical snapshots are now optional and disabled by default), server-side AUTH_SECRET, approved origin configuration, and an HTTPS backend URL. No account/resources/paid plan or production secret was created by this change.
 
 Set `VITE_MP_SERVER=https://your-approved-worker.example` at frontend build time to enable the menu, or use `?mp=https://your-approved-worker.example&room=ABCDE` for testing. Without an endpoint, the normal public menu remains “coming soon”; a localhost fallback is only for explicit debug testing and cannot connect friends over the Internet.
 
@@ -35,3 +35,11 @@ Equipped weapon IDs now replicate to other players and render on their rigs. The
 The Worker freezes shared enemy combat until at least two connected, loaded players are present; transport ticks and snapshots continue while waiting. Dropping back to one player pauses shared combat again. Browser room joins begin after scene compilation, not while the loading overlay is still compiling shaders.
 
 During a multiplayer session the room's HP is authoritative. Client-local damage/healing cannot independently decide multiplayer death; a server zero HP opens the multiplayer defeat screen and leaves the room without deleting solo saves. The prototype server does not model bleeding or medicine yet. Single-player health, death and save rules remain unchanged. This is still not full inventory/world synchronization.
+
+## No-card deployment candidate
+
+R2 has been removed from the default bindings. Final room state still saves to the same D1 `rooms.state` row before the idle timer stops. R2, if explicitly configured later, is only a best-effort historical copy; its failure cannot invalidate D1 recovery. This avoids requiring an R2 subscription but intentionally does not preserve every historical close snapshot. Existing room rows and single-player saves are not deleted or migrated. This change is local until separately pushed/deployed and verified remotely.
+
+## Production frontend candidate
+
+`.env.production` supplies the public endpoint `https://defendtaipei-mp.lijiabao1998.workers.dev` (not a secret). This enables the existing multiplayer menu in a production build. Development stays local unless VITE_MP_SERVER is explicitly set. The multiplayer test workflow exercises isolated desktop/phone game clients against this deployed backend, without an `mp` query override, as well as local backend persistence tests. This branch is not the live frontend: publication requires the approved PR merge followed by Pages deployment and live asset verification.

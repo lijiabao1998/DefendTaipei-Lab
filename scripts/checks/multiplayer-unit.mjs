@@ -103,3 +103,48 @@ const frozenHp = waiting.players.host.hp;
 for (let i = 0; i < 30; i++) core.step(waiting, core.roomReady(waiting));
 assert.equal(waiting.players.host.hp, frozenHp);
 console.log('PASS: waiting for two loaded players freezes combat, join resumes, disconnect pauses');
+// No-card deployment: final close checkpoint survives a new Room instance without R2.
+const { Room } = await load('server/src/room.ts');
+let savedRoom;
+const db = {
+  prepare: () => ({
+    bind: (...args) => ({
+      run: async () => {
+        savedRoom = { state: args[2] };
+      },
+      first: async () => savedRoom,
+    }),
+  }),
+};
+const room = new Room({}, { DB: db });
+room.code = 'ABCDE';
+room.s = core.newState(17);
+room.s.looted.kept = 'player';
+await room.tick();
+assert.ok(savedRoom);
+assert.equal(room.timer, null);
+const coldRoom = new Room({}, { DB: db });
+await coldRoom.load('ABCDE');
+assert.equal(coldRoom.s.looted.kept, 'player');
+assert.equal(coldRoom.s.tick, room.s.tick);
+const failingArchiveRoom = new Room(
+  {},
+  {
+    DB: db,
+    ARCHIVE: {
+      put: async () => {
+        throw Error('offline');
+      },
+    },
+  },
+);
+failingArchiveRoom.code = 'ABCDE';
+failingArchiveRoom.s = coldRoom.s;
+await failingArchiveRoom.tick();
+assert.ok(savedRoom);
+console.log('PASS: no-R2 final checkpoint, cold Room restore, optional archive failure isolation');
+const coldAlarmRoom = new Room({ storage: { get: async () => 'ABCDE' } }, { DB: db });
+await coldAlarmRoom.alarm();
+assert.equal(coldAlarmRoom.s.looted.kept, 'player');
+assert.equal(coldAlarmRoom.timer, null);
+console.log('PASS: durable idle alarm restores checkpoint after Room eviction');

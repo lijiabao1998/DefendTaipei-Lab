@@ -2,10 +2,13 @@
 // delta stream, speed-hack clamp, contested loot, reconnect, D1 save.
 import WebSocket from 'ws';
 import assert from 'node:assert/strict';
-const timeout = setTimeout(() => {
-  console.error('Multiplayer test timed out');
-  process.exit(1);
-}, 45000);
+const timeout = setTimeout(
+  () => {
+    console.error('Multiplayer test timed out');
+    process.exit(1);
+  },
+  process.env.MP_TEST_IDLE_RECOVERY ? 110000 : 45000,
+);
 const B = process.argv[2] || 'http://localhost:8787';
 const W = B.replace('http', 'ws');
 const out = {};
@@ -101,6 +104,20 @@ assert.equal(out.reconnect.sameId, true);
 assert.equal(out.reconnect.players, 4);
 assert.ok([users[1].uid, users[2].uid].includes(out.reconnect.looted.b12_0));
 assert.ok(out.info.tick >= 200);
+if (process.env.MP_TEST_IDLE_RECOVERY) {
+  // Wait beyond the actual server grace period: tick stops and final D1 checkpoint is written.
+  await new Promise(r => setTimeout(r, 62000));
+  const idle = await (await fetch(`${B}/api/rooms/${code}`)).json();
+  assert.equal(idle.players, 0);
+  assert.ok(idle.tick > out.info.tick);
+  await new Promise(r => setTimeout(r, 500));
+  const stopped = await (await fetch(`${B}/api/rooms/${code}`)).json();
+  assert.equal(stopped.tick, idle.tick);
+  const restored = await join(users[1], 'P1', 2);
+  assert.equal(restored.s.looted.b12_0, out.reconnect.looted.b12_0);
+  restored.ws.close();
+  out.noR2IdleRecovery = true;
+}
 clearTimeout(timeout);
 console.log(JSON.stringify(out, null, 1));
 process.exit(0);

@@ -21,6 +21,9 @@ jobs:
       - name: Two independent browser clients through real Worker
         env:
           WRANGLER_SEND_METRICS: 'false'
+          VITE_MP_SERVER: https://defendtaipei-mp.lijiabao1998.workers.dev
+          MP_SERVER: https://defendtaipei-mp.lijiabao1998.workers.dev
+          MP_USE_DEFAULT: '1'
         run: |
           printf 'AUTH_SECRET=ephemeral-ci-only-not-production-secret\n' > server/.dev.vars
           cd server
@@ -29,7 +32,7 @@ jobs:
           cd ..
           npm run dev -- --host 127.0.0.1 --port 5173 > /tmp/dt-vite.log 2>&1 &
           for i in $(seq 1 60); do curl -fsS http://localhost:8787 && curl -fsS http://localhost:5173/defendtaipei/ && break; sleep 1; done
-          node server/test-mp.mjs
+          MP_TEST_IDLE_RECOVERY=1 node server/test-mp.mjs
           node scripts/checks/multiplayer.mjs
       - uses: actions/upload-artifact@v4
         if: always()

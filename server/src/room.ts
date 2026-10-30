@@ -1,5 +1,5 @@
 // One Durable Object per room: authoritative 20 Hz simulation (shared core), per-client delta streams,
-// reconnect window, D1 autosave and R2 archive on close.
+// reconnect window, D1 autosave and optional R2 archive on close.
 import {
   newState,
   addPlayer,
@@ -54,6 +54,7 @@ export class Room {
     if (url.pathname === '/init') {
       const { code } = await req.json<{ code: string }>();
       this.code = code;
+      await this.ctx.storage.put('code', code);
       this.s = newState([...code].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) >>> 0, 0, 0, 10);
       await this.save();
       return new Response('ok');
@@ -81,8 +82,11 @@ export class Room {
             p.on = false;
             this.leftAt.set(uid, Date.now());
             this.s!.log.push(`${p.name} 斷線了`);
+            // Persist disconnect during the event; timers alone are not a durable wakeup.
+            this.ctx.waitUntil(this.save());
           }
         }
+        if (!this.conns.size) this.ctx.waitUntil(this.ctx.storage.setAlarm(Date.now() + GRACE_MS + 1000));
       };
       server.addEventListener('close', bye);
       server.addEventListener('error', bye);
@@ -90,6 +94,20 @@ export class Room {
       return new Response(null, { status: 101, webSocket: client });
     }
     return new Response('not found', { status: 404 });
+  }
+  async alarm() {
+    if (this.conns.size) return;
+    if (!this.s) {
+      const code = await this.ctx.storage.get<string>('code');
+      if (!code) return;
+      await this.load(code);
+    }
+    if (!this.s) return;
+    for (const [uid, p] of Object.entries(this.s.players)) {
+      if (!p.on) delete this.s.players[uid];
+    }
+    this.leftAt.clear();
+    await this.tick();
   }
   onMsg(c: Conn, raw: string) {
     const s = this.s!;
@@ -179,7 +197,15 @@ export class Room {
       clearInterval(this.timer);
       this.timer = null;
       await this.save();
-      await this.env.ARCHIVE.put(`rooms/${this.code}/${s.tick}.json`, JSON.stringify(s));
+      // The final D1 save above is the recovery checkpoint on the no-card Free setup.
+      // Historical R2 copies are optional, never a dependency of room recovery.
+      if (this.env.ARCHIVE) {
+        try {
+          await this.env.ARCHIVE.put(`rooms/${this.code}/${s.tick}.json`, JSON.stringify(s));
+        } catch {
+          console.warn('Optional room archive failed; final state remains in D1');
+        }
+      }
     }
   }
 }
