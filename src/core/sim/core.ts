@@ -1,3 +1,4 @@
+import { ITEMS } from '../../systems/items';
 // Authoritative multiplayer simulation core (v20). Pure TS, no DOM/three: runs identically in the browser
 // (prediction / solo) and inside the Cloudflare Durable Object (authority). Fixed 20 Hz tick, seeded RNG,
 // integer-millimetre positions so every runtime produces the same state hash.
@@ -22,6 +23,7 @@ export type PlayerS = {
   on: boolean;
   kills: number;
   veh: boolean;
+  weapon?: string;
 };
 export type EnemyS = { id: number; x: number; z: number; hp: number; hx: number; hz: number; tgt: string };
 export type State = {
@@ -36,6 +38,7 @@ export type State = {
 };
 export type Cmd =
   | { t: 'move'; seq: number; x: number; z: number; veh?: boolean } // client-claimed position, validated by speed
+  | { t: 'equip'; seq: number; weapon: string }
   | { t: 'attack'; seq: number; target: number }
   | { t: 'loot'; seq: number; id: string; x: number; z: number };
 export type Snapshot = { k: 'snap'; tick: number; you: string; s: State };
@@ -112,6 +115,12 @@ export function applyCmd(s: State, pid: string, c: Cmd): string {
   if (!p || p.hp <= 0) return 'dead';
   if (!Number.isSafeInteger(c.seq) || c.seq <= p.ack) return 'stale';
   p.ack = c.seq;
+  if (c.t === 'equip') {
+    const item = ITEMS[c.weapon];
+    if (c.weapon !== '' && (!item || !['melee', 'gun'].includes(item.kind))) return 'invalid weapon';
+    p.weapon = c.weapon;
+    return '';
+  }
   if (c.t === 'move') {
     if (!isFinite(c.x) || !isFinite(c.z)) return 'nan';
     const lim = (c.veh ? DRIVE_SPEED : RUN_SPEED) * DT * 1.6 + 0.05;

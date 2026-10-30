@@ -63,6 +63,12 @@ await new Promise(r => setTimeout(r, 300));
 assert.equal(cs[1].s.players[users[0].uid].x, 0.3);
 assert.equal(cs[0].s.players[users[1].uid].x, 2.3);
 out.bidirectionalMovement = true;
+cmd(cs[0], { t: 'equip', weapon: 'hammer' });
+cmd(cs[1], { t: 'equip', weapon: 'pipe' });
+await new Promise(r => setTimeout(r, 300));
+assert.equal(cs[1].s.players[users[0].uid].weapon, 'hammer');
+assert.equal(cs[0].s.players[users[1].uid].weapon, 'pipe');
+out.weaponReplication = true;
 cmd(cs[0], { t: 'move', x: 80, z: 0 }); // speed hack
 cmd(cs[1], { t: 'loot', id: 'b12_0', x: 2, z: 0 });
 cmd(cs[2], { t: 'loot', id: 'b12_0', x: 4, z: 0 }); // contested loot (P2 too far + taken)

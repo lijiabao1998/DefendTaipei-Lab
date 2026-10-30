@@ -70,8 +70,21 @@ try {
       null,
       { timeout: 120000 },
     );
+  const gameIds = await Promise.all(pages.map(p => p.evaluate(() => window.__game.net.you)));
+  for (const p of pages)
+    await p.evaluate(() => {
+      window.__game.addItem('hammer');
+      window.__game.addItem('pipe');
+      window.__game.useItem('hammer');
+    });
+  await pages[0].waitForFunction(id => window.__game.net.s.players[id].weapon === 'hammer', gameIds[1]);
+  await pages[1].waitForFunction(id => window.__game.net.s.players[id].weapon === 'hammer', gameIds[0]);
   await pages[0].screenshot({ path: shot('multiplayer-desktop.png') });
   await pages[1].screenshot({ path: shot('multiplayer-phone.png') });
+  await pages[1].locator('#equip').dispatchEvent('pointerdown');
+  await pages[0].waitForFunction(id => window.__game.net.s.players[id].weapon === 'pipe', gameIds[1]);
+  await pages[0].evaluate(() => window.__game.useItem('pipe'));
+  await pages[1].waitForFunction(id => window.__game.net.s.players[id].weapon === 'pipe', gameIds[0]);
   await pages[1].locator('#mpleave').click();
   await pages[1].waitForURL('**/defendtaipei/');
   console.log(

@@ -2174,6 +2174,7 @@ function soonToast(t: string) {
   (el as any)._t = setTimeout(() => el!.classList.remove('on'), 2200);
 }
 let MP: { base: string; code: string } | null = null;
+let netWeaponSent: string | null = null;
 const remRigs = new Map<string, Rig>(),
   enRigs = new Map<number, Rig>();
 const remPrev = new Map<string, [number, number]>();
@@ -2223,6 +2224,10 @@ async function startNet() {
 function netFrame(dt: number) {
   if (!net || !net.s) return;
   net.update(dt, player.pos.x, player.pos.z, !!drive.cur);
+  if (net.s.players[net.you] && netWeaponSent !== player.equip) {
+    net.cmd({ t: 'equip', weapon: player.equip } as any);
+    netWeaponSent = player.equip;
+  }
   const s = net.s;
   for (const p of Object.values(s.players)) {
     if (p.id === net.you) continue;
@@ -2233,6 +2238,7 @@ function netFrame(dt: number) {
       scene.add(r.root);
       remRigs.set(p.id, r);
     }
+    setWeapon(r, p.weapon || '');
     const q = net.remote(p.id) || [p.x, p.z];
     const pv = remPrev.get(p.id) || q;
     const sp = Math.hypot(q[0] - pv[0], q[1] - pv[1]) / Math.max(dt, 1e-3);

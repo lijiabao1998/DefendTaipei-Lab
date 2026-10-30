@@ -67,3 +67,12 @@ net.leave();
 assert.equal(net.s, null);
 assert.equal(net.states.size, 0);
 console.log('PASS: exact acknowledged delta baseline, resync on missing baseline, leave cleanup');
+
+const items = await load('src/systems/items.ts');
+assert.equal(items.ITEMS.hammer.kind, 'melee');
+assert.ok(items.ITEMS.hammer.dmg > 0);
+assert.equal(core.applyCmd(state, 'a', { t: 'equip', seq: 2, weapon: 'hammer' }), '');
+assert.equal(state.players.a.weapon, 'hammer');
+assert.equal(core.applyCmd(state, 'a', { t: 'equip', seq: 3, weapon: 'water' }), 'invalid weapon');
+assert.equal(state.players.a.weapon, 'hammer');
+console.log('PASS: hammer is equippable and non-weapons cannot be replicated as equipment');

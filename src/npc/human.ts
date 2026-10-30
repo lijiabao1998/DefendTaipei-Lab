@@ -655,6 +655,11 @@ export function setWeapon(r: Rig, kind: string) {
     add(new THREE.CylinderGeometry(0.035, 0.016, 0.85, 8), 0xc08a4a, 0, 0, 0.36).rotation.x = Math.PI / 2;
     r.weapon.rotation.set(Math.PI / 2 - 0.3, 0, 0);
     r.wRx0 = Math.PI / 2 - 0.3;
+  } else if (kind === 'hammer') {
+    add(box(0.035, 0.035, 0.34), 0x8a5930, 0, 0, 0.13);
+    add(box(0.16, 0.07, 0.07), 0x8c969d, 0, 0, 0.31);
+    r.weapon.rotation.set(Math.PI / 2 - 0.3, 0, 0);
+    r.wRx0 = Math.PI / 2 - 0.3;
   } else if (kind === 'pipe') {
     add(new THREE.CylinderGeometry(0.022, 0.022, 0.9, 8), 0x7a6a5a, 0, 0, 0.38).rotation.x = Math.PI / 2;
     r.weapon.rotation.set(Math.PI / 2 - 0.3, 0, 0);

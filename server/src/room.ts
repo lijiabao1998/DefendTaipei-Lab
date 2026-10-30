@@ -12,7 +12,7 @@ import {
   type Cmd,
 } from '../../src/core/sim/core';
 import type { Env } from './index';
-type Conn = { ws: WebSocket; uid: string; ack: number; rate: number; rateT: number };
+type Conn = { ws: WebSocket; uid: string; ack: number; rate: number; rateT: number; ready: boolean };
 const HIST = 80,
   GRACE_MS = 60_000;
 export class Room {
@@ -65,7 +65,7 @@ export class Room {
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
       server.accept();
-      const c: Conn = { ws: server, uid, ack: -1, rate: 0, rateT: Date.now() };
+      const c: Conn = { ws: server, uid, ack: -1, rate: 0, rateT: Date.now(), ready: false };
       this.conns.set(server, c);
       server.addEventListener('message', ev => this.onMsg(c, ev.data as string));
       const bye = () => {
@@ -122,11 +122,13 @@ export class Room {
         c.ws.send(JSON.stringify({ k: 'err', e: err }));
         return c.ws.close(4001, err);
       }
+      c.ready = true;
       this.leftAt.delete(c.uid);
       c.ack = -1;
       c.ws.send(JSON.stringify({ k: 'snap', tick: s.tick, you: c.uid, code: this.code, s }));
       return;
     }
+    if (!c.ready) return;
     if (m.k === 'ack' && typeof m.tick === 'number') {
       c.ack = m.tick;
       return;
@@ -153,6 +155,7 @@ export class Room {
     this.hist.set(s.tick, clone(s));
     this.hist.delete(s.tick - HIST);
     for (const c of this.conns.values()) {
+      if (!c.ready) continue;
       const base = this.hist.get(c.ack);
       try {
         c.ws.send(

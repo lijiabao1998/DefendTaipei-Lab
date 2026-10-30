@@ -23,3 +23,9 @@ GitHub Pages only hosts static files; it cannot run this Worker. `server/wrangle
 Set `VITE_MP_SERVER=https://your-approved-worker.example` at frontend build time to enable the menu, or use `?mp=https://your-approved-worker.example&room=ABCDE` for testing. Without an endpoint, the normal public menu remains “coming soon”; a localhost fallback is only for explicit debug testing and cannot connect friends over the Internet.
 
 Before launch: browser/mobile QA, authoritative player health and full-world synchronization or explicitly scoped standalone co-op mode, deployment review, abuse/cost controls, room expiry and map collision validation. Current server is a prototype, not competitive anti-cheat.
+
+## Hammer and weapon switching increment
+
+Hammer keeps its existing `hammer` save/inventory ID and barricade requirement, but is now also equippable as melee. Use the existing inventory Equip action on desktop; on portrait phones tap the weapon label to cycle owned weapons. Its held model is a wooden handle and metal head. No item is granted to normal players automatically.
+
+Equipped weapon IDs now replicate to other players and render on their rigs. The server rejects non-weapon IDs. This is equipment replication, **not** an authoritative inventory: multiplayer combat still uses the prototype's fixed close-range attack rules, and ammunition/weapon-specific network damage are not implemented. The tests explicitly supply test inventory via existing debug hooks before exercising switching.
