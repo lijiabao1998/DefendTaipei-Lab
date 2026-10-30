@@ -2201,3 +2201,6 @@ body.selmode #charsel .ch.on {
   border-color: #f2d27a;
   box-shadow: 0 0 0 2px #c9a35a;
 }
+body.selmode #title #selection-summary p {
+  display: block;
+}
