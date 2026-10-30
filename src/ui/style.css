@@ -471,7 +471,7 @@ body.mobile canvas {
 body.mobile #joy {
   display: block;
   position: absolute;
-  left: calc(50% - 65px);
+  left: calc(20px + env(safe-area-inset-left));
   bottom: calc(28px + env(safe-area-inset-bottom));
   width: 130px;
   height: 130px;
@@ -480,6 +480,10 @@ body.mobile #joy {
   border: 2px solid rgba(255, 255, 255, 0.35);
   pointer-events: auto;
   touch-action: none;
+}
+/* Leave the prologue skip button its own row below the left thumb control. */
+body.mobile.portrait #joy {
+  bottom: calc(52px + env(safe-area-inset-bottom));
 }
 body.mobile #joyk {
   position: absolute;
@@ -1002,7 +1006,7 @@ body.mobile #coverbtn {
   font-size: 22px;
 }
 
-/* v22.7 mobile portrait: one big context button + one 蹲 toggle (bottom-right, clear of the centred joystick) */
+/* v22.7 mobile portrait: one big context button + one 蹲 toggle (bottom-right, clear of the lower-left joystick) */
 #pbtns,
 #pmapbtn {
   display: none;
@@ -1827,7 +1831,7 @@ body.mobile.portrait #phone .pm {
 }
 body.mobile.portrait #log {
   width: calc(100vw - 190px);
-  bottom: calc(175px + env(safe-area-inset-bottom));
+  bottom: calc(196px + env(safe-area-inset-bottom));
 }
 body.mobile.portrait #log .radio,
 body.mobile.portrait #log div:nth-child(n + 5) {
