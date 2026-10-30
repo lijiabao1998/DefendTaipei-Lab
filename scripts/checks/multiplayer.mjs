@@ -14,10 +14,11 @@ try {
   ]);
   const pages = await Promise.all(contexts.map(c => c.newPage()));
   for (const p of pages) {
-    await p.route('**/transport-test', r =>
-      r.fulfill({ contentType: 'text/html', body: '<h1>Multiplayer transport test</h1>' }),
-    );
-    await p.goto('http://localhost:5173/transport-test');
+    p.on('console', m => {
+      if (m.type() === 'error') console.error('browser:', m.text());
+    });
+    p.on('requestfailed', r => console.error('requestfailed:', r.url(), r.failure()));
+    await p.goto('http://localhost:5173/defendtaipei/scripts/checks/mp-transport.html');
     await p.evaluate(async () => {
       const { Net } = await import('/defendtaipei/src/net/net.ts');
       window.net = new Net('http://localhost:8787');
@@ -98,6 +99,23 @@ try {
       leave: true,
     }),
   );
+} catch (error) {
+  for (const [i, c] of browser.contexts().entries())
+    for (const p of c.pages()) {
+      await p.screenshot({ path: shot(`multiplayer-failure-${i}.png`) }).catch(() => {});
+      console.error(
+        'Client',
+        i,
+        await p
+          .evaluate(() => ({
+            url: location.href,
+            status: window.__game?.net?.status,
+            hud: document.getElementById('mphud')?.textContent,
+          }))
+          .catch(() => null),
+      );
+    }
+  throw error;
 } finally {
   await browser.close();
 }
