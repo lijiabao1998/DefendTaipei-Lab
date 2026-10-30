@@ -98,6 +98,32 @@ async function exercise(options, name) {
       'role selection remains top-aligned',
     );
     record.screenshots.push(await capture(page, `${name}-roles-top`));
+    assert.equal(await page.locator('#btns').getAttribute('data-step'), '0');
+    assert.equal(await page.locator('#daylen').isVisible(), false);
+    const oldSave = await page.evaluate(() => localStorage.getItem('defendtaipei-save-v1'));
+    await page.locator('#gsel [data-x="f"]').click();
+    await page.locator('.ch[data-r="nurse"]').click();
+    assert.equal(await page.evaluate(() => window.__game.started()), false, 'card selection never starts game');
+    await page.locator('#startgo').click();
+    assert.equal(await page.locator('#btns').getAttribute('data-step'), '1');
+    await page.locator('#daylen [data-h="2"]').click();
+    await page.locator('#skipintro').check();
+    record.screenshots.push(await capture(page, `${name}-stage-settings`));
+    await page.locator('#startgo').click();
+    assert.equal(await page.locator('#btns').getAttribute('data-step'), '2');
+    assert.match(await page.locator('#selection-summary').innerText(), /2 小時/);
+    record.screenshots.push(await capture(page, `${name}-stage-confirm`));
+    await page.locator('#selection-previous').click();
+    assert.equal(await page.locator('#skipintro').isChecked(), true);
+    await page.locator('#selection-previous').click();
+    assert.equal(await page.locator('.ch[data-r="nurse"]').getAttribute('aria-pressed'), 'true');
+    assert.equal(
+      await page.evaluate(() => localStorage.getItem('defendtaipei-save-v1')),
+      oldSave,
+      'navigation preserves save',
+    );
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
+
     await page.locator('#selback').click();
     await language.waitFor({ state: 'visible' });
     assert.equal(await page.locator('#title').getAttribute('data-loading'), null, 'return never re-enters loading');

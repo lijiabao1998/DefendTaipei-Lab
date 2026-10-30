@@ -2095,3 +2095,109 @@ body.mobile #panel button {
     transform: scaleX(1);
   }
 }
+/* Staged new-game flow: one decision at a time, identical on touch and desktop. */
+#btns [hidden] {
+  display: none !important;
+}
+body.selmode #logo,
+body.selmode #title h2,
+body.selmode #loadbar,
+body.selmode #loadmsg,
+body.selmode #title .keys {
+  display: none;
+}
+body.selmode #title h1 {
+  margin: 8px 0;
+  font-size: 28px;
+}
+#selection-steps {
+  color: #dbc38c;
+  font-size: 13px;
+  margin: 14px 0;
+  line-height: 1.6;
+}
+#selection-settings {
+  max-width: 520px;
+  padding: 24px 12px;
+  min-height: 180px;
+}
+#selection-settings label {
+  display: block;
+  margin: 24px;
+}
+#selection-summary {
+  max-width: 500px;
+  padding: 20px;
+  line-height: 1.7;
+}
+#selection-summary img {
+  width: 110px;
+  height: 130px;
+  object-fit: contain;
+}
+body.selmode #startbar {
+  display: flex;
+  position: fixed;
+  inset: auto 0 0;
+  z-index: 101;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px max(16px, env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom));
+  background: #15120ff5;
+  border-top: 1px solid #c9a35a;
+}
+body.selmode #title {
+  padding-bottom: calc(110px + env(safe-area-inset-bottom));
+}
+body.selmode #charsel .ch {
+  cursor: pointer;
+  min-height: 0;
+  height: auto;
+}
+body.selmode #charsel .ch:not(.on) .bl,
+body.selmode #charsel .ch:not(.on) .pk {
+  display: none;
+}
+body.selmode #charsel .ch:focus-visible {
+  outline: 3px solid #fff;
+}
+#entry-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 16px;
+  padding: 24px;
+  background: radial-gradient(ellipse at center, #392b21, #100e0c 75%);
+  color: #f4ddab;
+}
+.entry-spinner {
+  width: 52px;
+  height: 52px;
+  border: 3px solid #c9a35a33;
+  border-top-color: #e6bd70;
+  border-radius: 50%;
+  animation: entry-spin 1.2s linear infinite;
+}
+@keyframes entry-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .entry-spinner {
+    animation: none;
+    border-color: #e6bd70;
+  }
+}
+
+body.selmode #charsel .ch.on {
+  border-color: #f2d27a;
+  box-shadow: 0 0 0 2px #c9a35a;
+}

@@ -6706,7 +6706,13 @@ async function boot() {
   // v22.7.1 watchdog: if the title menu has not appeared shortly after loading, offer a clean reload
   setTimeout(() => {
     const tm = document.getElementById('tmenu');
-    if (!started && (!tm || !tm.offsetHeight)) bootRescue(tr('選單沒有出現', 'Menu did not appear'));
+    if (
+      !started &&
+      !document.body.classList.contains('selmode') &&
+      !document.body.classList.contains('entering-game') &&
+      (!tm || !tm.offsetHeight)
+    )
+      bootRescue(tr('選單沒有出現', 'Menu did not appear'));
   }, 6000);
   const btns = $('btns');
   $('loadmsg').textContent =
@@ -6802,7 +6808,7 @@ async function boot() {
     if (r.skills.streets && gmap) gmap.revealRect(bounds.minx, bounds.minz, bounds.maxx, bounds.maxz);
     if (!skip && dest) startPrologue(from, dest.door!.p as V2, r.destLabel);
   };
-  const go = (load: boolean, gender = 'm', roleId = 'courier', skipIntro = false) => {
+  const prepareGame = (load: boolean, gender = 'm', roleId = 'courier', skipIntro = false) => {
     storySaved = load && sv ? sv.story : undefined;
     storyRunner = createStoryRunner(storySaved);
     if (!doorView) {
@@ -6928,6 +6934,48 @@ async function boot() {
       '#ccc',
     );
   };
+  // Let the loading surface paint before building the selected survivor, then warm shaders.
+  let entering = false;
+  const paint = () => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  const go = async (load: boolean, gender = 'm', roleId = 'courier', skipIntro = false) => {
+    if (entering || started) return;
+    entering = true;
+    const cover = document.createElement('div');
+    cover.id = 'entry-loading';
+    cover.setAttribute('role', 'status');
+    cover.setAttribute('aria-live', 'polite');
+    cover.innerHTML = `<div class="entry-spinner" aria-hidden="true"></div><h2>${tr('走進萬華', 'Entering Wanhua')}</h2><p></p>`;
+    const status = cover.querySelector('p')!;
+    status.textContent = tr('準備倖存者與街區…', 'Preparing your survivor and district…');
+    document.body.appendChild(cover);
+    document.body.classList.add('entering-game');
+    try {
+      await paint();
+      prepareGame(load, gender, roleId, skipIntro);
+      started = false; // No simulation or autosave while shaders are warming.
+      status.textContent = tr('準備畫面與光影…', 'Preparing the first frame…');
+      camera.position.copy(player.pos).add(CAM_OFF);
+      camera.lookAt(player.pos);
+      await paint();
+      await renderer.compileAsync(scene, camera);
+      renderer.render(scene, camera);
+      await paint();
+      started = true;
+      cover.remove();
+      document.body.classList.remove('entering-game', 'selmode');
+    } catch (error) {
+      console.error('Game entry failed', error);
+      started = false;
+      status.textContent = tr(
+        '畫面準備失敗，請重新載入後再試。',
+        'Could not prepare the scene. Please reload and try again.',
+      );
+      const retry = document.createElement('button');
+      retry.textContent = tr('重新載入', 'Reload');
+      retry.onclick = () => location.reload();
+      cover.appendChild(retry);
+    }
+  };
   // v22.4 title menu: 繼續遊戲 / 新遊戲 / 多人連線 / 設定 / 操作說明 / 製作名單; 新遊戲 and 多人連線 open the role select
   const tm = document.createElement('div');
   tm.id = 'tmenu';
@@ -6943,6 +6991,7 @@ async function boot() {
       : `<button data-a="new"${sv ? '' : ' class="pri"'}>新遊戲</button><button data-a="mp"${MP_ON ? '' : ' class="soon" aria-disabled="true"'}>${MP_ON ? '多人連線' : '多人連線<small>（即將開放）</small>'}</button><button data-a="set">設定</button><button data-a="help">操作說明</button><button data-a="about">製作名單／關於</button>`);
   const showSel = (mp = false) => {
     document.body.classList.add('selmode');
+    setSelectionStep(0);
     btns.style.display = '';
     tm.style.display = 'none';
     if (mp) document.getElementById('mpsel')?.scrollIntoView({ block: 'center' });
@@ -7036,7 +7085,11 @@ async function boot() {
   if (MPQ.get('room')) MP = { base: defB, code: MPQ.get('room')!.toUpperCase() };
   let selR = ROLES[0].id;
   const markSel = () => {
-    sel.querySelectorAll('.ch').forEach(x => x.classList.toggle('on', (x as HTMLElement).dataset.r === selR));
+    sel.querySelectorAll('.ch').forEach(x => {
+      const selected = (x as HTMLElement).dataset.r === selR;
+      x.classList.toggle('on', selected);
+      x.setAttribute('aria-pressed', String(selected));
+    });
     const r = roleById(selR);
     const sb = document.getElementById('startbar');
     if (sb) sb.querySelector('b')!.textContent = `${r.names[selG === 'm' ? 0 : 1]}・${r.name}`;
@@ -7045,18 +7098,24 @@ async function boot() {
     sel.innerHTML = ROLES.map(r => {
       const o = r.look[selG];
       return getLanguage() === 'en'
-        ? `<div class="ch" data-g="${selG}" data-r="${r.id}"><img class="pv" alt="" src="${rolePortrait(r.id, selG)}"><b>${r.names[selG === 'm' ? 0 : 1]}・${r.name}</b><small class="ag">${selG === 'm' ? 'Male' : 'Female'}・${r.age[selG === 'm' ? 0 : 1]} years old</small><small class="bl">${r.blurb}</small><small class="pk"><em>${r.perks.join('・')}</em></small></div>`
-        : `<div class="ch" data-g="${selG}" data-r="${r.id}"><img class="pv" alt="" src="${rolePortrait(r.id, selG)}"><b>${r.names[selG === 'm' ? 0 : 1]}・${r.name}</b><small class="ag">${selG === 'm' ? '男' : '女'}・${r.age[selG === 'm' ? 0 : 1]} 歲</small><small class="bl">${r.blurb}</small><small class="pk"><em>${r.perks.join('・')}</em></small></div>`;
+        ? `<div class="ch" role="button" tabindex="0" data-g="${selG}" data-r="${r.id}"><img class="pv" alt="" src="${rolePortrait(r.id, selG)}"><b>${r.names[selG === 'm' ? 0 : 1]}・${r.name}</b><small class="ag">${selG === 'm' ? 'Male' : 'Female'}・${r.age[selG === 'm' ? 0 : 1]} years old</small><small class="bl">${r.blurb}</small><small class="pk"><em>${r.perks.join('・')}</em></small></div>`
+        : `<div class="ch" role="button" tabindex="0" data-g="${selG}" data-r="${r.id}"><img class="pv" alt="" src="${rolePortrait(r.id, selG)}"><b>${r.names[selG === 'm' ? 0 : 1]}・${r.name}</b><small class="ag">${selG === 'm' ? '男' : '女'}・${r.age[selG === 'm' ? 0 : 1]} 歲</small><small class="bl">${r.blurb}</small><small class="pk"><em>${r.perks.join('・')}</em></small></div>`;
     }).join('');
     sel.querySelectorAll('.ch').forEach(
       el =>
         ((el as HTMLElement).onclick = () => {
           const rid = (el as HTMLElement).dataset.r!;
-          // v21.5.1 portrait phones: a tap picks the role, the sticky 開始遊戲 bar starts
-          if (document.body.classList.contains('portrait')) {
-            selR = rid;
-            markSel();
-          } else go(false, selG, rid, skipI);
+          selR = rid;
+          markSel();
+        }),
+    );
+    sel.querySelectorAll<HTMLElement>('.ch').forEach(
+      el =>
+        (el.onkeydown = e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            el.click();
+          }
         }),
     );
     markSel();
@@ -7111,10 +7170,48 @@ async function boot() {
       '<span>已選：<b></b></span><button id="startgo">開始遊戲 ▶</button>',
       '<span>Selected: <b></b></span><button id="startgo">Start game ▶</button>',
     );
-    (sb.querySelector('#startgo') as HTMLElement).onclick = () => go(false, selG, selR, skipI);
+    (sb.querySelector('#startgo') as HTMLElement).onclick = () => {
+      if (selectionStep < 2) setSelectionStep(selectionStep + 1);
+      else void go(false, selG, selR, skipI);
+    };
     document.body.appendChild(sb);
     markSel();
   }
+  let selectionStep = 0;
+  const stepper = document.createElement('div');
+  stepper.id = 'selection-steps';
+  stepper.setAttribute('aria-live', 'polite');
+  const summary = document.createElement('div');
+  summary.id = 'selection-summary';
+  const previous = document.createElement('button');
+  previous.id = 'selection-previous';
+  previous.textContent = tr('← 上一步', '← Back');
+  previous.onclick = () => setSelectionStep(selectionStep - 1);
+  btns.insertBefore(stepper, h);
+  btns.append(summary, previous);
+  const skipLabel = gsw.querySelector('label')!;
+  const settings = document.createElement('div');
+  settings.id = 'selection-settings';
+  settings.append(dl, skipLabel, mpw);
+  btns.appendChild(settings);
+  function setSelectionStep(step: number) {
+    selectionStep = Math.max(0, Math.min(2, step));
+    btns.dataset.step = String(selectionStep);
+    const labels = [tr('選擇角色', 'Survivor'), tr('開局設定', 'Preferences'), tr('確認出發', 'Ready')];
+    stepper.textContent = labels
+      .map((label, i) => `${i === selectionStep ? '●' : '○'} ${i + 1} ${label}`)
+      .join('  ›  ');
+    h.textContent = labels[selectionStep];
+    gsw.hidden = sel.hidden = selectionStep !== 0;
+    settings.hidden = selectionStep !== 1;
+    summary.hidden = selectionStep !== 2;
+    previous.hidden = selectionStep === 0;
+    const r = roleById(selR);
+    summary.innerHTML = `<img alt="" src="${rolePortrait(r.id, selG)}"><h3>${r.names[selG === 'm' ? 0 : 1]}・${r.name}</h3><p>${r.perks.join('・')}</p><p>${tr('一天長度', 'Day length')}：${DAYH} ${tr('小時', 'hours')} · ${skipI ? tr('跳過開場', 'Skip intro') : tr('體驗開場', 'Play intro')}</p><small>${tr('出發後才會建立新遊戲；返回不會覆蓋存檔。', 'Your new game begins only when you depart. Going back keeps your save.')}</small>`;
+    $('startgo').textContent = selectionStep === 2 ? tr('出發 ▶', 'Depart ▶') : tr('下一步 →', 'Next →');
+    $('title').scrollTop = 0;
+  }
+  setSelectionStep(0);
   camera.position.copy(player.pos).add(CAM_OFF);
   camera.lookAt(player.pos);
   addEventListener('beforeunload', save);
