@@ -69,7 +69,7 @@ import {
   type Station,
 } from '../map/metro';
 import * as SV from '../systems/survival';
-import { clearSave, hasSave, readSave, writeSave } from '../systems/save';
+import { clearSave, hasSave, readSave, writeSave, setMultiplayerSession } from '../systems/save';
 import { VehicleSystem, VehicleKind } from '../systems/vehicles';
 import { furnish, nightMarket, setPower } from '../map/interiors';
 import { buildDecay } from '../map/decay';
@@ -2199,6 +2199,14 @@ async function startNet() {
   const hud = document.createElement('div');
   hud.id = 'mphud';
   document.body.appendChild(hud);
+  const leave = document.createElement('button');
+  leave.id = 'mpleave';
+  leave.textContent = tr('離開多人房間', 'Leave multiplayer');
+  leave.onclick = () => {
+    net?.leave();
+    location.href = location.pathname;
+  };
+  document.body.appendChild(leave);
   (window as any).__game.net = net;
   try {
     await net.join(MP.code, {
@@ -6879,6 +6887,7 @@ async function boot() {
     if (!skip && dest) startPrologue(from, dest.door!.p as V2, r.destLabel);
   };
   const prepareGame = (load: boolean, gender = 'm', roleId = 'courier', skipIntro = false) => {
+    setMultiplayerSession(!!MP);
     storySaved = load && sv ? sv.story : undefined;
     storyRunner = createStoryRunner(storySaved);
     if (!doorView) {
@@ -7068,6 +7077,7 @@ async function boot() {
     document.getElementById('mpsel')?.classList.toggle('hl', mp);
   };
   const showTm = () => {
+    MP = null;
     $('title').removeAttribute('data-loading');
     document.body.classList.remove('selmode');
     btns.style.display = 'none';
@@ -7122,11 +7132,19 @@ async function boot() {
   const mpw = document.createElement('div');
   mpw.id = 'mpsel';
   if (!MP_ON) mpw.style.display = 'none';
-  const defB = MPQ.get('mp') || 'http://localhost:8787';
+  const defB = MPQ.get('mp') || import.meta.env.VITE_MP_SERVER || 'http://localhost:8787';
   mpw.innerHTML =
     getLanguage() === 'en'
-      ? `<span>🌐 Multiplayer (experimental, 2–4 players): </span><input id="mpbase" value="${defB}" size="22"><button id="mpnew">Create room</button><input id="mpcode" placeholder="Room code" maxlength="5" size="6" value="${MPQ.get('room') || ''}"><button id="mpjoin">Join</button><em id="mpmsg"></em>`
-      : `<span>🌐 多人連線（實驗・2–4 人）：</span><input id="mpbase" value="${defB}" size="22"><button id="mpnew">建立房間</button><input id="mpcode" placeholder="房間代碼" maxlength="5" size="6" value="${MPQ.get('room') || ''}"><button id="mpjoin">加入</button><em id="mpmsg"></em>`;
+      ? `<span>🌐 Multiplayer (experimental, 2–4 players): </span><input id="mpbase" value="" size="22"><button id="mpnew">Create room</button><input id="mpcode" placeholder="Room code" maxlength="5" size="6" value=""><button id="mpjoin">Join</button><em id="mpmsg"></em>`
+      : `<span>🌐 多人連線（實驗・2–4 人）：</span><input id="mpbase" value="" size="22"><button id="mpnew">建立房間</button><input id="mpcode" placeholder="房間代碼" maxlength="5" size="6" value=""><button id="mpjoin">加入</button><em id="mpmsg"></em>`;
+  (mpw.querySelector('#mpbase') as HTMLInputElement).value = defB;
+  (mpw.querySelector('#mpcode') as HTMLInputElement).value = MPQ.get('room') || '';
+  const mpScope = document.createElement('p');
+  mpScope.textContent = tr(
+    '實驗連線：同步玩家與哨兵；背包、劇情與搜刮仍為個人狀態。需要可連線伺服器，不覆寫單機存檔。',
+    'Experimental: players and sentries are shared; inventory, story and loot remain local. Requires a reachable server. Single-player saves are protected.',
+  );
+  mpw.appendChild(mpScope);
   const mpMsg = (t: string) => {
     (mpw.querySelector('#mpmsg') as HTMLElement).textContent = t;
   };

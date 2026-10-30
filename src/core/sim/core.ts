@@ -74,6 +74,7 @@ export function addPlayer(
   x: number,
   z: number,
 ): string | null {
+  if (!Number.isFinite(x) || !Number.isFinite(z)) return 'invalid position';
   if (s.players[id]) {
     s.players[id].on = true;
     return null;
@@ -109,7 +110,7 @@ export function addPlayer(
 export function applyCmd(s: State, pid: string, c: Cmd): string {
   const p = s.players[pid];
   if (!p || p.hp <= 0) return 'dead';
-  if (typeof c.seq !== 'number' || c.seq <= p.ack) return 'stale';
+  if (!Number.isSafeInteger(c.seq) || c.seq <= p.ack) return 'stale';
   p.ack = c.seq;
   if (c.t === 'move') {
     if (!isFinite(c.x) || !isFinite(c.z)) return 'nan';
@@ -141,6 +142,7 @@ export function applyCmd(s: State, pid: string, c: Cmd): string {
     return '';
   }
   if (c.t === 'loot') {
+    if (!Number.isFinite(c.x) || !Number.isFinite(c.z)) return 'nan';
     if (typeof c.id !== 'string' || c.id.length > 40) return 'bad id';
     if (s.looted[c.id]) return 'taken';
     if (Math.hypot(c.x - p.x, c.z - p.z) > LOOT_RANGE) return 'range';

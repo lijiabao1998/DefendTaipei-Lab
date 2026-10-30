@@ -38,6 +38,7 @@ export default {
       : {};
     const J = (o: unknown, st = 200) =>
       new Response(JSON.stringify(o), { status: st, headers: { 'Content-Type': 'application/json', ...cors } });
+    if (origin && !allowed) return J({ error: 'origin not allowed' }, 403);
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     if (!env.AUTH_SECRET || env.AUTH_SECRET.length < 16) return J({ error: 'server not configured' }, 500);
     if (url.pathname === '/api/auth' && req.method === 'POST') {

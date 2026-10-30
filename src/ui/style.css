@@ -2842,3 +2842,22 @@ body.mobile.inventory-open #panel {
     padding-inline: 8px;
   }
 }
+
+/* Experimental multiplayer controls stay usable above mobile touch controls. */
+#mpleave {
+  position: fixed;
+  top: 58px;
+  right: 12px;
+  z-index: 90;
+  min-height: 44px;
+}
+#mpsel p {
+  flex-basis: 100%;
+  font-size: 12px;
+  line-height: 1.5;
+}
+#mpsel input {
+  max-width: 100%;
+  box-sizing: border-box;
+  min-height: 40px;
+}

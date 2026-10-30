@@ -6,6 +6,12 @@
 // Map fog (defendtaipei-map-v2) and road-tile loot (dt-tiles-v1) are separate keys. A new game still resets
 // those through GameMap.reset / RoadTiles.reset; death and the evac "new game" button only drop the pair above.
 
+let multiplayerSession = false;
+/** Multiplayer never writes or deletes single-player progress. */
+export function setMultiplayerSession(on: boolean): void {
+  multiplayerSession = on;
+}
+
 export const GAME_SAVE_KEY = 'defendtaipei-save-v1';
 /** per-tile player changes (looted containers, cleared posts), keyed by district tile */
 export const DISTRICT_TILES_KEY = 'dt.tiles';
@@ -62,11 +68,13 @@ export function hasSave(): boolean {
 }
 
 export function writeSave(data: GameSave): void {
+  if (multiplayerSession) return;
   localStorage.setItem(GAME_SAVE_KEY, JSON.stringify(data));
 }
 
 /** Drop the progress blob and district tile deltas. Does not touch the map or road-tile keys. */
 export function clearSave(): void {
+  if (multiplayerSession) return;
   localStorage.removeItem(GAME_SAVE_KEY);
   localStorage.removeItem(DISTRICT_TILES_KEY);
 }
@@ -80,6 +88,7 @@ export function readDistrictTiles(): Record<string, any> {
 }
 
 export function writeDistrictTiles(saved: Record<string, any>): void {
+  if (multiplayerSession) return;
   try {
     localStorage.setItem(DISTRICT_TILES_KEY, JSON.stringify(saved));
   } catch {
@@ -96,10 +105,12 @@ export function readRoadTiles(): Record<string, string[]> {
 }
 
 export function writeRoadTiles(state: Record<string, string[]>): void {
+  if (multiplayerSession) return;
   localStorage.setItem(ROAD_TILES_KEY, JSON.stringify(state));
 }
 
 export function clearRoadTiles(): void {
+  if (multiplayerSession) return;
   localStorage.removeItem(ROAD_TILES_KEY);
 }
 
@@ -114,5 +125,6 @@ export function readMapSave(): MapSave | null {
 }
 
 export function writeMapSave(data: { n: unknown; f: string }): void {
+  if (multiplayerSession) return;
   localStorage.setItem(MAP_SAVE_KEY, JSON.stringify(data));
 }
