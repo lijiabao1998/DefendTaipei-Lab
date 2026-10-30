@@ -1,3 +1,4 @@
+import { ITEMS } from '../../systems/items';
 // Authoritative multiplayer simulation core (v20). Pure TS, no DOM/three: runs identically in the browser
 // (prediction / solo) and inside the Cloudflare Durable Object (authority). Fixed 20 Hz tick, seeded RNG,
 // integer-millimetre positions so every runtime produces the same state hash.
@@ -22,6 +23,7 @@ export type PlayerS = {
   on: boolean;
   kills: number;
   veh: boolean;
+  weapon?: string;
 };
 export type EnemyS = { id: number; x: number; z: number; hp: number; hx: number; hz: number; tgt: string };
 export type State = {
@@ -36,6 +38,7 @@ export type State = {
 };
 export type Cmd =
   | { t: 'move'; seq: number; x: number; z: number; veh?: boolean } // client-claimed position, validated by speed
+  | { t: 'equip'; seq: number; weapon: string }
   | { t: 'attack'; seq: number; target: number }
   | { t: 'loot'; seq: number; id: string; x: number; z: number };
 export type Snapshot = { k: 'snap'; tick: number; you: string; s: State };
@@ -74,6 +77,7 @@ export function addPlayer(
   x: number,
   z: number,
 ): string | null {
+  if (!Number.isFinite(x) || !Number.isFinite(z)) return 'invalid position';
   if (s.players[id]) {
     s.players[id].on = true;
     return null;
@@ -109,8 +113,14 @@ export function addPlayer(
 export function applyCmd(s: State, pid: string, c: Cmd): string {
   const p = s.players[pid];
   if (!p || p.hp <= 0) return 'dead';
-  if (typeof c.seq !== 'number' || c.seq <= p.ack) return 'stale';
+  if (!Number.isSafeInteger(c.seq) || c.seq <= p.ack) return 'stale';
   p.ack = c.seq;
+  if (c.t === 'equip') {
+    const item = ITEMS[c.weapon];
+    if (c.weapon !== '' && (!item || !['melee', 'gun'].includes(item.kind))) return 'invalid weapon';
+    p.weapon = c.weapon;
+    return '';
+  }
   if (c.t === 'move') {
     if (!isFinite(c.x) || !isFinite(c.z)) return 'nan';
     const lim = (c.veh ? DRIVE_SPEED : RUN_SPEED) * DT * 1.6 + 0.05;
@@ -141,6 +151,7 @@ export function applyCmd(s: State, pid: string, c: Cmd): string {
     return '';
   }
   if (c.t === 'loot') {
+    if (!Number.isFinite(c.x) || !Number.isFinite(c.z)) return 'nan';
     if (typeof c.id !== 'string' || c.id.length > 40) return 'bad id';
     if (s.looted[c.id]) return 'taken';
     if (Math.hypot(c.x - p.x, c.z - p.z) > LOOT_RANGE) return 'range';
@@ -150,9 +161,13 @@ export function applyCmd(s: State, pid: string, c: Cmd): string {
   return 'unknown';
 }
 /** advance one fixed tick: enemy AI (seeded), cooldowns */
-export function step(s: State) {
+export function roomReady(s: State): boolean {
+  return Object.values(s.players).filter(p => p.on).length >= 2;
+}
+export function step(s: State, combat = true) {
   s.tick++;
   for (const p of Object.values(s.players)) if (p.cd > 0) p.cd--;
+  if (!combat) return;
   const alive = Object.values(s.players)
     .filter(p => p.on && p.hp > 0)
     .sort((a, b) => (a.id < b.id ? -1 : 1));

@@ -1,0 +1,45 @@
+# Multiplayer prototype — 2026-10-30
+
+## Honest scope
+
+This branch hardens the existing 2–4 player Cloudflare Worker prototype; it is **not a public multiplayer launch**. The existing Worker replicates player positions, shared sentries, room membership and server-side combat commands. Inventory, story, local patrols, world loot and survival are still primarily single-player systems. A shared sentry is not a claim that the entire survival world is synchronized. Do not merge/advertise this as complete co-op survival.
+
+Single-player progress writes/deletes are suppressed while a multiplayer session runs. Settings remain independent. Leaving multiplayer reloads the single-player title. Reconnection now uses the server's acknowledged command sequence; deltas are applied to their exact historical baseline, with a snapshot requested if absent. Closing/replaced sessions cannot silently reopen. Anonymous tokens are scoped to backend URL. Query parameters are assigned as input values rather than injected as HTML.
+
+## Local verification
+
+Run the server commands in `server/README.md`, then `npm run dev -- --host 127.0.0.1 --port 5173`.
+
+- `node scripts/checks/multiplayer-unit.mjs`: save isolation, single-player writes, malformed commands, delta baseline/resync and leave cleanup.
+- `node server/test-mp.mjs`: actual HTTP/WebSocket clients, independent identities, bidirectional movement, four-player capacity, rejected invalid commands, contested loot, reconnection, D1 persistence. This test now has assertions and a timeout, rather than only printing results.
+- `node scripts/checks/multiplayer.mjs`: two isolated browser contexts (desktop + phone), actual Worker transport, movement both ways, reconnect, save isolation, full game join, screenshots and leave. No mocked WebSocket/fetch. Requires Playwright Chromium, Vite and Worker.
+
+The dot sandbox passed typecheck, build, module checks and the new unit tests. Local Chromium launch is blocked by Unix socket permissions; the elevated execution wrapper itself fails with a read-only sessions mount. Browser results must come from the explicit test branch's GitHub Actions workflow, not be inferred from unit tests.
+
+## Public deployment still required
+
+GitHub Pages only hosts static files; it cannot run this Worker. `server/wrangler.toml` still has a placeholder D1 database ID. Need the user's approved Cloudflare account/resources, Worker/Durable Object + D1 provisioned (R2 historical snapshots are now optional and disabled by default), server-side AUTH_SECRET, approved origin configuration, and an HTTPS backend URL. No account/resources/paid plan or production secret was created by this change.
+
+Set `VITE_MP_SERVER=https://your-approved-worker.example` at frontend build time to enable the menu, or use `?mp=https://your-approved-worker.example&room=ABCDE` for testing. Without an endpoint, the normal public menu remains “coming soon”; a localhost fallback is only for explicit debug testing and cannot connect friends over the Internet.
+
+Before launch: browser/mobile QA, authoritative player health and full-world synchronization or explicitly scoped standalone co-op mode, deployment review, abuse/cost controls, room expiry and map collision validation. Current server is a prototype, not competitive anti-cheat.
+
+## Hammer and weapon switching increment
+
+Hammer keeps its existing `hammer` save/inventory ID and barricade requirement, but is now also equippable as melee. Use the existing inventory Equip action on desktop; on portrait phones tap the weapon label to cycle owned weapons. Its held model is a wooden handle and metal head. No item is granted to normal players automatically.
+
+Equipped weapon IDs now replicate to other players and render on their rigs. The server rejects non-weapon IDs. This is equipment replication, **not** an authoritative inventory: multiplayer combat still uses the prototype's fixed close-range attack rules, and ammunition/weapon-specific network damage are not implemented. The tests explicitly supply test inventory via existing debug hooks before exercising switching.
+
+## Waiting and health consistency
+
+The Worker freezes shared enemy combat until at least two connected, loaded players are present; transport ticks and snapshots continue while waiting. Dropping back to one player pauses shared combat again. Browser room joins begin after scene compilation, not while the loading overlay is still compiling shaders.
+
+During a multiplayer session the room's HP is authoritative. Client-local damage/healing cannot independently decide multiplayer death; a server zero HP opens the multiplayer defeat screen and leaves the room without deleting solo saves. The prototype server does not model bleeding or medicine yet. Single-player health, death and save rules remain unchanged. This is still not full inventory/world synchronization.
+
+## No-card deployment candidate
+
+R2 has been removed from the default bindings. Final room state still saves to the same D1 `rooms.state` row before the idle timer stops. R2, if explicitly configured later, is only a best-effort historical copy; its failure cannot invalidate D1 recovery. This avoids requiring an R2 subscription but intentionally does not preserve every historical close snapshot. Existing room rows and single-player saves are not deleted or migrated. This change is local until separately pushed/deployed and verified remotely.
+
+## Production frontend candidate
+
+`.env.production` supplies the public endpoint `https://defendtaipei-mp.lijiabao1998.workers.dev` (not a secret). This enables the existing multiplayer menu in a production build. Development stays local unless VITE_MP_SERVER is explicitly set. The multiplayer test workflow exercises isolated desktop/phone game clients against this deployed backend, without an `mp` query override, as well as local backend persistence tests. This branch is not the live frontend: publication requires the approved PR merge followed by Pages deployment and live asset verification.

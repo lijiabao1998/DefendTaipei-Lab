@@ -46,7 +46,7 @@ export async function preview(port) {
 //   skipIntro: skip the morning prologue (default true, which matches the game before v17)
 // The title screen does not scroll, so on small or phone viewports some cards are off-screen; the clicks are
 // therefore sent through the DOM instead of as pointer events.
-export async function pickRole(page, { g = 'f', role, skipIntro = true } = {}) {
+export async function pickRole(page, { g = 'f', role, skipIntro = true, entryTimeout = 120000 } = {}) {
   // v22.4: the role select sits behind the title menu's 新遊戲
   await page.waitForFunction(() => window.__newGame, null, { timeout: 600000, polling: 500 });
   await page.evaluate(() => window.__newGame());
@@ -64,6 +64,6 @@ export async function pickRole(page, { g = 'f', role, skipIntro = true } = {}) {
     [g, role || (g === 'f' ? 'nurse' : 'courier'), skipIntro],
   );
   await page.waitForFunction(() => window.__game?.started() && !document.getElementById('entry-loading'), null, {
-    timeout: 120000,
+    timeout: entryTimeout,
   });
 }

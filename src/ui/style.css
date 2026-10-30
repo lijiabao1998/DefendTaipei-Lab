@@ -2842,3 +2842,45 @@ body.mobile.inventory-open #panel {
     padding-inline: 8px;
   }
 }
+
+/* Experimental multiplayer controls stay usable above mobile touch controls. */
+#mpleave {
+  position: fixed;
+  top: 58px;
+  right: 12px;
+  z-index: 90;
+  min-height: 44px;
+}
+#mpsel p {
+  flex-basis: 100%;
+  font-size: 12px;
+  line-height: 1.5;
+}
+#mpsel input {
+  max-width: 100%;
+  box-sizing: border-box;
+  min-height: 40px;
+}
+
+/* Room controls occupy their own strip instead of covering the clock. */
+#mpleave {
+  left: 50%;
+  right: auto;
+  top: 42px;
+  transform: translateX(-50%);
+}
+body.portrait #mphud {
+  top: 178px;
+  left: 8px;
+  transform: none;
+  max-width: calc(100vw - 135px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body.portrait #mpleave {
+  top: 174px;
+  right: 8px;
+  left: auto;
+  transform: none;
+}

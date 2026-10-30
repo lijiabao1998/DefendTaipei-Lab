@@ -69,7 +69,7 @@ import {
   type Station,
 } from '../map/metro';
 import * as SV from '../systems/survival';
-import { clearSave, hasSave, readSave, writeSave } from '../systems/save';
+import { clearSave, hasSave, readSave, writeSave, setMultiplayerSession } from '../systems/save';
 import { VehicleSystem, VehicleKind } from '../systems/vehicles';
 import { furnish, nightMarket, setPower } from '../map/interiors';
 import { buildDecay } from '../map/decay';
@@ -354,6 +354,7 @@ function cycleWeapon() {
   const nx = list[(list.indexOf(player.equip || '') + 1) % list.length];
   if (scope.on) scopeExit();
   player.equip = nx;
+  syncHeldWeapon();
   log(
     nx
       ? getLanguage() === 'en'
@@ -2177,10 +2178,30 @@ let MP: { base: string; code: string } | null = null;
 const remRigs = new Map<string, Rig>(),
   enRigs = new Map<number, Rig>();
 const remPrev = new Map<string, [number, number]>();
+function syncServerVitals() {
+  const own = MP && net?.s?.players[net.you];
+  if (!own) return;
+  player.hp = clamp(own.hp, 0, 100);
+  player.bleed = false; // The prototype server has no separate bleeding state.
+  if (own.hp <= 0 && !dead) die();
+}
+function syncHeldWeapon() {
+  net?.equip(player.equip);
+}
 async function startNet() {
   if (!MP) return;
   const { Net } = await import('../net/net');
   net = new Net(MP.base, {
+    onState: () => {
+      syncServerVitals();
+      if (!dead) syncHeldWeapon();
+      const h = document.getElementById('mphud');
+      if (h && net?.s && Object.values(net.s.players).filter(p => p.on).length < 2)
+        h.textContent = tr(
+          '🌐 等待第二位玩家載入・共享敵人暫停',
+          '🌐 Waiting for a second loaded player · sentries paused',
+        );
+    },
     onStatus: t => {
       const h = document.getElementById('mphud');
       if (h) h.textContent = '🌐 ' + t;
@@ -2199,6 +2220,14 @@ async function startNet() {
   const hud = document.createElement('div');
   hud.id = 'mphud';
   document.body.appendChild(hud);
+  const leave = document.createElement('button');
+  leave.id = 'mpleave';
+  leave.textContent = tr('離開多人房間', 'Leave multiplayer');
+  leave.onclick = () => {
+    net?.leave();
+    location.href = location.pathname;
+  };
+  document.body.appendChild(leave);
   (window as any).__game.net = net;
   try {
     await net.join(MP.code, {
@@ -2215,6 +2244,7 @@ async function startNet() {
 function netFrame(dt: number) {
   if (!net || !net.s) return;
   net.update(dt, player.pos.x, player.pos.z, !!drive.cur);
+  syncHeldWeapon();
   const s = net.s;
   for (const p of Object.values(s.players)) {
     if (p.id === net.you) continue;
@@ -2225,6 +2255,7 @@ function netFrame(dt: number) {
       scene.add(r.root);
       remRigs.set(p.id, r);
     }
+    setWeapon(r, p.weapon || '');
     const q = net.remote(p.id) || [p.x, p.z];
     const pv = remPrev.get(p.id) || q;
     const sp = Math.hypot(q[0] - pv[0], q[1] - pv[1]) / Math.max(dt, 1e-3);
@@ -2256,7 +2287,12 @@ function netFrame(dt: number) {
     animate(r, e.hp <= 0 ? 'death' : sp > 2 ? 'run' : sp > 0.2 ? 'walk' : 'idle', Math.min(sp, 4), dt);
   }
   const h = document.getElementById('mphud');
-  if (h && net.status.startsWith(tr('房間', 'Room')))
+  if (h && Object.values(s.players).filter(p => p.on).length < 2)
+    h.textContent = tr(
+      '🌐 等待第二位玩家載入・共享敵人暫停',
+      '🌐 Waiting for a second loaded player · sentries paused',
+    );
+  else if (h && net.status.startsWith(tr('房間', 'Room')))
     h.textContent =
       getLanguage() === 'en'
         ? `🌐 ${net.status} | ${Object.values(s.players).filter(p => p.on).length}/4 players | tick ${s.tick} | ${(net.bytes / 1024).toFixed(0)} kB received`
@@ -3876,6 +3912,7 @@ function useItem(k: string) {
   if (!player.inv[k]) return;
   if (d.kind === 'melee' || d.kind === 'gun') {
     player.equip = player.equip === k ? '' : k;
+    syncHeldWeapon();
     log(
       player.equip
         ? getLanguage() === 'en'
@@ -5461,7 +5498,9 @@ function update(dt: number) {
   if (player.hunger <= 0 || player.thirst <= 0) player.hp -= gm * 8;
   if (player.bleed) player.hp -= dt * 0.6;
   if (player.hunger > 50 && player.thirst > 50 && !player.bleed) player.hp = Math.min(100, player.hp + gm * 6);
-  if (player.hp <= 0) return die();
+  if (MP) syncServerVitals();
+  else if (player.hp <= 0) return die();
+  if (dead) return;
   vehicles.update(dt);
   if (armor && started && !PRO.hide) armor.update(dt);
   if (started) snpUpdate(dt);
@@ -6113,6 +6152,7 @@ function bar(name: string, v: number, col: string) {
   return `<div class="bar"><div class="t"><span>${name}</span><span>${Math.round(v)}</span></div><div class="b"><i style="width:${clamp(v, 0, 100)}%;background:${col}"></i></div></div>`;
 }
 function drawHud(inside: Bld | null) {
+  syncServerVitals();
   const m: string[] = [];
   if (player.hunger < 25) m.push(tr('飢餓', 'Hungry'));
   if (player.thirst < 25) m.push(tr('口渴', 'Thirsty'));
@@ -6257,6 +6297,17 @@ function die() {
   closePanel();
   const t = $('title');
   t.style.display = 'flex';
+  if (MP) {
+    net?.leave();
+    t.innerHTML = tr(
+      '<h1>你在多人房間倒下了</h1><p>以伺服器生命狀態為準。單機存檔未受影響。</p><button id=mpdeadback>返回主選單</button>',
+      '<h1>You fell in the multiplayer room</h1><p>Server health is authoritative. Your solo save is unchanged.</p><button id=mpdeadback>Return to title</button>',
+    );
+    $('mpdeadback').onclick = () => {
+      location.href = location.pathname;
+    };
+    return;
+  }
   const day = Math.floor(gameMin / 1440) + 1;
   t.innerHTML =
     getLanguage() === 'en'
@@ -6879,6 +6930,7 @@ async function boot() {
     if (!skip && dest) startPrologue(from, dest.door!.p as V2, r.destLabel);
   };
   const prepareGame = (load: boolean, gender = 'm', roleId = 'courier', skipIntro = false) => {
+    setMultiplayerSession(!!MP);
     storySaved = load && sv ? sv.story : undefined;
     storyRunner = createStoryRunner(storySaved);
     if (!doorView) {
@@ -6937,7 +6989,6 @@ async function boot() {
       player.inv = { ...ROLE.inv };
       spawnRole(ROLE, skipIntro);
     }
-    if (MP) startNet();
     $('title').style.display = 'none';
     started = true;
     if (!surv.home) surv.home = [player.pos.x, player.pos.z];
@@ -7031,6 +7082,7 @@ async function boot() {
       renderer.render(scene, camera);
       await paint();
       started = true;
+      if (MP) await startNet();
       cover.remove();
       document.body.classList.remove('entering-game', 'selmode');
     } catch (error) {
@@ -7068,6 +7120,7 @@ async function boot() {
     document.getElementById('mpsel')?.classList.toggle('hl', mp);
   };
   const showTm = () => {
+    MP = null;
     $('title').removeAttribute('data-loading');
     document.body.classList.remove('selmode');
     btns.style.display = 'none';
@@ -7122,11 +7175,19 @@ async function boot() {
   const mpw = document.createElement('div');
   mpw.id = 'mpsel';
   if (!MP_ON) mpw.style.display = 'none';
-  const defB = MPQ.get('mp') || 'http://localhost:8787';
+  const defB = MPQ.get('mp') || import.meta.env.VITE_MP_SERVER || 'http://localhost:8787';
   mpw.innerHTML =
     getLanguage() === 'en'
-      ? `<span>🌐 Multiplayer (experimental, 2–4 players): </span><input id="mpbase" value="${defB}" size="22"><button id="mpnew">Create room</button><input id="mpcode" placeholder="Room code" maxlength="5" size="6" value="${MPQ.get('room') || ''}"><button id="mpjoin">Join</button><em id="mpmsg"></em>`
-      : `<span>🌐 多人連線（實驗・2–4 人）：</span><input id="mpbase" value="${defB}" size="22"><button id="mpnew">建立房間</button><input id="mpcode" placeholder="房間代碼" maxlength="5" size="6" value="${MPQ.get('room') || ''}"><button id="mpjoin">加入</button><em id="mpmsg"></em>`;
+      ? `<span>🌐 Multiplayer (experimental, 2–4 players): </span><input id="mpbase" value="" size="22"><button id="mpnew">Create room</button><input id="mpcode" placeholder="Room code" maxlength="5" size="6" value=""><button id="mpjoin">Join</button><em id="mpmsg"></em>`
+      : `<span>🌐 多人連線（實驗・2–4 人）：</span><input id="mpbase" value="" size="22"><button id="mpnew">建立房間</button><input id="mpcode" placeholder="房間代碼" maxlength="5" size="6" value=""><button id="mpjoin">加入</button><em id="mpmsg"></em>`;
+  (mpw.querySelector('#mpbase') as HTMLInputElement).value = defB;
+  (mpw.querySelector('#mpcode') as HTMLInputElement).value = MPQ.get('room') || '';
+  const mpScope = document.createElement('p');
+  mpScope.textContent = tr(
+    '實驗連線：同步玩家與哨兵；背包、劇情與搜刮仍為個人狀態。需要可連線伺服器，不覆寫單機存檔。',
+    'Experimental: players and sentries are shared; inventory, story and loot remain local. Requires a reachable server. Single-player saves are protected.',
+  );
+  mpw.appendChild(mpScope);
   const mpMsg = (t: string) => {
     (mpw.querySelector('#mpmsg') as HTMLElement).textContent = t;
   };

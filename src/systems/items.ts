@@ -541,7 +541,7 @@ export const ITEMS: Record<string, ItemDef> = {
     desc: tr('FPV 零件（5.8GHz 類比圖傳）', 'FPV component (5.8GHz analog video link).'),
   },
   plank: { name: tr('木板', 'Wooden plank'), w: 1.0, kind: 'tool' },
-  hammer: { name: tr('鐵鎚', 'Hammer'), w: 0.8, kind: 'tool' },
+  hammer: { name: tr('鐵鎚', 'Hammer'), w: 0.8, kind: 'melee', dmg: 28, range: 1.4, noise: 5, cd: 0.65 },
   radio: {
     name: tr('手搖收音機', 'Hand-crank radio'),
     w: 0.5,

@@ -6,3 +6,8 @@ c-*.png
 ref/
 # screenshots from scripts/smoke.mjs and scripts/checks/*
 shots/
+
+server/.dev.vars
+server/.wrangler/
+.npm-cache/
+.runtime/

@@ -1,0 +1,44 @@
+name: Multiplayer prototype verification
+on:
+  push:
+    branches: [onna/multiplayer-prototype-20261030]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  multiplayer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci && npm ci --prefix server
+      - run: npm run typecheck && node scripts/checks/multiplayer-unit.mjs && npm run build
+      - run: npx playwright install --with-deps chromium
+      - name: Two independent browser clients through real Worker
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+          VITE_MP_SERVER: https://defendtaipei-mp.lijiabao1998.workers.dev
+          MP_SERVER: https://defendtaipei-mp.lijiabao1998.workers.dev
+          MP_USE_DEFAULT: '1'
+        run: |
+          printf 'AUTH_SECRET=ephemeral-ci-only-not-production-secret\n' > server/.dev.vars
+          cd server
+          npx wrangler d1 migrations apply dt_saves --local
+          npx wrangler dev --local --ip 127.0.0.1 --port 8787 --inspector-port 9230 > /tmp/dt-worker.log 2>&1 &
+          cd ..
+          npm run dev -- --host 127.0.0.1 --port 5173 > /tmp/dt-vite.log 2>&1 &
+          for i in $(seq 1 60); do curl -fsS http://localhost:8787 && curl -fsS http://localhost:5173/defendtaipei/ && break; sleep 1; done
+          MP_TEST_IDLE_RECOVERY=1 node server/test-mp.mjs
+          node scripts/checks/multiplayer.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: multiplayer-test-evidence
+          path: |
+            /tmp/dt-worker.log
+            /tmp/dt-vite.log
+            shots/
