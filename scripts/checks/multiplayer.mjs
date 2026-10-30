@@ -86,37 +86,58 @@ try {
     await Promise.all(pages.map(p => p.evaluate(() => window.__game.net.s.players))),
   );
   const gameIds = await Promise.all(pages.map(p => p.evaluate(() => window.__game.net.you)));
-  for (const p of pages)
-    await p.evaluate(() => {
-      window.__game.addItem('hammer');
-      window.__game.addItem('pipe');
-      window.__game.useItem('hammer');
-    });
-  await pages[0].waitForFunction(id => window.__game.net.s.players[id].weapon === 'hammer', gameIds[1]);
-  await pages[1].waitForFunction(id => window.__game.net.s.players[id].weapon === 'hammer', gameIds[0]);
-  await pages[1].locator('#equip').dispatchEvent('pointerdown');
-  await pages[0].waitForFunction(id => window.__game.net.s.players[id].weapon === 'pipe', gameIds[1]);
-  await pages[0].evaluate(() => window.__game.useItem('pipe'));
-  await pages[1].waitForFunction(id => window.__game.net.s.players[id].weapon === 'pipe', gameIds[0]);
-  for (const p of pages) {
-    await p.waitForFunction(() => {
-      const n = window.__game.net;
-      return n.s?.players[n.you]?.hp > 0 && window.__game.player.hp === n.s.players[n.you].hp;
-    });
-    await p.evaluate(() => {
-      window.__game.player.hp = 1;
-    });
-    await p.waitForFunction(() => {
-      const n = window.__game.net;
-      return window.__game.player.hp === n.s?.players[n.you]?.hp && window.__game.player.hp > 1;
-    });
-    await p.evaluate(() => window.__game.useItem('hammer'));
-  }
-  await pages[0].waitForFunction(id => window.__game.net.s.players[id].weapon === 'hammer', gameIds[1]);
-  await pages[1].waitForFunction(id => window.__game.net.s.players[id].weapon === 'hammer', gameIds[0]);
+  const waitWeapons = weapon =>
+    Promise.all(
+      pages.map((p, i) =>
+        p.waitForFunction(
+          ({ id, weapon }) => {
+            const n = window.__game.net;
+            if (!n.s || n.s.players[n.you]?.hp === 0) throw Error('Player defeated during equipment QA');
+            return n.s.players[id]?.weapon === weapon;
+          },
+          { id: gameIds[1 - i], weapon },
+        ),
+      ),
+    );
+  await Promise.all(
+    pages.map(p =>
+      p.evaluate(() => {
+        window.__game.addItem('hammer');
+        window.__game.addItem('pipe');
+        window.__game.useItem('hammer');
+      }),
+    ),
+  );
+  await waitWeapons('hammer');
+  console.log('PASS: both full clients replicate hammer');
+  await Promise.all([
+    pages[1].locator('#equip').dispatchEvent('pointerdown'),
+    pages[0].evaluate(() => window.__game.useItem('pipe')),
+  ]);
+  await waitWeapons('pipe');
+  console.log('PASS: phone weapon tap and desktop pipe replicate both ways');
+  await Promise.all(
+    pages.map(async p => {
+      await p.waitForFunction(() => {
+        const n = window.__game.net;
+        return n.s?.players[n.you]?.hp > 0 && window.__game.player.hp === n.s.players[n.you].hp;
+      });
+      await p.evaluate(() => {
+        window.__game.player.hp = 1;
+        window.__game.useItem('hammer');
+      });
+      await p.waitForFunction(() => {
+        const n = window.__game.net;
+        return window.__game.player.hp === n.s?.players[n.you]?.hp && window.__game.player.hp > 1;
+      });
+    }),
+  );
+  await waitWeapons('hammer');
   console.log('PASS: both full game clients switch hammer/pipe, and local health reconciles to server');
-  await pages[0].screenshot({ path: shot('multiplayer-desktop.png') });
-  await pages[1].screenshot({ path: shot('multiplayer-phone.png') });
+  await Promise.all([
+    pages[0].screenshot({ path: shot('multiplayer-desktop.png') }),
+    pages[1].screenshot({ path: shot('multiplayer-phone.png') }),
+  ]);
   await pages[1].locator('#mpleave').click();
   await pages[1].waitForURL('**/defendtaipei/');
   console.log(
