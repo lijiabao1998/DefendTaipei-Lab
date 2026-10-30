@@ -94,6 +94,40 @@ function boot(raw = null, options = {}) {
   };
 }
 const plain = value => JSON.parse(JSON.stringify(value));
+// Loading/title lifecycle without WebGL: both locales stay hidden until the
+// title menu is ready, and revisiting that menu preserves a usable switcher.
+for (const locale of ['zh-TW', 'en']) {
+  const state = boot(JSON.stringify({ lang: locale, quality: 'low' }));
+  const elements = new Map();
+  const title = {
+    firstChild: null,
+    querySelector: () => null,
+    insertBefore(element) {
+      elements.set(element.id, element);
+    },
+  };
+  elements.set('title', title);
+  Object.assign(state.sandbox.document, {
+    getElementById: id => elements.get(id) || null,
+    createElement: () => ({ setAttribute() {} }),
+  });
+  state.api.showTitleLanguage(); // Safe before initialization / missing title.
+  state.api.initTitleLanguage();
+  const switcher = elements.get('title-language');
+  assert.equal(switcher.hidden, true, `${locale}: hidden throughout loading`);
+  assert.equal(switcher.value, locale, `${locale}: saved language preserved`);
+  assert.equal(state.writes.length, 0, 'initialization never changes preferences');
+  state.api.showTitleLanguage();
+  assert.equal(switcher.hidden, false, `${locale}: visible when menu is ready`);
+  state.api.showTitleLanguage();
+  assert.equal(elements.get('title-language'), switcher, 'return to menu reuses switcher');
+  switcher.value = locale === 'en' ? 'zh-TW' : 'en';
+  switcher.onchange();
+  assert.equal(state.reloads, 1, `${locale}: title language switching still reloads`);
+  const saved = JSON.parse(state.storage.get('dt.settings'));
+  assert.equal(saved.lang, switcher.value);
+  assert.equal(saved.quality, 'low');
+}
 const zh = boot();
 assert.equal(zh.api.getLanguage(), 'zh-TW');
 assert.equal(zh.api.tr('中文', 'English'), '中文');
