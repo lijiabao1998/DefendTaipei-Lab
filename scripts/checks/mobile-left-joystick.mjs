@@ -16,6 +16,7 @@ try {
   page.on('pageerror', e => errors.push(String(e)));
   await page.goto(process.env.URL || server.url);
   await pickRole(page, { skipIntro: false });
+  await page.locator('#wake').waitFor({ state: 'detached', timeout: 120000 });
   // The prologue skip button must not collide with the newly-left thumb control.
   for (const [width, height] of [
     [390, 844],
@@ -56,6 +57,14 @@ try {
   assert.notEqual(await page.locator('#joyk').evaluate(e => e.style.transform), '', 'knob follows drag');
   await page.mouse.up();
   assert.equal(await page.locator('#joyk').evaluate(e => e.style.transform), '', 'release recentres knob');
+  // Real touch events follow the same Pointer Events handlers.
+  const touch = await context.newCDPSession(page);
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + 30, y }] });
+  assert.notEqual(await page.locator('#joyk').evaluate(e => e.style.transform), '', 'touch drag responds');
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  assert.equal(await page.locator('#joyk').evaluate(e => e.style.transform), '', 'touch release recentres');
+  await touch.detach();
   // A new drag uses the post-rotation bounding box; cancellation also releases input.
   await page.setViewportSize({ width: 844, height: 390 });
   const rotated = await page.locator('#joy').boundingBox();
@@ -69,7 +78,9 @@ try {
   assert.deepEqual(errors, [], 'no page errors');
   await context.close();
   const desktop = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  await desktop.addInitScript(() => localStorage.setItem('dt.settings', JSON.stringify({ quality: 'low' })));
   await desktop.goto(process.env.URL || server.url);
+  await pickRole(desktop);
   await desktop.waitForSelector('#joy', { state: 'attached' });
   assert.equal(await desktop.locator('#joy').isVisible(), false, 'desktop joystick remains hidden');
   console.log('PASS mobile left joystick: 5 sizes, prologue skip, movement, release, rotation, cancel, desktop');
