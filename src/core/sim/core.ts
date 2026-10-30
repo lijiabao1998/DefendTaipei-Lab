@@ -161,9 +161,13 @@ export function applyCmd(s: State, pid: string, c: Cmd): string {
   return 'unknown';
 }
 /** advance one fixed tick: enemy AI (seeded), cooldowns */
-export function step(s: State) {
+export function roomReady(s: State): boolean {
+  return Object.values(s.players).filter(p => p.on).length >= 2;
+}
+export function step(s: State, combat = true) {
   s.tick++;
   for (const p of Object.values(s.players)) if (p.cd > 0) p.cd--;
+  if (!combat) return;
   const alive = Object.values(s.players)
     .filter(p => p.on && p.hp > 0)
     .sort((a, b) => (a.id < b.id ? -1 : 1));

@@ -9,11 +9,12 @@ const browser = await chromium.launch({
 });
 try {
   const contexts = await Promise.all([
-    browser.newContext(),
+    browser.newContext({ viewport: { width: 960, height: 640 } }),
     browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }),
   ]);
   const pages = await Promise.all(contexts.map(c => c.newPage()));
   for (const p of pages) {
+    p.setDefaultTimeout(120000);
     p.on('console', m => {
       if (m.type() === 'error') console.error('browser:', m.text());
     });
@@ -67,7 +68,7 @@ try {
   console.log('Transport movement/reconnect/save protection passed; loading two real game clients at low quality.');
   for (const p of pages) {
     await p.goto(`http://localhost:5173/defendtaipei/?mp=http://localhost:8787&room=${gameCode}`);
-    await pickRole(p, { g: 'm', role: 'courier', skipIntro: true });
+    await pickRole(p, { g: 'm', role: 'courier', skipIntro: true, entryTimeout: 360000 });
   }
   for (const p of pages)
     await p.waitForFunction(
@@ -75,6 +76,10 @@ try {
       null,
       { timeout: 120000 },
     );
+  console.log(
+    'Both game clients ready',
+    await Promise.all(pages.map(p => p.evaluate(() => window.__game.net.s.players))),
+  );
   const gameIds = await Promise.all(pages.map(p => p.evaluate(() => window.__game.net.you)));
   for (const p of pages)
     await p.evaluate(() => {
@@ -84,12 +89,29 @@ try {
     });
   await pages[0].waitForFunction(id => window.__game.net.s.players[id].weapon === 'hammer', gameIds[1]);
   await pages[1].waitForFunction(id => window.__game.net.s.players[id].weapon === 'hammer', gameIds[0]);
-  await pages[0].screenshot({ path: shot('multiplayer-desktop.png') });
-  await pages[1].screenshot({ path: shot('multiplayer-phone.png') });
   await pages[1].locator('#equip').dispatchEvent('pointerdown');
   await pages[0].waitForFunction(id => window.__game.net.s.players[id].weapon === 'pipe', gameIds[1]);
   await pages[0].evaluate(() => window.__game.useItem('pipe'));
   await pages[1].waitForFunction(id => window.__game.net.s.players[id].weapon === 'pipe', gameIds[0]);
+  for (const p of pages) {
+    await p.waitForFunction(() => {
+      const n = window.__game.net;
+      return n.s?.players[n.you]?.hp > 0 && window.__game.player.hp === n.s.players[n.you].hp;
+    });
+    await p.evaluate(() => {
+      window.__game.player.hp = 1;
+    });
+    await p.waitForFunction(() => {
+      const n = window.__game.net;
+      return window.__game.player.hp === n.s?.players[n.you]?.hp && window.__game.player.hp > 1;
+    });
+    await p.evaluate(() => window.__game.useItem('hammer'));
+  }
+  await pages[0].waitForFunction(id => window.__game.net.s.players[id].weapon === 'hammer', gameIds[1]);
+  await pages[1].waitForFunction(id => window.__game.net.s.players[id].weapon === 'hammer', gameIds[0]);
+  console.log('PASS: both full game clients switch hammer/pipe, and local health reconciles to server');
+  await pages[0].screenshot({ path: shot('multiplayer-desktop.png') });
+  await pages[1].screenshot({ path: shot('multiplayer-phone.png') });
   await pages[1].locator('#mpleave').click();
   await pages[1].waitForURL('**/defendtaipei/');
   console.log(
@@ -114,6 +136,10 @@ try {
           .evaluate(() => ({
             url: location.href,
             status: (window.__game?.net || window.net)?.status,
+            players: (window.__game?.net || window.net)?.s?.players,
+            started: window.__game?.started?.(),
+            loading: !!document.getElementById('entry-loading'),
+            equipment: window.__game?.pst?.(),
             socket: (window.__game?.net || window.net)?.ws?.readyState,
             tries: (window.__game?.net || window.net)?.tries,
             hud: document.getElementById('mphud')?.textContent,

@@ -2179,6 +2179,13 @@ let netWeaponSent: string | null = null;
 const remRigs = new Map<string, Rig>(),
   enRigs = new Map<number, Rig>();
 const remPrev = new Map<string, [number, number]>();
+function syncServerVitals() {
+  const own = MP && net?.s?.players[net.you];
+  if (!own) return;
+  player.hp = clamp(own.hp, 0, 100);
+  player.bleed = false; // The prototype server has no separate bleeding state.
+  if (own.hp <= 0 && !dead) die();
+}
 function syncHeldWeapon() {
   if (!net?.s?.players[net.you] || net.ws?.readyState !== 1 || netWeaponSent === player.equip) return;
   net.cmd({ t: 'equip', weapon: player.equip } as any);
@@ -2188,7 +2195,16 @@ async function startNet() {
   if (!MP) return;
   const { Net } = await import('../net/net');
   net = new Net(MP.base, {
-    onState: () => syncHeldWeapon(),
+    onState: () => {
+      syncServerVitals();
+      if (!dead) syncHeldWeapon();
+      const h = document.getElementById('mphud');
+      if (h && net?.s && Object.values(net.s.players).filter(p => p.on).length < 2)
+        h.textContent = tr(
+          '🌐 等待第二位玩家載入・共享敵人暫停',
+          '🌐 Waiting for a second loaded player · sentries paused',
+        );
+    },
     onStatus: t => {
       const h = document.getElementById('mphud');
       if (h) h.textContent = '🌐 ' + t;
@@ -2274,7 +2290,12 @@ function netFrame(dt: number) {
     animate(r, e.hp <= 0 ? 'death' : sp > 2 ? 'run' : sp > 0.2 ? 'walk' : 'idle', Math.min(sp, 4), dt);
   }
   const h = document.getElementById('mphud');
-  if (h && net.status.startsWith(tr('房間', 'Room')))
+  if (h && Object.values(s.players).filter(p => p.on).length < 2)
+    h.textContent = tr(
+      '🌐 等待第二位玩家載入・共享敵人暫停',
+      '🌐 Waiting for a second loaded player · sentries paused',
+    );
+  else if (h && net.status.startsWith(tr('房間', 'Room')))
     h.textContent =
       getLanguage() === 'en'
         ? `🌐 ${net.status} | ${Object.values(s.players).filter(p => p.on).length}/4 players | tick ${s.tick} | ${(net.bytes / 1024).toFixed(0)} kB received`
@@ -5480,7 +5501,9 @@ function update(dt: number) {
   if (player.hunger <= 0 || player.thirst <= 0) player.hp -= gm * 8;
   if (player.bleed) player.hp -= dt * 0.6;
   if (player.hunger > 50 && player.thirst > 50 && !player.bleed) player.hp = Math.min(100, player.hp + gm * 6);
-  if (player.hp <= 0) return die();
+  if (MP) syncServerVitals();
+  else if (player.hp <= 0) return die();
+  if (dead) return;
   vehicles.update(dt);
   if (armor && started && !PRO.hide) armor.update(dt);
   if (started) snpUpdate(dt);
@@ -6132,6 +6155,7 @@ function bar(name: string, v: number, col: string) {
   return `<div class="bar"><div class="t"><span>${name}</span><span>${Math.round(v)}</span></div><div class="b"><i style="width:${clamp(v, 0, 100)}%;background:${col}"></i></div></div>`;
 }
 function drawHud(inside: Bld | null) {
+  syncServerVitals();
   const m: string[] = [];
   if (player.hunger < 25) m.push(tr('飢餓', 'Hungry'));
   if (player.thirst < 25) m.push(tr('口渴', 'Thirsty'));
@@ -6276,6 +6300,17 @@ function die() {
   closePanel();
   const t = $('title');
   t.style.display = 'flex';
+  if (MP) {
+    net?.leave();
+    t.innerHTML = tr(
+      '<h1>你在多人房間倒下了</h1><p>以伺服器生命狀態為準。單機存檔未受影響。</p><button id=mpdeadback>返回主選單</button>',
+      '<h1>You fell in the multiplayer room</h1><p>Server health is authoritative. Your solo save is unchanged.</p><button id=mpdeadback>Return to title</button>',
+    );
+    $('mpdeadback').onclick = () => {
+      location.href = location.pathname;
+    };
+    return;
+  }
   const day = Math.floor(gameMin / 1440) + 1;
   t.innerHTML =
     getLanguage() === 'en'

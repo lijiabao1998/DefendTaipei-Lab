@@ -5,6 +5,7 @@ import {
   addPlayer,
   applyCmd,
   step,
+  roomReady,
   diff,
   clone,
   TICK_HZ,
@@ -149,7 +150,7 @@ export class Room {
   async tick() {
     const s = this.s;
     if (!s) return;
-    step(s);
+    step(s, roomReady(s));
     const now = Date.now();
     for (const [uid, t] of this.leftAt)
       if (now - t > GRACE_MS) {

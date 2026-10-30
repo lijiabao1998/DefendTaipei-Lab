@@ -29,3 +29,9 @@ Before launch: browser/mobile QA, authoritative player health and full-world syn
 Hammer keeps its existing `hammer` save/inventory ID and barricade requirement, but is now also equippable as melee. Use the existing inventory Equip action on desktop; on portrait phones tap the weapon label to cycle owned weapons. Its held model is a wooden handle and metal head. No item is granted to normal players automatically.
 
 Equipped weapon IDs now replicate to other players and render on their rigs. The server rejects non-weapon IDs. This is equipment replication, **not** an authoritative inventory: multiplayer combat still uses the prototype's fixed close-range attack rules, and ammunition/weapon-specific network damage are not implemented. The tests explicitly supply test inventory via existing debug hooks before exercising switching.
+
+## Waiting and health consistency
+
+The Worker freezes shared enemy combat until at least two connected, loaded players are present; transport ticks and snapshots continue while waiting. Dropping back to one player pauses shared combat again. Browser room joins begin after scene compilation, not while the loading overlay is still compiling shaders.
+
+During a multiplayer session the room's HP is authoritative. Client-local damage/healing cannot independently decide multiplayer death; a server zero HP opens the multiplayer defeat screen and leaves the room without deleting solo saves. The prototype server does not model bleeding or medicine yet. Single-player health, death and save rules remain unchanged. This is still not full inventory/world synchronization.
