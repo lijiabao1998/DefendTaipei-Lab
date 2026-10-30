@@ -2058,6 +2058,7 @@ body.portrait #charsel .ch small.pk {
   overflow: visible;
 }
 /* Inventory owns the touch surface; combat controls must not compete with it. */
+body.mobile.inventory-open #menubtn,
 body.mobile.inventory-open #joy,
 body.mobile.inventory-open #pbtns,
 body.mobile.inventory-open .mkeys,
@@ -2705,6 +2706,7 @@ body.selmode #title h1 {
 
 /* Inventory and loot have bounded, independent lists; actions never scroll away. */
 #panel {
+  z-index: 25; /* Above HUD controls; below pause/settings overlays. */
   box-sizing: border-box;
   width: 880px;
   height: min(680px, 86vh);

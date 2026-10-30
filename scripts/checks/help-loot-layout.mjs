@@ -56,6 +56,8 @@ async function screenshot(page, name, record) {
   const path = shot(`help-loot-${name}.png`);
   await page.screenshot({ path, timeout: 120000 });
   record.screenshots.push(path);
+  console.log('captured', name);
+  fs.writeFileSync(shot('help-loot-results.json'), JSON.stringify(results, null, 2));
 }
 async function help(page, mobile, lang, record) {
   await page.locator('[data-a="help"]:visible').click();
@@ -194,6 +196,18 @@ async function exercise(mobile, lang) {
       : [[1280, 800]]) {
       await page.setViewportSize({ width, height });
       await bounds(page, '#panel');
+      if (mobile) assert.equal(await page.locator('#menubtn').isVisible(), false, 'HUD menu cannot cover inventory');
+      assert.equal(
+        await page.locator('#inventory-items-title').evaluate(e => {
+          const r = e.getBoundingClientRect();
+          return [r.left + 3, r.left + r.width / 2, r.right - 3].every(x => {
+            const top = document.elementFromPoint(x, r.top + r.height / 2);
+            return top === e || e.contains(top);
+          });
+        }),
+        true,
+        'inventory title is not obscured by HUD controls',
+      );
       await bounds(page, '#inventory-items');
       await bounds(page, '#loot-items');
       await bounds(page, '.inventory-actions');
@@ -263,7 +277,9 @@ async function exercise(mobile, lang) {
 }
 try {
   browser = await launch();
-  for (const mobile of [true, false]) for (const lang of ['zh-TW', 'en']) await exercise(mobile, lang);
+  const mobileCases = process.env.HELP_DEVICE ? [process.env.HELP_DEVICE === 'mobile'] : [true, false];
+  const languages = process.env.HELP_LANG ? [process.env.HELP_LANG] : ['zh-TW', 'en'];
+  for (const mobile of mobileCases) for (const lang of languages) await exercise(mobile, lang);
   console.log(
     'PASS: help pagination and inventory/loot layout, 2 languages, mobile/desktop, keyboard, capacity and state preservation',
   );
