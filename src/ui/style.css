@@ -1977,6 +1977,50 @@ html[lang='en'] #title p {
   max-width: 760px;
 }
 
+/* The mobile loading screen is a centred, full-viewport composition. Keep
+   this separate from the scrollable title menu and role selection layouts. */
+@media (pointer: coarse), (max-width: 600px) {
+  body #title[data-loading] {
+    height: 100dvh;
+    box-sizing: border-box;
+    justify-content: center;
+    padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
+      max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+    overflow-y: auto;
+  }
+  body #title[data-loading] > * {
+    flex-shrink: 0;
+  }
+  body #title[data-loading] #logo {
+    font-size: clamp(40px, 12vw, 54px);
+    margin-bottom: 14px;
+  }
+  body #title[data-loading] h1 {
+    font-size: clamp(30px, 9vw, 44px);
+    letter-spacing: 4px;
+  }
+  body #title[data-loading] h2 {
+    font-size: clamp(13px, 3.7vw, 18px);
+    margin: 8px 0 22px;
+  }
+  body #title[data-loading] #loadbar {
+    width: min(360px, 100%);
+    margin: 0 auto 12px;
+  }
+  body #title[data-loading] #loadmsg {
+    max-width: 100%;
+    font-size: 15px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+  body #title[data-loading] p,
+  body #title[data-loading] .keys,
+  body #title[data-loading] #btns,
+  body #title[data-loading] #title-language {
+    display: none;
+  }
+}
+
 /* UI candidate: keep the entire selection reachable, including small laptops. */
 body.selmode #title {
   justify-content: flex-start;

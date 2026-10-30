@@ -35,8 +35,51 @@ async function exercise(options, name) {
     if (message.type() === 'error') errors.push(`${name}: ${message.text()}`);
   });
   try {
+    // Hold the real map request so the loading layout is measured deterministically.
+    let releaseLoading;
+    const loadingGate = new Promise(resolve => (releaseLoading = resolve));
+    await page.route('**/data/wanhua.json', async route => {
+      await loadingGate;
+      await route.continue();
+    });
     await page.goto(process.env.URL || server.url, { waitUntil: 'domcontentloaded', timeout: 120000 });
+    await page.locator('#title-language').waitFor({ state: 'attached' });
+    assert.equal(await page.locator('#title-language').isVisible(), false, 'loading hides language selector');
+    if (options.hasTouch) {
+      for (const [label, viewport] of [
+        ['portrait', options.viewport],
+        ['short', { width: 360, height: 640 }],
+        ['landscape', { width: 844, height: 390 }],
+      ]) {
+        await page.setViewportSize(viewport);
+        const layout = await page.evaluate(() => {
+          const title = document.getElementById('title');
+          const top = document.getElementById('logo').getBoundingClientRect().top;
+          const bottom = document.getElementById('loadmsg').getBoundingClientRect().bottom;
+          return {
+            width: innerWidth,
+            height: innerHeight,
+            top,
+            bottom,
+            center: (top + bottom) / 2,
+            titleHeight: title.getBoundingClientRect().height,
+            justify: getComputedStyle(title).justifyContent,
+            horizontalOverflow: title.scrollWidth > title.clientWidth,
+          };
+        });
+        assert.equal(layout.justify, 'center', `${label}: loading is centred`);
+        assert.ok(Math.abs(layout.center - layout.height / 2) < 3, `${label}: visual group is centred`);
+        assert.ok(Math.abs(layout.titleHeight - layout.height) < 2, `${label}: full viewport`);
+        assert.ok(layout.top >= 0 && layout.bottom <= layout.height, `${label}: content stays visible`);
+        assert.equal(layout.horizontalOverflow, false, `${label}: no horizontal clipping`);
+        record[`loading-${label}`] = layout;
+        record.screenshots.push(await capture(page, `${name}-loading-${label}`));
+      }
+      await page.setViewportSize(options.viewport);
+    }
+    releaseLoading();
     await ready(page);
+    assert.equal(await page.locator('#title').getAttribute('data-loading'), null, 'ready exits loading layout');
     assert.equal(
       await page.locator('html').getAttribute('lang'),
       'zh-Hant',
@@ -47,6 +90,17 @@ async function exercise(options, name) {
     assert.equal(await language.inputValue(), 'zh-TW');
     assert.equal(await language.locator('option[value="en"]').textContent(), 'English');
     assert.equal(await language.locator('option[value="en"]').isEnabled(), true);
+
+    await page.locator('#tmenu [data-a="new"]').click();
+    assert.equal(
+      await page.locator('#title').evaluate(element => getComputedStyle(element).justifyContent),
+      'flex-start',
+      'role selection remains top-aligned',
+    );
+    record.screenshots.push(await capture(page, `${name}-roles-top`));
+    await page.locator('#selback').click();
+    await language.waitFor({ state: 'visible' });
+    assert.equal(await page.locator('#title').getAttribute('data-loading'), null, 'return never re-enters loading');
 
     // Exercise a real select change and native confirmation, not a storage shortcut.
     const navigation = page.waitForEvent('framenavigated', {
