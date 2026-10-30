@@ -56,9 +56,14 @@ try {
   assert.equal(await page.locator('#speed').count(), 0);
   // a save exists now, so 新遊戲 asks to overwrite it; the dialog handler above accepts
   await page.locator('#tmenu [data-a="new"]').click(UI);
-  await page.locator('#skipintro').check(UI);
+  const previousSave = await page.evaluate(() => localStorage.getItem('defendtaipei-save-v1'));
   await page.locator('#gsel [data-x="f"]').click(UI);
   await page.locator('.ch[data-r="nurse"]').click(UI);
+  await page.locator('#startgo').click(UI);
+  await page.locator('#skipintro').check(UI);
+  await page.locator('#startgo').click(UI);
+  assert.equal(await page.evaluate(() => localStorage.getItem('defendtaipei-save-v1')), previousSave);
+  await page.locator('#startgo').click(UI);
   await page.waitForFunction(() => window.__game.started());
   assert.equal(await page.locator('#speed').count(), 1);
   assert.deepEqual(await page.evaluate(() => window.__game.storyEvent('act1_siren_test')), {
