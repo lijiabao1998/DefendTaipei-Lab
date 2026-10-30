@@ -354,6 +354,7 @@ function cycleWeapon() {
   const nx = list[(list.indexOf(player.equip || '') + 1) % list.length];
   if (scope.on) scopeExit();
   player.equip = nx;
+  syncHeldWeapon();
   log(
     nx
       ? getLanguage() === 'en'
@@ -2178,10 +2179,16 @@ let netWeaponSent: string | null = null;
 const remRigs = new Map<string, Rig>(),
   enRigs = new Map<number, Rig>();
 const remPrev = new Map<string, [number, number]>();
+function syncHeldWeapon() {
+  if (!net?.s?.players[net.you] || net.ws?.readyState !== 1 || netWeaponSent === player.equip) return;
+  net.cmd({ t: 'equip', weapon: player.equip } as any);
+  netWeaponSent = player.equip;
+}
 async function startNet() {
   if (!MP) return;
   const { Net } = await import('../net/net');
   net = new Net(MP.base, {
+    onState: () => syncHeldWeapon(),
     onStatus: t => {
       const h = document.getElementById('mphud');
       if (h) h.textContent = '🌐 ' + t;
@@ -2224,10 +2231,7 @@ async function startNet() {
 function netFrame(dt: number) {
   if (!net || !net.s) return;
   net.update(dt, player.pos.x, player.pos.z, !!drive.cur);
-  if (net.s.players[net.you] && netWeaponSent !== player.equip) {
-    net.cmd({ t: 'equip', weapon: player.equip } as any);
-    netWeaponSent = player.equip;
-  }
+  syncHeldWeapon();
   const s = net.s;
   for (const p of Object.values(s.players)) {
     if (p.id === net.you) continue;
@@ -3890,6 +3894,7 @@ function useItem(k: string) {
   if (!player.inv[k]) return;
   if (d.kind === 'melee' || d.kind === 'gun') {
     player.equip = player.equip === k ? '' : k;
+    syncHeldWeapon();
     log(
       player.equip
         ? getLanguage() === 'en'
@@ -6952,7 +6957,6 @@ async function boot() {
       player.inv = { ...ROLE.inv };
       spawnRole(ROLE, skipIntro);
     }
-    if (MP) startNet();
     $('title').style.display = 'none';
     started = true;
     if (!surv.home) surv.home = [player.pos.x, player.pos.z];
@@ -7046,6 +7050,7 @@ async function boot() {
       renderer.render(scene, camera);
       await paint();
       started = true;
+      if (MP) await startNet();
       cover.remove();
       document.body.classList.remove('entering-game', 'selmode');
     } catch (error) {

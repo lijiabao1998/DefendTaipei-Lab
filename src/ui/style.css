@@ -2861,3 +2861,26 @@ body.mobile.inventory-open #panel {
   box-sizing: border-box;
   min-height: 40px;
 }
+
+/* Room controls occupy their own strip instead of covering the clock. */
+#mpleave {
+  left: 50%;
+  right: auto;
+  top: 42px;
+  transform: translateX(-50%);
+}
+body.portrait #mphud {
+  top: 178px;
+  left: 8px;
+  transform: none;
+  max-width: calc(100vw - 135px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body.portrait #mpleave {
+  top: 174px;
+  right: 8px;
+  left: auto;
+  transform: none;
+}

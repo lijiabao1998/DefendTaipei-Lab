@@ -17,6 +17,7 @@ try {
     p.on('console', m => {
       if (m.type() === 'error') console.error('browser:', m.text());
     });
+    p.on('pageerror', e => console.error('pageerror:', e.message));
     p.on('requestfailed', r => console.error('requestfailed:', r.url(), r.failure()));
     await p.goto('http://localhost:5173/defendtaipei/scripts/checks/mp-transport.html');
     await p.evaluate(async () => {
@@ -61,6 +62,9 @@ try {
   await pages[1].evaluate(() => net.leave());
   // Now load the actual desktop + phone game UIs (same independent contexts).
   const gameCode = await pages[1].evaluate(() => net.create());
+  for (const p of pages)
+    await p.evaluate(() => localStorage.setItem('dt.settings', JSON.stringify({ quality: 'low' })));
+  console.log('Transport movement/reconnect/save protection passed; loading two real game clients at low quality.');
   for (const p of pages) {
     await p.goto(`http://localhost:5173/defendtaipei/?mp=http://localhost:8787&room=${gameCode}`);
     await pickRole(p, { g: 'm', role: 'courier', skipIntro: true });
