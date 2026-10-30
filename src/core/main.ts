@@ -1,4 +1,4 @@
-import { tr, getLanguage, initTitleLanguage } from '../i18n';
+import { tr, getLanguage, initTitleLanguage, showTitleLanguage } from '../i18n';
 import { translateLabel } from '../labels';
 // Main game module: renderer, world state, the gameplay systems that share it, the main loop and boot.
 // Self-contained pieces live in their own files (textures, geom, world, portrait, pla-loot, joystick) and so do
@@ -6952,6 +6952,7 @@ async function boot() {
     document.body.classList.remove('selmode');
     btns.style.display = 'none';
     tm.style.display = '';
+    showTitleLanguage();
   };
   tm.querySelectorAll('button').forEach(
     b =>

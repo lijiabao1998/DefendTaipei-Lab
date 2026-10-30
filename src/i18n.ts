@@ -96,6 +96,8 @@ export function initTitleLanguage() {
     );
   const switcher = document.createElement('select');
   switcher.id = 'title-language';
+  // Loading is not interactive; reveal this only when the title menu is ready.
+  switcher.hidden = true;
   switcher.setAttribute('aria-label', tr('語言', 'Language'));
   switcher.innerHTML = '<option value="zh-TW">繁體中文</option><option value="en">English</option>';
   switcher.value = language;
@@ -103,4 +105,9 @@ export function initTitleLanguage() {
     if (!requestLanguageChange(switcher.value)) switcher.value = language;
   };
   title.insertBefore(switcher, title.firstChild);
+}
+
+export function showTitleLanguage() {
+  const switcher = document.getElementById('title-language');
+  if (switcher) switcher.hidden = false;
 }
