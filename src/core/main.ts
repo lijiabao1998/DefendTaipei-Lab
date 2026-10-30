@@ -6949,6 +6949,7 @@ async function boot() {
     document.getElementById('mpsel')?.classList.toggle('hl', mp);
   };
   const showTm = () => {
+    $('title').removeAttribute('data-loading');
     document.body.classList.remove('selmode');
     btns.style.display = 'none';
     tm.style.display = '';
