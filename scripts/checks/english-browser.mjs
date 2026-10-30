@@ -98,6 +98,31 @@ async function exercise(options, name) {
       'role selection remains top-aligned',
     );
     record.screenshots.push(await capture(page, `${name}-roles-top`));
+    const cards = await page.locator('#charsel').evaluate(el => {
+      const boxes = [...el.children].map(card => card.getBoundingClientRect());
+      const detail = document.getElementById('selection-role-detail').getBoundingClientRect();
+      const grid = el.getBoundingClientRect();
+      return {
+        columns: getComputedStyle(el).gridTemplateColumns.split(' ').length,
+        heights: boxes.map(box => box.height),
+        widths: boxes.map(box => box.width),
+        grid: { right: grid.right, bottom: grid.bottom },
+        detail: { left: detail.left, top: detail.top },
+      };
+    });
+    assert.equal(cards.columns, options.hasTouch ? 2 : 3, 'device-specific block grid');
+    assert.ok(Math.max(...cards.heights) - Math.min(...cards.heights) < 1, 'equal-height character tiles');
+    assert.ok(
+      options.hasTouch ? cards.detail.top >= cards.grid.bottom : cards.detail.left >= cards.grid.right,
+      'profile card is below on phone and beside on desktop',
+    );
+    record.selectionCards = cards;
+    if (options.hasTouch) {
+      await page.locator('#selection-role-detail').scrollIntoViewIfNeeded();
+      record.screenshots.push(await capture(page, `${name}-role-profile`));
+      await page.locator('#title').evaluate(el => (el.scrollTop = 0));
+    }
+
     assert.equal(await page.locator('#btns').getAttribute('data-step'), '0');
     assert.equal(await page.locator('#daylen').isVisible(), false);
     const oldSave = await page.evaluate(() => localStorage.getItem('defendtaipei-save-v1'));
@@ -118,6 +143,11 @@ async function exercise(options, name) {
     assert.equal(await page.locator('#btns').getAttribute('data-step'), '2');
     assert.match(await page.locator('#selection-summary').innerText(), /2 小時/);
     record.screenshots.push(await capture(page, `${name}-stage-confirm`));
+    if (options.hasTouch) {
+      await page.locator('.selection-departure').scrollIntoViewIfNeeded();
+      record.screenshots.push(await capture(page, `${name}-stage-confirm-details`));
+    }
+
     await page.locator('#selection-previous').click();
     assert.equal(await page.locator('#skipintro').isChecked(), true);
     await page.locator('#selection-previous').click();

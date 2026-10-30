@@ -7039,6 +7039,8 @@ async function boot() {
   (window as any).__titleBack = () => document.body.classList.contains('selmode') && showTm();
   const sel = document.createElement('div');
   sel.id = 'charsel';
+  const roleDetail = document.createElement('aside');
+  roleDetail.id = 'selection-role-detail';
   let selG: 'm' | 'f' = 'm';
   let skipI = false;
   const gsw = document.createElement('div');
@@ -7091,6 +7093,7 @@ async function boot() {
       x.setAttribute('aria-pressed', String(selected));
     });
     const r = roleById(selR);
+    roleDetail.innerHTML = `<span class="selection-eyebrow">${tr('角色檔案', 'SURVIVOR PROFILE')}</span><h3>${r.names[selG === 'm' ? 0 : 1]}・${r.name}</h3><p>${r.blurb}</p><div class="selection-perks">${r.perks.join('・')}</div>`;
     const sb = document.getElementById('startbar');
     if (sb) sb.querySelector('b')!.textContent = `${r.names[selG === 'm' ? 0 : 1]}・${r.name}`;
   };
@@ -7188,7 +7191,12 @@ async function boot() {
   previous.textContent = tr('← 上一步', '← Back');
   previous.onclick = () => setSelectionStep(selectionStep - 1);
   btns.insertBefore(stepper, h);
-  btns.append(summary, previous);
+  btns.append(summary);
+  $('startbar').insertBefore(previous, $('startgo'));
+  const roleStage = document.createElement('div');
+  roleStage.id = 'selection-role-stage';
+  roleStage.append(gsw, sel, roleDetail);
+  btns.appendChild(roleStage);
   const skipLabel = gsw.querySelector('label')!;
   const settings = document.createElement('div');
   settings.id = 'selection-settings';
@@ -7198,16 +7206,19 @@ async function boot() {
     selectionStep = Math.max(0, Math.min(2, step));
     btns.dataset.step = String(selectionStep);
     const labels = [tr('選擇角色', 'Survivor'), tr('開局設定', 'Preferences'), tr('確認出發', 'Ready')];
-    stepper.textContent = labels
-      .map((label, i) => `${i === selectionStep ? '●' : '○'} ${i + 1} ${label}`)
-      .join('  ›  ');
+    stepper.innerHTML = labels
+      .map(
+        (label, i) =>
+          `<div class="selection-step ${i === selectionStep ? 'active' : ''}" ${i === selectionStep ? 'aria-current="step"' : ''}><b>0${i + 1}</b><span>${label}</span></div>`,
+      )
+      .join('');
     h.textContent = labels[selectionStep];
-    gsw.hidden = sel.hidden = selectionStep !== 0;
+    roleStage.hidden = selectionStep !== 0;
     settings.hidden = selectionStep !== 1;
     summary.hidden = selectionStep !== 2;
     previous.hidden = selectionStep === 0;
     const r = roleById(selR);
-    summary.innerHTML = `<img alt="" src="${rolePortrait(r.id, selG)}"><h3>${r.names[selG === 'm' ? 0 : 1]}・${r.name}</h3><p>${r.perks.join('・')}</p><p>${tr('一天長度', 'Day length')}：${DAYH} ${tr('小時', 'hours')} · ${skipI ? tr('跳過開場', 'Skip intro') : tr('體驗開場', 'Play intro')}</p><small>${tr('出發後才會建立新遊戲；返回不會覆蓋存檔。', 'Your new game begins only when you depart. Going back keeps your save.')}</small>`;
+    summary.innerHTML = `<div class="selection-identity"><span class="selection-eyebrow">${tr('你的倖存者', 'YOUR SURVIVOR')}</span><img alt="" src="${rolePortrait(r.id, selG)}"><h3>${r.names[selG === 'm' ? 0 : 1]}・${r.name}</h3><p>${r.perks.join('・')}</p></div><div class="selection-departure"><span class="selection-eyebrow">${tr('出發資訊', 'DEPARTURE BRIEF')}</span><h3>${tr('萬華・西門町', 'Wanhua · Ximending')}</h3><div class="selection-fact"><span>${tr('一天長度', 'Day length')}</span><b>${DAYH} ${tr('小時', 'hours')}</b></div><div class="selection-fact"><span>${tr('開場', 'Opening')}</span><b>${skipI ? tr('跳過開場', 'Skip intro') : tr('體驗開場', 'Play intro')}</b></div><small>${tr('出發後才會建立新遊戲；返回不會覆蓋存檔。', 'Your new game begins only when you depart. Going back keeps your save.')}</small></div>`;
     $('startgo').textContent = selectionStep === 2 ? tr('出發 ▶', 'Depart ▶') : tr('下一步 →', 'Next →');
     $('title').scrollTop = 0;
   }
