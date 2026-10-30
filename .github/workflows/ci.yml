@@ -3,7 +3,7 @@ name: CI
 # The browser checks use software WebGL on the runner, so they are slow (the story check takes ~11 min).
 on:
   push:
-    branches: [test/mobile-left-joystick-20261030]
+    branches: [test/help-loot-layout-20261030]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -42,6 +42,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - name: Help pages and inventory layout
+            script: scripts/checks/help-loot-layout.mjs
           - name: Mobile left joystick
             script: scripts/checks/mobile-left-joystick.mjs
           - name: English language and mobile layout

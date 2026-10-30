@@ -2631,3 +2631,212 @@ body.selmode #title h1 {
     right: 12px;
   }
 }
+
+/* Three short controls chapters; navigation never scrolls out of reach. */
+#modal.help-modal .mbox {
+  width: min(720px, calc(100vw - 24px));
+}
+#modal .help-nav {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-top: 1px solid #3a3d42;
+  background: #15191e;
+  flex: none;
+}
+#modal .help-nav button {
+  margin: 0;
+  min-height: 44px;
+  font-size: 16px;
+}
+#modal .help-nav button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+#help-progress {
+  color: #ffd17d;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+#help-heading {
+  color: #ffd17d;
+  font-size: 20px;
+}
+#help-heading:focus {
+  outline: none;
+}
+#modal.help-modal .ktab {
+  width: 100%;
+  table-layout: fixed;
+}
+#modal.help-modal .ktab td:first-child {
+  width: 30%;
+}
+#modal.help-modal .ktab td {
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+#modal.help-modal button:focus-visible {
+  outline: 3px solid #ffd17d;
+  outline-offset: -3px;
+}
+@media (max-width: 480px) {
+  #modal.help-modal .mbody {
+    padding: 4px 12px 10px;
+  }
+  #modal.help-modal .ktab {
+    font-size: 15px;
+  }
+  #modal.help-modal .ktab td {
+    padding: 7px 5px;
+    line-height: 1.45;
+  }
+  #modal .help-nav {
+    gap: 6px;
+    padding: 8px;
+  }
+  #modal .help-nav button {
+    padding: 8px 5px;
+    font-size: 14px;
+  }
+}
+
+/* Inventory and loot have bounded, independent lists; actions never scroll away. */
+#panel {
+  box-sizing: border-box;
+  width: 880px;
+  height: min(680px, 86vh);
+  height: min(680px, 86dvh);
+  max-height: none;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+}
+#panel .inventory-columns {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+#panel .inventory-columns.has-loot {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+#panel .col {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+#panel h3 {
+  flex: none;
+  font-size: 17px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+#panel .inventory-list {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
+}
+#panel button.it {
+  box-sizing: border-box;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin: 0 0 6px;
+  padding: 8px;
+  min-height: 60px;
+  background: #262a2c;
+  text-align: left;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+}
+#panel .it img {
+  box-sizing: border-box;
+  width: 44px;
+  height: 44px;
+}
+#panel .it .item-text,
+#panel .it .item-name,
+#panel .it .item-detail {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+#panel .it .item-detail {
+  margin-top: 3px;
+  font-size: 11px;
+  color: #b1b8b1;
+}
+#panel .it .item-action {
+  white-space: nowrap;
+  align-self: center;
+  font-size: 12px;
+  color: #c5d9bb;
+}
+#panel button.it:hover {
+  background: #3b4245;
+}
+#panel button:focus-visible,
+#panel .inventory-list:focus-visible {
+  outline: 2px solid #ffd76a;
+  outline-offset: -2px;
+}
+#panel .inventory-actions {
+  flex: none;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  border-top: 1px solid #625936;
+  padding-top: 10px;
+}
+#panel .inventory-actions button {
+  margin: 0;
+  min-height: 44px;
+  padding: 10px 18px;
+  font: inherit;
+}
+#panel .inventory-actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+#panel .inventory-empty {
+  color: #b5b5ac;
+  padding: 12px 4px;
+  margin: 0;
+}
+body.mobile.inventory-open #panel {
+  max-height: none;
+  overflow: hidden;
+  height: min(720px, calc(100dvh - 32px));
+}
+@media (max-width: 600px) {
+  #panel {
+    padding: 12px;
+    max-width: calc(100vw - 20px);
+    height: calc(100dvh - 32px);
+  }
+  #panel .inventory-columns.has-loot {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 12px;
+  }
+  #panel .inventory-columns.has-loot .col + .col {
+    border-top: 1px solid #625936;
+    padding-top: 10px;
+  }
+  #panel .inventory-actions button {
+    flex: 1;
+    padding-inline: 8px;
+  }
+}
