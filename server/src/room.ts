@@ -13,7 +13,7 @@ import {
   type Cmd,
 } from '../../src/core/sim/core';
 import type { Env } from './index';
-type Conn = { ws: WebSocket; uid: string; ack: number; rate: number; rateT: number; ready: boolean };
+type Conn = { ws: WebSocket; uid: string; ack: number; rate: number; ackRate: number; rateT: number; ready: boolean };
 const HIST = 80,
   GRACE_MS = 60_000;
 export class Room {
@@ -66,7 +66,7 @@ export class Room {
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
       server.accept();
-      const c: Conn = { ws: server, uid, ack: -1, rate: 0, rateT: Date.now(), ready: false };
+      const c: Conn = { ws: server, uid, ack: -1, rate: 0, ackRate: 0, rateT: Date.now(), ready: false };
       this.conns.set(server, c);
       server.addEventListener('message', ev => this.onMsg(c, ev.data as string));
       const bye = () => {
@@ -97,15 +97,21 @@ export class Room {
     const now = Date.now();
     if (now - c.rateT > 1000) {
       c.rate = 0;
+      c.ackRate = 0;
       c.rateT = now;
     }
-    if (++c.rate > 60) return; // server-side rate limit
     let m: any;
     try {
       m = JSON.parse(raw);
     } catch {
       return;
     }
+    if (m.k === 'ack') {
+      if (c.ready && ++c.ackRate <= 240 && Number.isSafeInteger(m.tick) && m.tick >= -1 && m.tick <= s.tick)
+        c.ack = m.tick;
+      return;
+    }
+    if (++c.rate > 60) return; // Gameplay quota is independent of control ACK backlog.
     if (m.k === 'hello') {
       for (const [ws, o] of this.conns)
         if (o.uid === c.uid && ws !== c.ws) {
@@ -134,10 +140,6 @@ export class Room {
       return;
     }
     if (!c.ready) return;
-    if (m.k === 'ack' && typeof m.tick === 'number') {
-      c.ack = m.tick;
-      return;
-    }
     if (m.k === 'cmd' && m.c && typeof m.c.t === 'string') {
       const r = applyCmd(s, c.uid, m.c as Cmd);
       if (r && r !== 'stale') c.ws.send(JSON.stringify({ k: 'rej', seq: m.c.seq, why: r }));

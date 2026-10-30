@@ -23,6 +23,8 @@ export class Net {
   reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   states = new Map<number, State>();
   sendT = 0;
+  lastEquip = '';
+  lastEquipAt = -Infinity;
   pingMs = 0;
   lastMsgAt = 0;
   rejects = 0;
@@ -156,6 +158,16 @@ export class Net {
   cmd(c: Omit<Cmd, 'seq'>) {
     if (!this.ws || this.ws.readyState !== 1) return;
     this.ws.send(JSON.stringify({ k: 'cmd', c: { ...c, seq: ++this.seq } }));
+  }
+  /** Retry unconfirmed equipment without flooding, including after a slow-render ACK backlog. */
+  equip(weapon: string) {
+    const own = this.s?.players[this.you];
+    if (!own || this.ws?.readyState !== 1 || own.weapon === weapon) return;
+    const now = performance.now();
+    if (this.lastEquip === weapon && now - this.lastEquipAt < 1000) return;
+    this.cmd({ t: 'equip', weapon } as any);
+    this.lastEquip = weapon;
+    this.lastEquipAt = now;
   }
   /** called every frame: send own (predicted) position at the server tick rate */
   update(dt: number, x: number, z: number, veh: boolean) {

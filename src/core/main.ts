@@ -2175,7 +2175,6 @@ function soonToast(t: string) {
   (el as any)._t = setTimeout(() => el!.classList.remove('on'), 2200);
 }
 let MP: { base: string; code: string } | null = null;
-let netWeaponSent: string | null = null;
 const remRigs = new Map<string, Rig>(),
   enRigs = new Map<number, Rig>();
 const remPrev = new Map<string, [number, number]>();
@@ -2187,9 +2186,7 @@ function syncServerVitals() {
   if (own.hp <= 0 && !dead) die();
 }
 function syncHeldWeapon() {
-  if (!net?.s?.players[net.you] || net.ws?.readyState !== 1 || netWeaponSent === player.equip) return;
-  net.cmd({ t: 'equip', weapon: player.equip } as any);
-  netWeaponSent = player.equip;
+  net?.equip(player.equip);
 }
 async function startNet() {
   if (!MP) return;
