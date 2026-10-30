@@ -58,8 +58,12 @@ export async function pickRole(page, { g = 'f', role, skipIntro = true } = {}) {
       box.dispatchEvent(new Event('change'));
       window.__selG(g);
       document.querySelector(`.ch[data-r="${role}"]`).click();
-      if (document.body.classList.contains('portrait')) document.getElementById('startgo').click();
+      // Staged selection uses the same explicit confirmation on desktop and mobile.
+      for (let i = 0; i < 3; i++) document.getElementById('startgo').click();
     },
     [g, role || (g === 'f' ? 'nurse' : 'courier'), skipIntro],
   );
+  await page.waitForFunction(() => window.__game?.started() && !document.getElementById('entry-loading'), null, {
+    timeout: 120000,
+  });
 }

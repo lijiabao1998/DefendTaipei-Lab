@@ -98,6 +98,71 @@ async function exercise(options, name) {
       'role selection remains top-aligned',
     );
     record.screenshots.push(await capture(page, `${name}-roles-top`));
+    const cards = await page.locator('#charsel').evaluate(el => {
+      const boxes = [...el.children].map(card => card.getBoundingClientRect());
+      const detail = document.getElementById('selection-role-detail').getBoundingClientRect();
+      const grid = el.getBoundingClientRect();
+      return {
+        columns: getComputedStyle(el).gridTemplateColumns.split(' ').length,
+        heights: boxes.map(box => box.height),
+        widths: boxes.map(box => box.width),
+        grid: { right: grid.right, bottom: grid.bottom },
+        detail: { left: detail.left, top: detail.top },
+      };
+    });
+    assert.equal(cards.columns, options.hasTouch ? 2 : 3, 'device-specific block grid');
+    assert.ok(Math.max(...cards.heights) - Math.min(...cards.heights) < 1, 'equal-height character tiles');
+    assert.ok(
+      options.hasTouch ? cards.detail.top >= cards.grid.bottom : cards.detail.left >= cards.grid.right,
+      'profile card is below on phone and beside on desktop',
+    );
+    if (!options.hasTouch) {
+      const footerTop = await page.locator('#startbar').evaluate(el => el.getBoundingClientRect().top);
+      assert.ok(cards.grid.bottom < footerTop, 'desktop character rows stay above fixed navigation');
+    }
+    record.selectionCards = cards;
+    if (options.hasTouch) {
+      await page.locator('#selection-role-detail').scrollIntoViewIfNeeded();
+      record.screenshots.push(await capture(page, `${name}-role-profile`));
+      await page.locator('#title').evaluate(el => (el.scrollTop = 0));
+    }
+
+    assert.equal(await page.locator('#btns').getAttribute('data-step'), '0');
+    assert.equal(await page.locator('#daylen').isVisible(), false);
+    const oldSave = await page.evaluate(() => localStorage.getItem('defendtaipei-save-v1'));
+    await page.locator('#gsel [data-x="f"]').click();
+    await page.locator('.ch[data-r="nurse"]').click();
+    assert.equal(await page.evaluate(() => window.__game.started()), false, 'card selection never starts game');
+    await page.locator('#startgo').click();
+    assert.equal(await page.locator('#btns').getAttribute('data-step'), '1');
+    assert.equal(
+      await page.locator('#charsel').isVisible(),
+      false,
+      'roles hide during preferences, including portrait',
+    );
+    await page.locator('#daylen [data-h="2"]').click();
+    await page.locator('#skipintro').check();
+    record.screenshots.push(await capture(page, `${name}-stage-settings`));
+    await page.locator('#startgo').click();
+    assert.equal(await page.locator('#btns').getAttribute('data-step'), '2');
+    assert.match(await page.locator('#selection-summary').innerText(), /2 小時/);
+    record.screenshots.push(await capture(page, `${name}-stage-confirm`));
+    if (options.hasTouch) {
+      await page.locator('.selection-departure').scrollIntoViewIfNeeded();
+      record.screenshots.push(await capture(page, `${name}-stage-confirm-details`));
+    }
+
+    await page.locator('#selection-previous').click();
+    assert.equal(await page.locator('#skipintro').isChecked(), true);
+    await page.locator('#selection-previous').click();
+    assert.equal(await page.locator('.ch[data-r="nurse"]').getAttribute('aria-pressed'), 'true');
+    assert.equal(
+      await page.evaluate(() => localStorage.getItem('defendtaipei-save-v1')),
+      oldSave,
+      'navigation preserves save',
+    );
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
+
     await page.locator('#selback').click();
     await language.waitFor({ state: 'visible' });
     assert.equal(await page.locator('#title').getAttribute('data-loading'), null, 'return never re-enters loading');
