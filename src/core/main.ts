@@ -4003,58 +4003,128 @@ let curCont: Cont | null = null;
 function renderPanel() {
   if (!panelOpen) return;
   const p = $('panel');
+  // Keep each list at its own reading position when taking or using an item.
+  const sameContainer = p.dataset.container === (curCont?.id || 'inventory');
+  const scroll = new Map<string, number>();
+  if (sameContainer) p.querySelectorAll<HTMLElement>('.inventory-list').forEach(e => scroll.set(e.id, e.scrollTop));
+  const focused = p.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset.item : null;
+  p.dataset.container = curCont?.id || 'inventory';
+  p.setAttribute('role', 'dialog');
+  p.setAttribute('aria-label', tr('背包與搜刮', 'Inventory and loot'));
+  p.onkeydown = e => {
+    if (e.code === 'Escape') return; // Keep the shared overlay Back handler.
+    e.stopPropagation(); // Tab/Space must navigate/activate, not close the bag or vault.
+    if (e.code !== 'Tab') return;
+    const targets = Array.from(p.querySelectorAll<HTMLElement>('button:not(:disabled), .inventory-list'));
+    const first = targets[0],
+      last = targets[targets.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last?.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first?.focus();
+    }
+  };
   p.innerHTML = '';
-  const col = (title: string) => {
-    const c = document.createElement('div');
+  const columns = document.createElement('div');
+  columns.className = 'inventory-columns';
+  columns.classList.toggle('has-loot', !!curCont);
+  p.appendChild(columns);
+  const col = (title: string, id: string) => {
+    const c = document.createElement('section');
     c.className = 'col';
-    c.innerHTML = `<h3>${title}</h3>`;
-    p.appendChild(c);
-    return c;
+    const heading = document.createElement('h3');
+    heading.id = id + '-title';
+    heading.textContent = title;
+    const list = document.createElement('div');
+    list.className = 'inventory-list';
+    list.id = id;
+    list.setAttribute('aria-labelledby', heading.id);
+    list.tabIndex = 0;
+    c.append(heading, list);
+    columns.appendChild(c);
+    return list;
+  };
+  const item = (list: HTMLElement, k: string, n: number, action: string, run: () => void, equipped = false) => {
+    const d = ITEMS[k];
+    const e = document.createElement('button');
+    e.type = 'button';
+    e.className = 'it';
+    e.dataset.item = list.id + ':' + k;
+    const icon = document.createElement('img');
+    icon.src = iconURL(k);
+    icon.alt = '';
+    const text = document.createElement('span');
+    text.className = 'item-text';
+    const name = document.createElement('span');
+    name.className = 'item-name';
+    name.textContent = d.name + (equipped ? ' ★' : '') + ` ×${n}`;
+    text.appendChild(name);
+    if (d.cal) {
+      const detail = document.createElement('small');
+      detail.className = 'item-detail';
+      detail.textContent = `${d.cal}${d.cap ? tr(`・${d.cap}發`, `・${d.cap} rounds`) : ''}・${d.w}kg`;
+      text.appendChild(detail);
+    }
+    const label = document.createElement('small');
+    label.className = 'item-action';
+    label.textContent = action;
+    e.append(icon, text, label);
+    e.title = d.desc || '';
+    e.onclick = run;
+    list.appendChild(e);
+  };
+  const empty = (list: HTMLElement, message: string) => {
+    const note = document.createElement('p');
+    note.className = 'inventory-empty';
+    note.textContent = message;
+    list.appendChild(note);
   };
   const inv = col(
     getLanguage() === 'en' ? `Inventory (${weight().toFixed(1)} / 15 kg)` : `背包（${weight().toFixed(1)} / 15 kg）`,
+    'inventory-items',
   );
   for (const [k, n] of Object.entries(player.inv)) {
-    const d = ITEMS[k];
-    const e = document.createElement('div');
-    e.className = 'it';
-    e.innerHTML =
+    const actions =
       getLanguage() === 'en'
-        ? `<span><img src="${iconURL(k)}">${d.name}${d.cal ? `<small style="opacity:.6"> ${d.cal}${d.cap ? `・${d.cap} rounds` : ''}・${d.w}kg</small>` : ''}${player.equip === k ? ' ★' : ''} ×${n}</span><small>${{ food: 'Eat', drink: 'Drink', med: 'Heal', melee: 'Equip', gun: 'Equip', ammo: 'Ammo', tool: 'Tool' }[d.kind]}</small>`
-        : `<span><img src="${iconURL(k)}">${d.name}${d.cal ? `<small style="opacity:.6"> ${d.cal}${d.cap ? `・${d.cap}發` : ''}・${d.w}kg</small>` : ''}${player.equip === k ? ' ★' : ''} ×${n}</span><small>${{ food: '食用', drink: '飲用', med: '治療', melee: '裝備', gun: '裝備', ammo: '彈藥', tool: '工具' }[d.kind]}</small>`;
-    e.title = d.desc || '';
-    e.onclick = () => useItem(k);
-    inv.appendChild(e);
+        ? { food: 'Eat', drink: 'Drink', med: 'Heal', melee: 'Equip', gun: 'Equip', ammo: 'Ammo', tool: 'Tool' }
+        : { food: '食用', drink: '飲用', med: '治療', melee: '裝備', gun: '裝備', ammo: '彈藥', tool: '工具' };
+    item(inv, k, n, actions[ITEMS[k].kind], () => useItem(k), player.equip === k);
   }
-  if (!Object.keys(player.inv).length) inv.innerHTML += tr('<small>空的</small>', '<small>Empty</small>');
+  if (!Object.keys(player.inv).length) empty(inv, tr('空的', 'Empty'));
+  const footer = document.createElement('div');
+  footer.className = 'inventory-actions';
   if (curCont) {
-    const c = col(translateLabel(curCont.label));
     const cc = curCont;
-    for (const [k, n] of Object.entries(cc.items)) {
-      const e = document.createElement('div');
-      e.className = 'it';
-      e.innerHTML =
-        getLanguage() === 'en'
-          ? `<span><img src="${iconURL(k)}">${ITEMS[k].name} ×${n}</span><small>Take</small>`
-          : `<span><img src="${iconURL(k)}">${ITEMS[k].name} ×${n}</span><small>拿取</small>`;
-      e.title = ITEMS[k].desc || '';
-      e.onclick = () => take(cc, k);
-      c.appendChild(e);
-    }
-    if (!Object.keys(cc.items).length)
-      c.innerHTML += tr('<small>已經搜刮一空</small>', '<small>Already looted</small>');
+    const list = col(translateLabel(cc.label), 'loot-items');
+    for (const [k, n] of Object.entries(cc.items)) item(list, k, n, tr('拿取', 'Take'), () => take(cc, k));
+    if (!Object.keys(cc.items).length) empty(list, tr('已經搜刮一空', 'Already looted'));
     const b = document.createElement('button');
+    b.type = 'button';
+    b.id = 'take-all';
+    b.dataset.item = 'take-all';
     b.textContent = tr('全部拿取', 'Take all');
+    b.disabled = !Object.keys(cc.items).length;
     b.onclick = () => {
       for (const k of Object.keys(cc.items)) take(cc, k, true);
       renderPanel();
     };
-    c.appendChild(b);
+    footer.appendChild(b);
   }
   const close = document.createElement('button');
+  close.type = 'button';
+  close.id = 'inventory-close';
+  close.dataset.item = 'inventory-close';
   close.textContent = MOBILE ? tr('關閉背包', 'Close inventory') : tr('關閉 (Esc)', 'Close (Esc)');
   close.onclick = closePanel;
-  p.lastElementChild!.appendChild(close);
+  footer.appendChild(close);
+  p.appendChild(footer);
+  p.querySelectorAll<HTMLElement>('.inventory-list').forEach(e => (e.scrollTop = scroll.get(e.id) || 0));
+  if (focused) {
+    const target = Array.from(p.querySelectorAll<HTMLElement>('[data-item]')).find(e => e.dataset.item === focused);
+    (target && !(target as HTMLButtonElement).disabled ? target : close).focus({ preventScroll: true });
+  } else close.focus({ preventScroll: true });
 }
 function take(c: Cont, k: string, all = false) {
   const n = all ? c.items[k] : ITEMS[k].kind === 'ammo' ? c.items[k] : 1;

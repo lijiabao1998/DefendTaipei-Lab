@@ -33,6 +33,7 @@ addEventListener('popstate', () => {
 });
 
 let modal: HTMLElement | null = null;
+let modalReturnFocus: HTMLElement | null = null;
 let capture: ((e: KeyboardEvent) => void) | null = null;
 export const modalOpen = () => !!modal;
 /** fromBack: closed by the Android Back button (history entry already gone) */
@@ -41,10 +42,13 @@ export function closeModal(fromBack = false) {
   if (!modal) return;
   modal.remove();
   modal = null;
+  modalReturnFocus?.focus({ preventScroll: true });
+  modalReturnFocus = null;
   if (!fromBack) histPop();
 }
 function open(title: string, html: string) {
   const had = !!modal;
+  if (!had) modalReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   if (had) {
     if (capture) (removeEventListener('keydown', capture, true), (capture = null));
     modal!.remove();
@@ -183,14 +187,91 @@ export function openSettings() {
 }
 
 export function openHelp() {
-  const rows = ACTIONS.map(([a, t]) => `<tr><td>${keyName(BIND[a])}</td><td>${t}</td></tr>`).join('');
-  open(
+  const table = (ids: string[]) =>
+    '<table class="ktab">' +
+    ACTIONS.filter(([a]) => ids.includes(a))
+      .map(([a, label]) => `<tr><td>${keyName(BIND[a])}</td><td>${label}</td></tr>`)
+      .join('') +
+    '</table>';
+  const movement = {
+    title: tr('移動與戰鬥', 'Movement & combat'),
+    html:
+      table(['up', 'down', 'left', 'right', 'sprint', 'sneak', 'cover', 'vault', 'shove']) +
+      `<table class="ktab"><tr><td>${tr('滑鼠', 'Mouse')}</td><td>${tr('瞄準；左鍵攻擊／射擊；滾輪縮放', 'Aim; left click to attack / fire; wheel to zoom')}</td></tr></table>`,
+  };
+  const survival = {
+    title: tr('搜刮與生存', 'Loot & survival'),
+    html:
+      table(['interact', 'inv', 'map', 'shelter', 'barricade', 'sleep', 'light', 'speed1', 'speed2', 'speed3']) +
+      `<p class="mnote">${tr('按 Esc 關閉視窗／開啟暫停選單。按鍵可在「設定 → 按鍵設定」更改。', 'Press Esc to close a window / open the pause menu. Change bindings under Settings → Key bindings.')}</p>`,
+  };
+  const mobile = {
+    title: tr('手機觸控', 'Touch controls'),
+    html: `<table class="ktab"><tr><th colspan="2">${tr('手機', 'Mobile')}</th></tr><tr><td>${tr('左下搖桿', 'Bottom-left joystick')}</td><td>${tr('移動（推到底奔跑）', 'Move (push all the way to sprint)')}</td></tr><tr><td>${tr('大圓鈕', 'Large round button')}</td><td>${tr('打（按住連續攻擊）；靠近可互動的東西時變成 搜／開門／爬上／上車…，點一下互動、長按攻擊；狙擊槍時是「瞄」：按住開鏡、拖曳瞄準、放開射擊', 'Attack (hold to attack repeatedly). Near interactable objects, this changes to Search / Open / Climb / Enter… Tap to interact; hold to attack. With a sniper rifle, it becomes Aim: hold to scope in, drag to aim, and release to fire.')}</td></tr><tr><td>${tr('蹲', 'Crouch')}</td><td>${tr('貼牆掩體或潛行；再點起身；長按撤退；開鏡時 ✕ 關鏡', 'Take cover against a wall or sneak. Tap again to stand; hold to retreat. While scoped in, tap ✕ to exit the scope.')}</td></tr><tr><td>${tr('武器欄 ⇄', 'Weapon bar ⇄')}</td><td>${tr('切換武器', 'Switch weapons')}</td></tr><tr><td>☰ ／ 🗺</td><td>${tr('選單（暫停、背包、存檔）／地圖', 'Menu (pause, inventory, save) / map')}</td></tr><tr><td>${tr('返回鍵', 'Back button')}</td><td>${tr('關閉視窗／選單', 'Close window / menu')}</td></tr></table>`,
+  };
+  const pages = TOUCH ? [mobile, movement, survival] : [movement, survival, mobile];
+  const m = open(
     tr('🎮 操作說明', '🎮 Controls'),
-    `<table class="ktab"><tr><th colspan="2">${tr('鍵盤＋滑鼠', 'Keyboard + mouse')}</th></tr>${rows}
-    <tr><td>${tr('滑鼠', 'Mouse')}</td><td>${tr('瞄準', 'Aim')}</td></tr><tr><td>${tr('左鍵', 'Left click')}</td><td>${tr('攻擊／射擊', 'Attack / fire')}</td></tr><tr><td>${tr('滾輪', 'Mouse wheel')}</td><td>${tr('縮放', 'Zoom')}</td></tr><tr><td>Esc</td><td>${tr('關閉視窗／選單（暫停）', 'Close window / pause menu')}</td></tr></table>
-    <table class="ktab"><tr><th colspan="2">${tr('手機', 'Mobile')}</th></tr><tr><td>${tr('下方搖桿', 'Bottom joystick')}</td><td>${tr('移動（推到底奔跑）', 'Move (push all the way to sprint)')}</td></tr><tr><td>${tr('大圓鈕', 'Large round button')}</td><td>${tr('打（按住連續攻擊）；靠近可互動的東西時變成 搜／開門／爬上／上車…，點一下互動、長按攻擊；狙擊槍時是「瞄」：按住開鏡、拖曳瞄準、放開射擊', 'Attack (hold to attack repeatedly). Near interactable objects, this changes to Search / Open / Climb / Enter… Tap to interact; hold to attack. With a sniper rifle, it becomes Aim: hold to scope in, drag to aim, and release to fire.')}</td></tr><tr><td>${tr('蹲', 'Crouch')}</td><td>${tr('貼牆掩體或潛行；再點起身；長按撤退；開鏡時 ✕ 關鏡', 'Take cover against a wall or sneak. Tap again to stand; hold to retreat. While scoped in, tap ✕ to exit the scope.')}</td></tr><tr><td>${tr('武器欄 ⇄', 'Weapon bar ⇄')}</td><td>${tr('切換武器', 'Switch weapons')}</td></tr><tr><td>☰ ／ 🗺</td><td>${tr('選單（暫停、背包、存檔）／地圖', 'Menu (pause, inventory, save) / map')}</td></tr><tr><td>${tr('返回鍵', 'Back button')}</td><td>${tr('關閉視窗／選單', 'Close window / menu')}</td></tr></table>
-    <p class="mnote">${tr('按鍵可在「設定 → 按鍵設定」中更改。', 'You can change key bindings under Settings → Key bindings.')}</p>`,
+    '<section id="help-page" aria-labelledby="help-heading"><h4 id="help-heading" tabindex="-1"></h4><div id="help-content"></div></section>',
   );
+  m.classList.add('help-modal');
+  m.setAttribute('role', 'dialog');
+  m.setAttribute('aria-modal', 'true');
+  m.setAttribute('aria-label', tr('操作說明', 'Controls'));
+  const nav = document.createElement('nav');
+  nav.className = 'help-nav';
+  nav.setAttribute('aria-label', tr('說明分頁', 'Controls pages'));
+  nav.innerHTML = `<button id="help-prev">${tr('← 上一頁', '← Previous')}</button><span id="help-progress" role="status" aria-live="polite"></span><button id="help-next">${tr('下一頁 →', 'Next →')}</button>`;
+  m.querySelector('.mclose')!.before(nav);
+  let page = 0;
+  const prev = m.querySelector<HTMLButtonElement>('#help-prev')!;
+  const next = m.querySelector<HTMLButtonElement>('#help-next')!;
+  const draw = (focus = false) => {
+    m.querySelector('#help-heading')!.textContent = pages[page].title;
+    m.querySelector('#help-content')!.innerHTML = pages[page].html;
+    m.querySelector('#help-progress')!.textContent = `${page + 1} / ${pages.length}`;
+    prev.disabled = page === 0;
+    next.disabled = page === pages.length - 1;
+    m.querySelector('.mbody')!.scrollTop = 0;
+    if (focus) m.querySelector<HTMLElement>('#help-heading')!.focus({ preventScroll: true });
+  };
+  const turn = (delta: number) => {
+    const target = Math.max(0, Math.min(pages.length - 1, page + delta));
+    if (target !== page) {
+      page = target;
+      draw(true);
+    }
+  };
+  prev.onclick = () => turn(-1);
+  next.onclick = () => turn(1);
+  capture = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      closeModal();
+      return;
+    }
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      turn(e.key === 'ArrowLeft' ? -1 : 1);
+    }
+    if (e.key === 'Tab') {
+      const buttons = Array.from(m.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+      const first = buttons[0],
+        last = buttons[buttons.length - 1];
+      if (e.shiftKey && (document.activeElement === first || document.activeElement?.id === 'help-heading')) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+      e.stopImmediatePropagation();
+    }
+  };
+  addEventListener('keydown', capture, true);
+  draw(true);
 }
 
 export function openAbout() {

@@ -3,7 +3,7 @@ name: CI
 # The browser checks use software WebGL on the runner, so they are slow (the story check takes ~11 min).
 on:
   push:
-    branches: [test/mobile-left-joystick-20261030]
+    branches: [test/help-loot-layout-20261030]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -71,4 +71,36 @@ jobs:
           name: shots-${{ strategy.job-index }}
           path: shots/
           if-no-files-found: ignore
+          retention-days: 7
+
+  help-layout:
+    name: Help and loot – ${{ matrix.device }} / ${{ matrix.lang }}
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [mobile, desktop]
+        lang: [zh-TW, en]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/checks/help-loot-layout.mjs
+        env:
+          HELP_DEVICE: ${{ matrix.device }}
+          HELP_LANG: ${{ matrix.lang }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: help-loot-${{ matrix.device }}-${{ matrix.lang }}
+          path: shots/
           retention-days: 7
