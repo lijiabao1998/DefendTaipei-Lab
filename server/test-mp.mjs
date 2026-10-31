@@ -75,8 +75,8 @@ assert.equal(cs[0].s.players[users[1].uid].weapon, 'pipe');
 out.weaponReplication = true;
 out.ackBacklogDoesNotDropEquipment = true;
 cmd(cs[0], { t: 'move', x: 80, z: 0 }); // speed hack
-cmd(cs[1], { t: 'loot', id: 'b12_0', x: 2, z: 0 });
-cmd(cs[2], { t: 'loot', id: 'b12_0', x: 4, z: 0 }); // contested loot (P2 too far + taken)
+cmd(cs[1], { t: 'loot', id: 'supply:0', x: 2, z: 0 });
+cmd(cs[2], { t: 'loot', id: 'supply:0', x: 4, z: 0 }); // contested loot (P2 too far + taken)
 cmd(cs[3], { t: 'attack', target: 0 });
 await new Promise(r => setTimeout(r, 1500));
 out.rejects = cs.map(c => c.rej);
@@ -102,7 +102,7 @@ assert.equal(out.rejects.filter(r => r.includes('taken')).length, 1);
 assert.ok(out.stream.every(c => c.deltas > 0));
 assert.equal(out.reconnect.sameId, true);
 assert.equal(out.reconnect.players, 4);
-assert.ok([users[1].uid, users[2].uid].includes(out.reconnect.looted.b12_0));
+assert.ok([users[1].uid, users[2].uid].includes(out.reconnect.looted['supply:0']));
 assert.ok(out.info.tick >= 200);
 if (process.env.MP_TEST_IDLE_RECOVERY) {
   // Wait beyond the actual server grace period: tick stops and final D1 checkpoint is written.
@@ -114,7 +114,11 @@ if (process.env.MP_TEST_IDLE_RECOVERY) {
   const stopped = await (await fetch(`${B}/api/rooms/${code}`)).json();
   assert.equal(stopped.tick, idle.tick);
   const restored = await join(users[1], 'P1', 2);
-  assert.equal(restored.s.looted.b12_0, out.reconnect.looted.b12_0);
+  assert.equal(restored.s.looted['supply:0'], out.reconnect.looted['supply:0']);
+  assert.equal(restored.s.players[users[1].uid].inv.a9, 36);
+  assert.equal(restored.s.players[users[1].uid].weapon, 'pipe');
+  assert.ok(restored.s.players[users[1].uid].ack > 0);
+  out.durableSurvivorInventory = true;
   restored.ws.close();
   out.noR2IdleRecovery = true;
 }

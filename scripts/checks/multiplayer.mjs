@@ -1,18 +1,19 @@
 // Real WebSocket transport through the actual Worker, in isolated browser contexts.
 // Requires Vite :5173 and wrangler dev :8787. No fetch/WebSocket mocking.
-import { chromium } from 'playwright';
+import { chromium, firefox } from 'playwright';
 import assert from 'node:assert/strict';
 import { pickRole, shot } from '../lib.mjs';
 const backend = process.env.MP_SERVER || 'http://localhost:8787';
 const useDefault = process.env.MP_USE_DEFAULT === '1';
-const browser = await chromium.launch({
+const useFirefox = process.env.PW_BROWSER === 'firefox';
+const browser = await (useFirefox ? firefox : chromium).launch({
   executablePath: process.env.PW_CHROMIUM || undefined,
-  args: ['--no-sandbox', '--use-gl=swiftshader', '--enable-unsafe-swiftshader'],
+  args: useFirefox ? [] : ['--no-sandbox', '--use-gl=swiftshader', '--enable-unsafe-swiftshader'],
 });
 try {
   const contexts = await Promise.all([
     browser.newContext({ viewport: { width: 960, height: 640 } }),
-    browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }),
+    browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: !useFirefox, hasTouch: true }),
   ]);
   const pages = await Promise.all(contexts.map(c => c.newPage()));
   for (const p of pages) {
@@ -42,10 +43,49 @@ try {
   await pages[1].waitForFunction(id => Math.abs(net.s.players[id].x - 0.3) < 0.001, ids[0]);
   await pages[1].evaluate(() => net.cmd({ t: 'move', x: 1.3, z: 0 }));
   await pages[0].waitForFunction(id => Math.abs(net.s.players[id].x - 1.3) < 0.001, ids[1]);
+  // Both real clients race for one server-defined crate: exactly one inventory receives it.
+  await Promise.all(pages.map(p => p.evaluate(() => net.cmd({ t: 'loot', id: 'supply:0', x: 99999, z: 99999 }))));
+  for (const p of pages) await p.waitForFunction(() => !!net.s.looted['supply:0']);
+  const winner = await pages[0].evaluate(() => net.s.looted['supply:0']);
+  assert.ok(ids.includes(winner));
+  for (const p of pages) {
+    await p.waitForFunction(winner => net.s.players[winner].inv.a9 === 36, winner);
+    assert.equal(
+      await p.evaluate(
+        loser => net.s.players[loser].inv.a9,
+        ids.find(id => id !== winner),
+      ),
+      12,
+    );
+  }
+  // Walk using legal commands, then verify real authoritative gun damage and ammo on both clients.
+  await pages[0].evaluate(async () => {
+    net.equip('pistol');
+    const pause = ms => new Promise(r => setTimeout(r, ms));
+    await pause(300);
+    for (let i = 0; i < 240; i++) {
+      const p = net.s.players[net.you],
+        e = net.s.enemies[0];
+      const dx = e.x - p.x,
+        dz = e.z - p.z,
+        d = Math.hypot(dx, dz);
+      if (d < 23) break;
+      net.cmd({ t: 'move', x: p.x + (dx / d) * 0.35, z: p.z + (dz / d) * 0.35 });
+      await pause(90);
+    }
+  });
+  const beforeAmmo = await pages[0].evaluate(() => net.s.players[net.you].inv.a9);
+  await pages[0].evaluate(() => net.cmd({ t: 'attack', target: 0 }));
+  await Promise.all(pages.map(p => p.waitForFunction(() => net.s.enemies[0].hp === 12)));
+  await pages[0].waitForFunction(() => net.s.players[net.you].cd === 0);
+  await pages[0].evaluate(() => net.cmd({ t: 'attack', target: 0 }));
+  await Promise.all(pages.map(p => p.waitForFunction(() => net.s.enemies[0].hp === 0 && net.s.loot['enemy:0'])));
+  for (const p of pages) assert.equal(await p.evaluate(id => net.s.players[id].inv.a9, ids[0]), beforeAmmo - 2);
+  console.log('PASS: desktop/mobile real transport contested loot, shared enemy death/drop, authoritative ammo');
   await pages[0].evaluate(() => net.ws.close());
   await pages[0].waitForFunction(() => net.ws?.readyState === 1 && net.tries === 0);
-  await pages[0].evaluate(() => net.cmd({ t: 'move', x: 0.4, z: 0 }));
-  await pages[1].waitForFunction(id => Math.abs(net.s.players[id].x - 0.4) < 0.001, ids[0]);
+  await pages[0].waitForFunction(({ beforeAmmo }) => net.s.players[net.you].inv.a9 === beforeAmmo - 2, { beforeAmmo });
+  assert.equal(await pages[0].evaluate(() => net.s.enemies[0].hp), 0);
   // Progress protection checks exercise the actual storage module, not a mock implementation.
   await pages[0].evaluate(async () => {
     const s = await import('/defendtaipei/src/systems/save.ts');

@@ -2177,11 +2177,18 @@ function soonToast(t: string) {
 let MP: { base: string; code: string } | null = null;
 const remRigs = new Map<string, Rig>(),
   enRigs = new Map<number, Rig>();
+const lootRigs = new Map<string, THREE.Mesh>();
+const coopActive = () => MP && net?.s?.coop === 2;
 const remPrev = new Map<string, [number, number]>();
 function syncServerVitals() {
   const own = MP && net?.s?.players[net.you];
   if (!own) return;
   player.hp = clamp(own.hp, 0, 100);
+  if (coopActive() && own.inv) {
+    player.inv = { ...own.inv };
+    // Equipment intent is sent separately; server never accepts unowned weapons.
+    if (player.equip && !own.inv[player.equip]) player.equip = own.weapon || '';
+  }
   player.bleed = false; // The prototype server has no separate bleeding state.
   if (own.hp <= 0 && !dead) die();
 }
@@ -2286,6 +2293,21 @@ function netFrame(dt: number) {
     if (Math.hypot(dx, dz) > 0.02) r.root.rotation.y = Math.atan2(dx, dz);
     animate(r, e.hp <= 0 ? 'death' : sp > 2 ? 'run' : sp > 0.2 ? 'walk' : 'idle', Math.min(sp, 4), dt);
   }
+  if (coopActive()) {
+    for (const [id, loot] of Object.entries(s.loot || {})) {
+      let marker = lootRigs.get(id);
+      if (!marker) {
+        marker = new THREE.Mesh(
+          new THREE.BoxGeometry(0.45, 0.45, 0.45),
+          new THREE.MeshBasicMaterial({ color: 0x55ffcc }),
+        );
+        marker.position.set(loot.x, 0.35, loot.z);
+        scene.add(marker);
+        lootRigs.set(id, marker);
+      }
+      marker.visible = !s.looted[id];
+    }
+  }
   const h = document.getElementById('mphud');
   if (h && Object.values(s.players).filter(p => p.on).length < 2)
     h.textContent = tr(
@@ -2301,7 +2323,7 @@ function netFrame(dt: number) {
 function netAttack() {
   if (!net?.s) return;
   let best = -1,
-    bd = 1.9;
+    bd = ITEMS[net.s.players[net.you]?.weapon || '']?.range || 1.1;
   for (const e of net.s.enemies) {
     if (e.hp <= 0) continue;
     const d = Math.hypot(e.x - player.pos.x, e.z - player.pos.z);
@@ -3910,6 +3932,11 @@ function addItem(k: string, n = 1) {
 function useItem(k: string) {
   const d = ITEMS[k];
   if (!player.inv[k]) return;
+  if (coopActive() && d.kind !== 'melee' && d.kind !== 'gun') {
+    if (d.kind === 'med') net!.cmd({ t: 'use', item: k } as any);
+    else soonToast(tr('合作模式僅支援武器、彈藥與醫療補給', 'Co-op supports weapons, ammunition and medical supplies'));
+    return;
+  }
   if (d.kind === 'melee' || d.kind === 'gun') {
     player.equip = player.equip === k ? '' : k;
     syncHeldWeapon();
@@ -4664,6 +4691,14 @@ function rideTo(i: number, j: number) {
   }, 3000);
 }
 function interact() {
+  if (coopActive()) {
+    const loot = Object.entries(net!.s!.loot || {}).find(
+      ([id, l]) => !net!.s!.looted[id] && Math.hypot(l.x - player.pos.x, l.z - player.pos.z) <= 2.2,
+    );
+    if (loot) net!.cmd({ t: 'loot', id: loot[0] } as any);
+    else soonToast(tr('靠近綠色補給箱或敵人掉落物再互動', 'Move near a green supply crate or enemy drop to collect'));
+    return;
+  }
   if (npcInteract()) return;
   if (roofB || roofDoor()) {
     if (roofToggle()) return;
@@ -4918,6 +4953,12 @@ function playerAttack() {
   const d = k ? ITEMS[k] : ({ dmg: 8, range: 1.1, noise: 2, cd: 0.5, kind: 'melee' } as any);
   if (player.cd > 0) return;
   netAttack();
+  if (coopActive()) {
+    player.cd = d.cd || 0.5;
+    if (d.kind === 'gun') player.rig.shootT = 0.14;
+    else startMelee(player.rig, Math.max(0.42, (d.cd || 0.5) * 0.85));
+    return; // Server owns hits, ammo, deaths and drops; never run the solo damage path.
+  }
   player.cd = d.cd;
   if (d.kind === 'gun') player.rig.shootT = 0.14;
   else startMelee(player.rig, Math.max(0.42, (d.cd || 0.5) * 0.85));
@@ -7184,8 +7225,8 @@ async function boot() {
   (mpw.querySelector('#mpcode') as HTMLInputElement).value = MPQ.get('room') || '';
   const mpScope = document.createElement('p');
   mpScope.textContent = tr(
-    '實驗連線：同步玩家與哨兵；背包、劇情與搜刮仍為個人狀態。需要可連線伺服器，不覆寫單機存檔。',
-    'Experimental: players and sentries are shared; inventory, story and loot remain local. Requires a reachable server. Single-player saves are protected.',
+    '實驗連線：相容合作伺服器統一戰鬥、彈藥與綠色補給箱；劇情與城區模擬尚未共享。不覆寫單機存檔。',
+    'Experimental: compatible co-op servers own combat, ammo and green supply crates. Story and city simulation are not shared. Single-player saves are protected.',
   );
   mpw.appendChild(mpScope);
   const mpMsg = (t: string) => {
