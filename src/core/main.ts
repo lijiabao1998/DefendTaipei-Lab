@@ -5581,7 +5581,6 @@ function update(dt: number) {
   roadT.update(player.pos.x, player.pos.z, dt);
   district.update(player.pos.x, player.pos.z);
   traffic.update(dt);
-  netFrame(dt);
   if (drive.cur) {
     const v = drive.cur;
     const b = roadT.barrierAt(v.pos.x, v.pos.z, v.s.two ? 1.2 : 2.0);
@@ -6159,6 +6158,8 @@ function update(dt: number) {
     streetT = 0.7;
     updateStreet();
   }
+  // Send this frame's resolved movement before a snapshot can reconcile it away.
+  netFrame(dt);
   drawHud(inside);
 }
 let redT = 0;

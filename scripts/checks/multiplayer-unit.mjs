@@ -1,5 +1,6 @@
 import { build } from 'esbuild';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 async function load(file) {
   const out = await build({ entryPoints: [file], bundle: true, write: false, format: 'esm', platform: 'node' });
   return import('data:text/javascript;base64,' + Buffer.from(out.outputFiles[0].text).toString('base64'));
@@ -210,3 +211,8 @@ assert.equal(core.addPlayer(cold.s, 'b', 'B', 'courier', 'm', 0, 0), 'room full'
 console.log(
   'PASS: co-op weapon ownership/damage/ammo/cooldown, known contested loot, medkits, deltas, durable identity and active capacity',
 );
+
+// Low-FPS snapshots reconcile between frames: send only after local motion/collision resolves.
+const gameSource = readFileSync('src/core/main.ts', 'utf8');
+assert.ok(gameSource.indexOf('  netFrame(dt);') > gameSource.indexOf('      collideDoors(player.pos);'));
+console.log('PASS: multiplayer movement publication follows local movement/collision resolution');

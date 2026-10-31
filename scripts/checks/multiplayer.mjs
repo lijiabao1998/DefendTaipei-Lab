@@ -133,7 +133,12 @@ try {
   await pages[1].waitForFunction(() => window.__game.player.inv.a9 === 36);
   console.log('PASS: real phone context button claims shared supply and authoritative inventory updates');
   // Office survivors start behind a closed home door: co-op loot routing must not trap them.
-  await pages[1].evaluate(() => window.__game.autoWalk());
+  const approach = await pages[1].evaluate(() => ({
+    path: window.__game.autoWalk(),
+    state: window.__game.autoState(),
+  }));
+  console.log('Phone door approach', approach);
+  assert.ok(approach.path > 0, 'Office spawn must have a walkable route to its home door');
   await pages[1].waitForFunction(() => window.__game.autoState().cd, null, { timeout: 180000 });
   await pages[1].evaluate(() => window.__game.autoStop());
   await pages[1].waitForFunction(() => /開門|Open door/.test(document.getElementById('prompt').textContent));
@@ -223,6 +228,7 @@ try {
             started: window.__game?.started?.(),
             loading: !!document.getElementById('entry-loading'),
             equipment: window.__game?.pst?.(),
+            movement: window.__game?.autoState?.(),
             socket: (window.__game?.net || window.net)?.ws?.readyState,
             tries: (window.__game?.net || window.net)?.tries,
             hud: document.getElementById('mphud')?.textContent,
