@@ -4698,6 +4698,7 @@ function interact() {
       ([id, l]) => !net!.s!.looted[id] && Math.hypot(l.x - player.pos.x, l.z - player.pos.z) <= 2.2,
     );
     if (loot) net!.cmd({ t: 'loot', id: loot[0] } as any);
+    else if (doorNear(1.6) && !doorNear(1.6)!.barricaded) return toggleDoor(doorNear(1.6)!);
     else soonToast(tr('靠近綠色補給箱或敵人掉落物再互動', 'Move near a green supply crate or enemy drop to collect'));
     return;
   }
@@ -6331,8 +6332,13 @@ function drawHud(inside: Bld | null) {
     const available = Object.entries(net!.s!.loot || {}).some(
       ([id, l]) => !net!.s!.looted[id] && Math.hypot(l.x - player.pos.x, l.z - player.pos.z) <= 2.2,
     );
-    pr.style.display = available && !panelOpen ? 'block' : 'none';
-    pr.textContent = tr('[E] 搜刮共享補給', '[E] Loot shared supplies');
+    const localDoor = doorNear(1.6);
+    pr.style.display = (available || (localDoor && !localDoor.barricaded)) && !panelOpen ? 'block' : 'none';
+    pr.textContent = available
+      ? tr('[E] 搜刮共享補給', '[E] Loot shared supplies')
+      : localDoor?.open
+        ? tr('[E] 關門', '[E] Close door')
+        : tr('[E] 開門', '[E] Open door');
   }
   // v22.4 prompts show the key actually bound (settings → 按鍵設定)
   const t0 = pr.textContent || '';

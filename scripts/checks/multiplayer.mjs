@@ -112,7 +112,7 @@ try {
     await p.goto(
       `http://localhost:5173/defendtaipei/?${useDefault ? '' : 'mp=' + encodeURIComponent(backend) + '&'}room=${gameCode}`,
     );
-    await pickRole(p, { g: 'm', role: 'courier', skipIntro: true, entryTimeout: 360000 });
+    await pickRole(p, { g: 'm', role: 'office', skipIntro: true, entryTimeout: 360000 });
     assert.equal(await p.locator('#mpbase').inputValue(), backend);
   }
   for (const p of pages)
@@ -132,6 +132,15 @@ try {
   await Promise.all(pages.map(p => p.waitForFunction(id => window.__game.net.s.looted['supply:0'] === id, gameIds[1])));
   await pages[1].waitForFunction(() => window.__game.player.inv.a9 === 36);
   console.log('PASS: real phone context button claims shared supply and authoritative inventory updates');
+  // Office survivors start behind a closed home door: co-op loot routing must not trap them.
+  await pages[1].evaluate(() => window.__game.autoWalk());
+  await pages[1].waitForFunction(() => window.__game.autoState().cd, null, { timeout: 180000 });
+  await pages[1].evaluate(() => window.__game.autoStop());
+  await pages[1].waitForFunction(() => /開門|Open door/.test(document.getElementById('prompt').textContent));
+  await pages[1].locator('#pbact').tap();
+  await pages[1].waitForFunction(() => !window.__game.autoState().cd);
+  console.log('PASS: phone co-op survivor opens the real closed home door through the touch control');
+
   const waitWeapons = weapon =>
     Promise.all(
       pages.map((p, i) =>
