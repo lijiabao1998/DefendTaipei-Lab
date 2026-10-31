@@ -2185,7 +2185,9 @@ function syncServerVitals() {
   if (!own) return;
   player.hp = clamp(own.hp, 0, 100);
   if (coopActive() && own.inv) {
+    const inventoryChanged = JSON.stringify(player.inv) !== JSON.stringify(own.inv);
     player.inv = { ...own.inv };
+    if (inventoryChanged && panelOpen) renderPanel();
     // Equipment intent is sent separately; server never accepts unowned weapons.
     if (player.equip && !own.inv[player.equip]) player.equip = own.weapon || '';
   }
@@ -2323,7 +2325,7 @@ function netFrame(dt: number) {
 function netAttack() {
   if (!net?.s) return;
   let best = -1,
-    bd = ITEMS[net.s.players[net.you]?.weapon || '']?.range || 1.1;
+    bd = coopActive() ? ITEMS[net.s.players[net.you]?.weapon || '']?.range || 1.1 : 1.9;
   for (const e of net.s.enemies) {
     if (e.hp <= 0) continue;
     const d = Math.hypot(e.x - player.pos.x, e.z - player.pos.z);
