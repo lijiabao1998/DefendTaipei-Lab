@@ -21,3 +21,9 @@ Unit coverage includes ownership, weapon damage/ammo, cooldown, double-kill prot
 Shared city containers, story, missions, time, occupation, shelter, vehicles and collision/line-of-sight authority remain future work. The current movement validator and enemy simulation retain prototype limitations. This slice does not implement magazines/reloading, shared food/thirst progression, revives, account login, retention administration or abuse-resistant public hosting. No FPV changes are included. Anonymous token loss means a new identity, not recovery of the old survivor.
 
 No new dependencies or schema migrations. No production Worker deployment, production D1 writes/migrations, R2 or paid plan changes are authorized by this branch. `server/wrangler.toml` retains its local placeholder and must not be blindly deployed. Review and approve deployment separately before exposing v2 on the public service.
+
+## Low-quality rendering trial
+
+Low now uses a 0.75 pixel-ratio cap, disables MSAA and dynamic shadow-map rendering, and leaves CSS HUD/text resolution unchanged. Medium/high retain the previous rendering settings; select one and reload to restore shadows and antialiasing. This only changes rendering cost, not simulation steps, enemies, health, collisions, movement validation, networking or storage. No FPV-specific code is modified.
+
+This is a measured-candidate change, not a performance claim: before it, the two-client Actions software-WebGL natural-route job measured about 0.46 RAF/s and failed its unchanged 180-second route. The additional reconnect-near-door diagnostic measured about 0.22 RAF/s; real phone loot and door opening passed but both survivors subsequently died before the remaining closure. Both original failures and the full natural-route check are retained. Fresh same-route timing, complete gameplay and image review are required before release; viewport/touch emulation is not physical-phone performance evidence.

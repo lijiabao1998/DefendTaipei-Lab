@@ -113,7 +113,8 @@ const pick = <T>(a: T[]) => a[Math.floor(rnd() * a.length)];
 const $ = (id: string) => document.getElementById(id)!;
 
 // ---------- renderer ----------
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+// Low is a real rendering budget, not a simulation shortcut. Medium/high retain the previous appearance.
+const renderer = new THREE.WebGLRenderer({ antialias: SET.quality !== 'low', powerPreference: 'high-performance' });
 const MOBILE =
   matchMedia('(pointer: coarse)').matches ||
   'ontouchstart' in window ||
@@ -130,7 +131,7 @@ if (MOBILE) document.body.classList.add('mobile');
 }
 renderer.setPixelRatio(Math.min(devicePixelRatio, MOBILE ? Math.min(1.25, QPIX[SET.quality]) : QPIX[SET.quality]));
 renderer.setSize(innerWidth, innerHeight);
-renderer.shadowMap.enabled = true;
+renderer.shadowMap.enabled = SET.quality !== 'low';
 renderer.shadowMap.type = MOBILE ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 $('app').appendChild(renderer.domElement);
