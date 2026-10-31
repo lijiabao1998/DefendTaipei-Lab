@@ -126,6 +126,12 @@ try {
     await Promise.all(pages.map(p => p.evaluate(() => window.__game.net.s.players))),
   );
   const gameIds = await Promise.all(pages.map(p => p.evaluate(() => window.__game.net.you)));
+  // Use the real phone context button, not the debug/transport API, to claim shared supplies.
+  await pages[1].waitForFunction(() => document.getElementById('pbact')?.dataset.mode === 'ctx');
+  await pages[1].locator('#pbact').tap();
+  await Promise.all(pages.map(p => p.waitForFunction(id => window.__game.net.s.looted['supply:0'] === id, gameIds[1])));
+  await pages[1].waitForFunction(() => window.__game.player.inv.a9 === 36);
+  console.log('PASS: real phone context button claims shared supply and authoritative inventory updates');
   const waitWeapons = weapon =>
     Promise.all(
       pages.map((p, i) =>

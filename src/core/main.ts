@@ -6327,6 +6327,13 @@ function drawHud(inside: Bld | null) {
       ? tr('[B] 拆除封門', '[B] Remove barricade')
       : tr('[B] 封門（鐵鎚+木板）', '[B] Barricade (hammer + plank)');
   } else pr.style.display = 'none';
+  if (coopActive()) {
+    const available = Object.entries(net!.s!.loot || {}).some(
+      ([id, l]) => !net!.s!.looted[id] && Math.hypot(l.x - player.pos.x, l.z - player.pos.z) <= 2.2,
+    );
+    pr.style.display = available && !panelOpen ? 'block' : 'none';
+    pr.textContent = tr('[E] 搜刮共享補給', '[E] Loot shared supplies');
+  }
   // v22.4 prompts show the key actually bound (settings → 按鍵設定)
   const t0 = pr.textContent || '';
   if (t0.startsWith('[E]')) pr.textContent = `[${keyLabel('interact')}]` + t0.slice(3);
