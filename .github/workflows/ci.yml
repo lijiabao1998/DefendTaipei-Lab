@@ -64,6 +64,8 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: node ${{ matrix.script }}
+        env:
+          URL: https://game.lijiabao.uk/defendtaipei/
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
