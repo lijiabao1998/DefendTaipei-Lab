@@ -5,6 +5,8 @@ import assert from 'node:assert/strict';
 import { pickRole, shot } from '../lib.mjs';
 const backend = process.env.MP_SERVER || 'http://localhost:8787';
 const useDefault = process.env.MP_USE_DEFAULT === '1';
+// Optional independent diagnostic only; default retains the full natural office-spawn route.
+const doorFixture = process.env.MP_DOOR_FIXTURE === '1';
 const useFirefox = process.env.PW_BROWSER === 'firefox';
 const browser = await (useFirefox ? firefox : chromium).launch({
   executablePath: process.env.PW_CHROMIUM || undefined,
@@ -17,6 +19,17 @@ try {
   ]);
   const pages = await Promise.all(contexts.map(c => c.newPage()));
   for (const p of pages) {
+    await p.addInitScript(() => {
+      window.__frameSample = { frames: 0, started: performance.now(), maxGap: 0 };
+      let previous = performance.now();
+      const sample = now => {
+        window.__frameSample.frames++;
+        window.__frameSample.maxGap = Math.max(window.__frameSample.maxGap, now - previous);
+        previous = now;
+        requestAnimationFrame(sample);
+      };
+      requestAnimationFrame(sample);
+    });
     p.setDefaultTimeout(120000);
     p.on('console', m => {
       if (m.type() === 'error') console.error('browser:', m.text());
@@ -105,6 +118,21 @@ try {
   await pages[1].evaluate(() => net.leave());
   // Now load the actual desktop + phone game UIs (same independent contexts).
   const gameCode = await pages[1].evaluate(() => net.create());
+  if (doorFixture) {
+    // Explicit diagnostic fixture: ordinary first joins establish authoritative positions,
+    // then leave/rejoin restores them. Not a teleport, server patch, or natural-spawn proof.
+    for (const p of pages) {
+      await p.evaluate(
+        code => net.join(code, { name: 'Door fixture', role: 'office', g: 'm', x: 78, z: 40.6 }),
+        gameCode,
+      );
+      await p.waitForFunction(() => net.s?.players[net.you]?.x === 78 && net.s.players[net.you].on);
+      await p.evaluate(() => net.leave());
+    }
+    console.log(
+      'DIAGNOSTIC ONLY: ordinary first-join/reconnect fixture at x78,z40.6; natural office route still required separately',
+    );
+  }
   for (const p of pages)
     await p.evaluate(() => localStorage.setItem('dt.settings', JSON.stringify({ quality: 'low' })));
   console.log('Transport movement/reconnect/save protection passed; loading two real game clients at low quality.');
@@ -133,8 +161,14 @@ try {
   await pages[1].waitForFunction(() => window.__game.player.inv.a9 === 36);
   console.log('PASS: real phone context button claims shared supply and authoritative inventory updates');
   // Office survivors start behind a closed home door: co-op loot routing must not trap them.
+  if (doorFixture) {
+    const door = await pages[1].evaluate(() => window.__game.autoState().door);
+    assert.deepEqual(door, [78, 41.5], 'Fixture must match the real deterministic home door');
+  }
+  for (const p of pages)
+    await p.evaluate(() => (window.__frameSample = { frames: 0, started: performance.now(), maxGap: 0 }));
   const approach = await pages[1].evaluate(() => ({
-    path: window.__game.autoWalk(),
+    path: window.__game.autoState().cd ? 1 : window.__game.autoWalk(),
     state: window.__game.autoState(),
   }));
   console.log('Phone door approach', approach);
@@ -144,7 +178,41 @@ try {
   await pages[1].waitForFunction(() => /開門|Open door/.test(document.getElementById('prompt').textContent));
   await pages[1].locator('#pbact').tap();
   await pages[1].waitForFunction(() => !window.__game.autoState().cd);
+  console.log(
+    'Frame samples',
+    await Promise.all(
+      pages.map(p =>
+        p.evaluate(() => ({ ...window.__frameSample, elapsedMs: performance.now() - window.__frameSample.started })),
+      ),
+    ),
+  );
   console.log('PASS: phone co-op survivor opens the real closed home door through the touch control');
+
+  if (doorFixture) {
+    const before = await pages[0].evaluate(id => window.__game.net.s.players[id], gameIds[1]);
+    const joy = await pages[1].locator('#joy').boundingBox();
+    assert.ok(joy, 'phone joystick visible');
+    const touch = await contexts[1].newCDPSession(pages[1]);
+    const x = joy.x + joy.width / 2,
+      y = joy.y + joy.height / 2;
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + 35, y }] });
+    try {
+      await pages[0].waitForFunction(
+        ({ id, before }) => {
+          const p = window.__game.net.s.players[id];
+          return Math.hypot(p.x - before.x, p.z - before.z) > 0.05;
+        },
+        { id: gameIds[1], before },
+      );
+    } finally {
+      await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await touch.detach();
+    }
+    console.log(
+      'PASS: short real touch-joystick displacement is authoritative on the other full client (diagnostic, not full route)',
+    );
+  }
 
   const waitWeapons = weapon =>
     Promise.all(
@@ -203,6 +271,8 @@ try {
   console.log(
     JSON.stringify({
       passed: true,
+      diagnosticOnly: doorFixture,
+      naturalOfficeRoute: !doorFixture,
       backend,
       defaultEndpoint: useDefault,
       code,
@@ -229,6 +299,10 @@ try {
             loading: !!document.getElementById('entry-loading'),
             equipment: window.__game?.pst?.(),
             movement: window.__game?.autoState?.(),
+            frameSample: window.__frameSample && {
+              ...window.__frameSample,
+              elapsedMs: performance.now() - window.__frameSample.started,
+            },
             socket: (window.__game?.net || window.net)?.ws?.readyState,
             tries: (window.__game?.net || window.net)?.tries,
             hud: document.getElementById('mphud')?.textContent,
